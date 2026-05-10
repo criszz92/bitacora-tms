@@ -1,0 +1,97 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "jornadas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "idEmpresa", "order": "ASCENDING" },
+        { "fieldPath": "idChofer", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "viajes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "idEmpresa", "order": "ASCENDING" },
+        { "fieldPath": "idChofer", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "viajes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "idEmpresa", "order": "ASCENDING" },
+        { "fieldPath": "startDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "gastos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "idEmpresa", "order": "ASCENDING" },
+        { "fieldPath": "idChofer", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "gastos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "idEmpresa", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "viaticos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "idEmpresa", "order": "ASCENDING" },
+        { "fieldPath": "creadoEn", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "viaticos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "idEmpresa", "order": "ASCENDING" },
+        { "fieldPath": "idChofer", "order": "ASCENDING" },
+        { "fieldPath": "creadoEn", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "liquidaciones",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "idEmpresa", "order": "ASCENDING" },
+        { "fieldPath": "fechaCreacion", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "liquidaciones",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "idEmpresa", "order": "ASCENDING" },
+        { "fieldPath": "fechaCreacion", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "usuarios",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "idEmpresa", "order": "ASCENDING" },
+        { "fieldPath": "rol", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "incidencias",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "idEmpresa", "order": "ASCENDING" },
+        { "fieldPath": "fecha", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

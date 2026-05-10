@@ -1,0 +1,122 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── FUNCIONES DE AYUDA ──────────────────────────────────────────────────
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Obtiene el idEmpresa del usuario autenticado leyendo su perfil
+    function getUserEmpresa() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.idEmpresa;
+    }
+
+    // Verifica si el documento existente pertenece a la misma empresa del usuario
+    function isSameEmpresa() {
+      return resource.data.idEmpresa == getUserEmpresa();
+    }
+
+    // Verifica si el nuevo documento que se intenta crear pertenece a la misma empresa del usuario
+    function isCreatingForSameEmpresa() {
+      return request.resource.data.idEmpresa == getUserEmpresa();
+    }
+
+    // Verifica si el usuario es administrador
+    function isCompanyAdmin() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol == 'ADMIN';
+    }
+
+    // Verifica si el usuario es dueño del documento (asumiendo campo idChofer)
+    function isOwner() {
+      return resource.data.idChofer == request.auth.uid;
+    }
+
+    // Valida que no se estén alterando campos protegidos (rol e idEmpresa)
+    function isNotAlteringProtectedFields() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['rol', 'idEmpresa']);
+    }
+
+    // ─── REGLAS POR COLECCIÓN ────────────────────────────────────────────────
+
+    // 1. Usuarios
+    match /usuarios/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || resource.data.idEmpresa == getUserEmpresa());
+      // Solo el propio usuario o un ADMIN pueden escribir, pero NADIE puede cambiarse el rol/empresa a sí mismo (excepto ADMIN de su propia empresa)
+      allow write: if isAuthenticated() && (
+        (request.auth.uid == userId && isNotAlteringProtectedFields()) || 
+        (isSameEmpresa() && isCompanyAdmin())
+      );
+    }
+
+    // 2. Empresas
+    match /empresas/{empresaId} {
+      allow create: if isAuthenticated();
+      allow read: if isAuthenticated() && getUserEmpresa() == empresaId;
+      allow update: if isAuthenticated() && getUserEmpresa() == empresaId && isCompanyAdmin();
+    }
+
+    // 3. Invitaciones
+    match /invitaciones/{invitacionId} {
+      // Solo admins pueden crear invitaciones
+      allow create: if isAuthenticated() && isCompanyAdmin();
+      // Solo el destinatario (por email) o el admin de la empresa pueden leer
+      allow read: if isAuthenticated() && (request.auth.token.email == resource.data.email || isSameEmpresa());
+      // Solo el admin puede borrar o modificar
+      allow update, delete: if isAuthenticated() && isSameEmpresa() && isCompanyAdmin();
+    }
+
+    // 4. Configuración de Empresa
+    match /configuraciones_empresa/{empresaId} {
+      allow read: if isAuthenticated() && getUserEmpresa() == empresaId;
+      allow write: if isAuthenticated() && getUserEmpresa() == empresaId && isCompanyAdmin();
+    }
+
+    // 5. Colecciones Multi-Tenant Rigurosas
+    // Aplica a: jornadas, viajes, gastos, vehiculos, viaticos, liquidaciones
+    
+    match /jornadas/{docId} {
+      allow read: if isAuthenticated() && isSameEmpresa();
+      allow create: if isAuthenticated() && isCreatingForSameEmpresa();
+      // Solo el dueño o el admin pueden actualizar/borrar
+      allow update, delete: if isAuthenticated() && isSameEmpresa() && (isOwner() || isCompanyAdmin());
+    }
+
+    match /viajes/{docId} {
+      allow read: if isAuthenticated() && isSameEmpresa();
+      allow create: if isAuthenticated() && isCreatingForSameEmpresa() 
+                    && request.resource.data.value is number;
+      allow update, delete: if isAuthenticated() && isSameEmpresa() && (isOwner() || isCompanyAdmin());
+    }
+
+    match /gastos/{docId} {
+      allow read: if isAuthenticated() && isSameEmpresa();
+      allow create: if isAuthenticated() && isCreatingForSameEmpresa()
+                    && request.resource.data.amount is number;
+      allow update, delete: if isAuthenticated() && isSameEmpresa() && (isOwner() || isCompanyAdmin());
+    }
+
+    match /vehiculos/{docId} {
+      allow read, update, delete: if isAuthenticated() && isSameEmpresa();
+      allow create: if isAuthenticated() && isCreatingForSameEmpresa();
+    }
+
+    match /viaticos/{docId} {
+      allow read, update, delete: if isAuthenticated() && isSameEmpresa();
+      allow create: if isAuthenticated() && isCreatingForSameEmpresa();
+    }
+
+    match /liquidaciones/{docId} {
+      allow read, update, delete: if isAuthenticated() && isSameEmpresa();
+      allow create: if isAuthenticated() && isCreatingForSameEmpresa();
+    }
+
+    // 6. Secretos (Solo lectura para ADMIN)
+    match /secrets/{docId} {
+      allow read: if isAuthenticated() && isCompanyAdmin();
+      allow write: if false; // Nadie escribe desde la app
+    }
+  }
+}

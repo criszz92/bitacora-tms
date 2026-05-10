@@ -1,0 +1,795 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../../trips/presentation/providers/trip_provider.dart';
+import '../../../trips/domain/models/trip_model.dart';
+import '../../../trips/domain/models/shift_model.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../admin/presentation/providers/admin_provider.dart';
+import '../../../trips/domain/models/vehicle_model.dart';
+
+import '../../../admin/domain/models/incidencia_model.dart';
+import 'package:uuid/uuid.dart';
+import 'package:intl/intl.dart';
+import '../../../../core/services/location_service.dart';
+
+class DriverDashboardScreen extends ConsumerWidget {
+  const DriverDashboardScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final activeShiftAsync = ref.watch(activeShiftProvider);
+    final activeTripsAsync = ref.watch(activeTripsProvider);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Bitacora Conductor', style: TextStyle(fontWeight: FontWeight.bold)),
+      ),
+      drawer: _buildDriverDrawer(context, ref),
+      body: SafeArea(
+        child: activeShiftAsync.when(
+          data: (shift) {
+            if (shift == null) {
+              return _buildNoShiftView(context);
+            }
+            // Listener para reportes automáticos de documentos
+            _setupAutoDocumentReportListener(ref, shift);
+            
+            return _buildDashboardContent(context, ref, activeTripsAsync, shift);
+          },
+          loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFFFFFFFF))),
+          error: (err, stack) => Center(child: Text('Error al cargar jornada: $err')),
+        ),
+      ),
+    );
+  }
+
+  // ================= PANTALLA DE BLOQUEO =================
+  Widget _buildNoShiftView(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.lock_clock, size: 80, color: Colors.grey),
+            const SizedBox(height: 24),
+            const Text(
+              'Jornada Cerrada',
+              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Para registrar viajes o viáticos, debes iniciar tu día de trabajo indicando el camión y el kilometraje.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey, fontSize: 16),
+            ),
+            const SizedBox(height: 48),
+            SizedBox(
+              width: double.infinity,
+              height: 64,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFFFFFF),
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+                onPressed: () {
+                  context.push('/start-shift');
+                },
+                icon: const Icon(Icons.play_arrow, size: 32),
+                label: const Text('INICIAR JORNADA', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ================= DRAWER (MENÚ LATERAL) =================
+  Widget _buildDriverDrawer(BuildContext context, WidgetRef ref) {
+    final user = ref.read(currentUserProfileProvider).value;
+    final isAdmin = user?.rol == 'ADMIN';
+    
+    String displayName = 'Conductor';
+    String initial = 'C';
+    if (user != null && user.nombre.isNotEmpty) {
+      final parts = user.nombre.trim().split(RegExp(r'\s+'));
+      displayName = parts.length > 1 ? '${parts[0]} ${parts[1]}' : parts[0];
+      initial = displayName[0].toUpperCase();
+    }
+
+    return Drawer(
+      backgroundColor: const Color(0xFF121212),
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          DrawerHeader(
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: Colors.white10)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Row(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: const Color(0xFFFFFFFF),
+                      foregroundColor: Colors.black,
+                      radius: 24,
+                      child: Text(initial, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(displayName, 
+                            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(user?.email ?? 'Sin correo', 
+                            style: const TextStyle(color: Colors.grey, fontSize: 12),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.local_gas_station, color: Colors.white),
+            title: const Text('Carga de Combustible'),
+            onTap: () {
+              context.pop();
+              context.push('/add-expense?type=Combustible');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.add_road, color: Colors.white),
+            title: const Text('Peajes'),
+            onTap: () {
+              context.pop();
+              context.push('/add-expense?type=Peaje');
+            },
+          ),
+          const Divider(color: Colors.white24),
+          ListTile(
+            leading: const Icon(Icons.request_quote, color: Color(0xFFE0E0E0)),
+            title: const Text('Rendición de Viáticos', style: TextStyle(color: Color(0xFFE0E0E0), fontWeight: FontWeight.bold)),
+            onTap: () {
+              context.pop();
+              context.push('/viaticos-request');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.analytics_outlined, color: Colors.blueAccent),
+            title: const Text('Resumen del Mes', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            subtitle: const Text('Ver viajes, viáticos y comisiones', style: TextStyle(color: Colors.white38, fontSize: 11)),
+            onTap: () {
+              context.pop();
+              context.push('/monthly-summary');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.build_circle_outlined, color: Colors.orangeAccent),
+            title: const Text('Salud del Camión', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            subtitle: const Text('Estado de mantención y documentos', style: TextStyle(color: Colors.white38, fontSize: 11)),
+            onTap: () {
+              context.pop();
+              _showVehicleMaintenanceDialog(context, ref);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.history, color: Colors.white60),
+            title: const Text('Agregar Viaje Pasado', style: TextStyle(color: Colors.white60)),
+            subtitle: const Text('Olvidé registrar un viaje', style: TextStyle(color: Colors.white30, fontSize: 11)),
+            onTap: () {
+              context.pop();
+              context.push('/retro-trip');
+            },
+          ),
+          if (isAdmin) ...[
+            const Divider(color: Colors.white24),
+            ListTile(
+              leading: const Icon(Icons.admin_panel_settings, color: Colors.orangeAccent),
+              title: const Text('Volver a Administración', style: TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold)),
+              onTap: () {
+                context.pop();
+                context.go('/admin');
+              },
+            ),
+          ],
+          const Divider(color: Colors.white24),
+          ListTile(
+            leading: const Icon(Icons.logout, color: Colors.redAccent),
+            title: const Text('Cerrar Sesión', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+            onTap: () async {
+              context.pop();
+              await ref.read(authServiceProvider).signOut();
+              if (context.mounted) context.go('/login');
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ================= DASHBOARD REAL MÓVIL =================
+  Widget _buildDashboardContent(BuildContext context, WidgetRef ref, AsyncValue<List<TripModel>> activeTripsAsync, ShiftModel shift) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildExpirationBanner(ref),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Tus Registros',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE0E0E0).withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.directions_car, size: 16, color: Color(0xFFE0E0E0)),
+                    const SizedBox(width: 8),
+                    Text(
+                      shift.patenteCamion,
+                      style: const TextStyle(color: Color(0xFFE0E0E0), fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(width: 12),
+                    InkWell(
+                      onTap: () {
+                        _showEndShiftDialog(context, ref, shift);
+                      },
+                      child: const Icon(Icons.stop_circle, color: Colors.redAccent, size: 28),
+                    )
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.redAccent.withValues(alpha: 0.1),
+                foregroundColor: Colors.redAccent,
+                side: const BorderSide(color: Colors.redAccent, width: 0.5),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () => _showReportIncidentDialog(context, ref, shift),
+              icon: const Icon(Icons.report_problem_outlined, size: 18),
+              label: const Text('REPORTAR PROBLEMA TÉCNICO', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: activeTripsAsync.when(
+                  data: (trips) => _buildSummaryCard('Viajes Activos', '${trips.length}', Icons.local_shipping),
+                  loading: () => _buildLoadingCard(),
+                  error: (err, stack) => _buildErrorCard(),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 32),
+          const Text(
+            'Viaje Actual en Ruta',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: activeTripsAsync.when(
+              data: (trips) {
+                final inRouteTrips = trips.where((t) => t.status == 'En Ruta').toList();
+                if (inRouteTrips.isEmpty) {
+                  return const Center(child: Text('No hay viajes activos', style: TextStyle(color: Colors.grey)));
+                }
+                return ListView.builder(
+                  itemCount: inRouteTrips.length,
+                  itemBuilder: (context, index) {
+                    return _buildTripCard(context, ref, inRouteTrips[index]);
+                  },
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFFFFFFFF))),
+              error: (error, _) => Center(child: Text('Error: $error')),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 64,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFFFFFF),
+                      foregroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    onPressed: () {
+                      context.push('/add-trip');
+                    },
+                    icon: const Icon(Icons.add_box, color: Colors.black),
+                    label: const Text('INICIAR NUEVO VIAJE', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ================= ALERTAS DE DOCUMENTACIÓN =================
+
+  Widget _buildExpirationBanner(WidgetRef ref) {
+    final vehicleAsync = ref.watch(currentVehicleProvider);
+    
+    return vehicleAsync.when(
+      data: (vehicle) {
+        if (vehicle == null || !vehicle.hasExpiringDocs) return const SizedBox.shrink();
+        
+        final expiring = vehicle.getExpiringDocuments(7);
+        final hasCritical = expiring.any((d) => d['esCritico'] as bool);
+        
+        return Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 16),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: hasCritical ? Colors.redAccent.withValues(alpha: 0.1) : Colors.orangeAccent.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: hasCritical ? Colors.redAccent : Colors.orangeAccent, width: 0.5),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(hasCritical ? Icons.error_outline : Icons.warning_amber_rounded, 
+                       color: hasCritical ? Colors.redAccent : Colors.orangeAccent, size: 20),
+                  const SizedBox(width: 12),
+                  const Text('ALERTA DE DOCUMENTACIÓN', 
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ...expiring.map((doc) => Padding(
+                padding: const EdgeInsets.only(left: 32, bottom: 4),
+                child: Text(
+                  '${doc['nombre']}: vence en ${doc['diasRestantes']} días (${DateFormat('dd/MM').format(doc['fecha'])})',
+                  style: TextStyle(color: hasCritical ? Colors.redAccent : Colors.orangeAccent, fontSize: 12),
+                ),
+              )),
+              const SizedBox(height: 8),
+              const Text('Favor dar aviso manual a jefatura lo antes posible.', 
+                style: TextStyle(color: Colors.white60, fontSize: 11, fontStyle: FontStyle.italic)),
+            ],
+          ),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
+    );
+  }
+
+  void _setupAutoDocumentReportListener(WidgetRef ref, ShiftModel shift) {
+    // Escuchamos el vehículo actual para detectar cambios en documentos
+    ref.listen(currentVehicleProvider, (previous, next) {
+      final vehicle = next.value;
+      if (vehicle == null) return;
+
+      final criticalDocs = vehicle.getExpiringDocuments(1); // 1 día o menos
+      if (criticalDocs.isEmpty) return;
+
+      // Generamos un reporte automático por cada documento crítico
+      for (final doc in criticalDocs) {
+        _triggerAutoReport(ref, shift, vehicle, doc['nombre'] as String, doc['diasRestantes'] as int);
+      }
+    });
+  }
+
+  void _triggerAutoReport(WidgetRef ref, ShiftModel shift, VehicleModel vehicle, String docName, int days) async {
+    final user = ref.read(currentUserProfileProvider).value;
+    if (user == null) return;
+
+    final id = const Uuid().v4();
+    final descripcion = 'SISTEMA: Alerta automática - El documento "$docName" ${days < 0 ? "ESTÁ VENCIDO" : (days == 0 ? "VENCE HOY" : "VENCE MAÑANA")}. '
+                        'Favor gestionar renovación urgente.';
+
+    final incidencia = IncidenciaModel(
+      id: id,
+      idEmpresa: shift.idEmpresa,
+      idChofer: user.uid,
+      choferNombre: user.nombre,
+      vehicleId: vehicle.id,
+      vehiclePatente: vehicle.patente,
+      tipo: 'Documentos',
+      descripcion: descripcion,
+      fecha: DateTime.now(),
+      estado: 'Pendiente',
+    );
+
+    await ref.read(tripRepositoryProvider).reportIncidencia(incidencia);
+  }
+
+  // ================= MANTENIMIENTO DIALOGS =================
+  void _showVehicleMaintenanceDialog(BuildContext context, WidgetRef ref) async {
+    final activeShift = ref.read(activeShiftProvider).value;
+    if (activeShift == null) return;
+
+    // Fetch vehicles from repository instead of relying on an uninitialized provider
+    final vehicles = await ref.read(adminRepositoryProvider).watchVehicles(activeShift.idEmpresa).first;
+    
+    VehicleModel? vehicle;
+    for (var v in vehicles) {
+      if (v.patente == activeShift.patenteCamion) {
+        vehicle = v;
+        break;
+      }
+    }
+
+    if (!context.mounted) return;
+
+    if (vehicle == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se encontró información del camión')));
+      return;
+    }
+
+    final nextService = vehicle.nextOilChangeKm ?? 0.0;
+    final remaining = nextService - vehicle.currentOdometer;
+    
+    final v = vehicle; // Safe non-nullable reference for the closure
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: Text('Estado: ${v.patente}', style: const TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildInfoRow('Kilometraje Actual', '${NumberFormat('#,###').format(v.currentOdometer)} km'),
+            _buildInfoRow('Próximo Servicio', '${NumberFormat('#,###').format(nextService)} km'),
+            const Divider(color: Colors.white10, height: 24),
+            _buildInfoRow('Mantenimiento', remaining > 0 ? '${NumberFormat('#,###').format(remaining)} km restantes' : 'VENCIDO', color: remaining > 500 ? Colors.greenAccent : Colors.redAccent),
+            const Divider(color: Colors.white10, height: 24),
+            _buildDateRow('Revisión Técnica', v.rtExpirationDate),
+            _buildDateRow('SOAP', v.soapExpirationDate),
+            _buildDateRow('Permiso Circulación', v.permisoExpirationDate),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
+        ],
+      ),
+    );
+  }
+
+  void _showReportIncidentDialog(BuildContext context, WidgetRef ref, ShiftModel shift) {
+    final user = ref.read(currentUserProfileProvider).value;
+    final descCtrl = TextEditingController();
+    String? selectedType;
+    final types = ['Mecánica', 'Neumáticos', 'Documentos', 'Otros'];
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          title: const Text('Reportar Incidencia', style: TextStyle(color: Colors.white)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                dropdownColor: const Color(0xFF1A1A1A),
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(labelText: 'Tipo de Problema', labelStyle: TextStyle(color: Colors.grey)),
+                items: types.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                onChanged: (v) => setState(() => selectedType = v),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: descCtrl,
+                maxLines: 3,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Descripción breve',
+                  labelStyle: TextStyle(color: Colors.grey),
+                  filled: true,
+                  fillColor: Colors.black26,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+            ElevatedButton(
+              onPressed: selectedType == null ? null : () async {
+                final incidencia = IncidenciaModel(
+                  id: const Uuid().v4(),
+                  idEmpresa: shift.idEmpresa,
+                  vehicleId: '',
+                  vehiclePatente: shift.patenteCamion,
+                  idChofer: shift.idChofer,
+                  choferNombre: user?.nombre ?? 'Conductor',
+                  tipo: selectedType!,
+                  descripcion: descCtrl.text,
+                  fecha: DateTime.now(),
+                );
+                try {
+                  await ref.read(tripRepositoryProvider).reportIncidencia(incidencia);
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reporte enviado correctamente')));
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al enviar: $e'), backgroundColor: Colors.red));
+                  }
+                }
+              },
+              child: const Text('Enviar Reporte'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ================= AUXILIARES =================
+  Widget _buildInfoRow(String label, String value, {Color? color}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+          Text(value, style: TextStyle(color: color ?? Colors.white, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDateRow(String label, DateTime? date) {
+    final isExpired = date != null && date.isBefore(DateTime.now());
+    return _buildInfoRow(label, date != null ? DateFormat('dd/MM/yyyy').format(date) : 'No cargado', color: isExpired ? Colors.redAccent : null);
+  }
+
+  Widget _buildSummaryCard(String title, String value, IconData icon) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: const Color(0xFFFFFFFF), size: 32),
+            const SizedBox(height: 16),
+            Text(value, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingCard() {
+    return const Card(
+      child: Padding(
+        padding: EdgeInsets.all(32.0),
+        child: Center(child: CircularProgressIndicator(color: Color(0xFFFFFFFF))),
+      ),
+    );
+  }
+
+  Widget _buildErrorCard() {
+    return const Card(
+      child: Padding(
+        padding: EdgeInsets.all(32.0),
+        child: Center(child: Icon(Icons.error, color: Colors.red)),
+      ),
+    );
+  }
+
+  Widget _buildTripCard(BuildContext context, WidgetRef ref, TripModel trip) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: Color(0xFFFFFFFF), width: 1),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('VIAJE ACTIVO', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFFFFFFF))),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: const Color(0xFFFFFFFF).withValues(alpha: 0.2), borderRadius: BorderRadius.circular(12)),
+                  child: Text(trip.status, style: const TextStyle(color: Color(0xFFFFFFFF), fontSize: 12, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+            const Divider(height: 24, color: Colors.white24),
+            _buildRouteRow(Icons.my_location, 'Origen', trip.origin),
+            const SizedBox(height: 12),
+            _buildRouteRow(Icons.location_on, 'Destino', trip.destination),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const Icon(Icons.inventory_2, size: 16, color: Colors.grey),
+                const SizedBox(width: 8),
+                Text(trip.containerNumber ?? trip.guideNumber ?? 'Carga Suelta', style: const TextStyle(color: Colors.grey, fontSize: 14)),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (trip.status == 'En Ruta')
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(foregroundColor: const Color(0xFFFFFFFF), side: const BorderSide(color: Color(0xFFFFFFFF)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                  onPressed: () => _showEndTripDialog(context, ref, trip),
+                  icon: const Icon(Icons.check_circle),
+                  label: const Text('FINALIZAR VIAJE', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showEndTripDialog(BuildContext context, WidgetRef ref, TripModel trip) async {
+    final guideCtrl = TextEditingController(text: trip.guideNumber ?? '');
+    bool isProcessing = false;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Finalizar Viaje', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${trip.origin} → ${trip.destination}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+              const SizedBox(height: 16),
+              if (!isProcessing)
+                TextField(
+                  controller: guideCtrl,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: 'Nº Guía de Despacho', 
+                    filled: true, 
+                    fillColor: Colors.black26, 
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none)
+                  ),
+                )
+              else
+                const Column(
+                  children: [
+                    CircularProgressIndicator(color: Colors.white),
+                    SizedBox(height: 16),
+                    Text('Calculando recorrido real por GPS...', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                  ],
+                ),
+            ],
+          ),
+          actions: isProcessing ? [] : [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFFFFF), foregroundColor: Colors.black),
+              onPressed: () async {
+                setState(() => isProcessing = true);
+                
+                // DETENER TELEMETRÍA Y OBTENER KM REALES
+                final double realKm = await LocationService.stopTracking();
+                
+                await ref.read(tripRepositoryProvider).endTripWithGuide(
+                  trip.id, 
+                  guideCtrl.text.trim(), 
+                  totalKm: realKm
+                );
+                
+                if (ctx.mounted) Navigator.pop(ctx);
+                
+                // Notificar al chofer
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('✓ Viaje cerrado: ${realKm.toStringAsFixed(1)} KM registrados por GPS'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              },
+              child: const Text('FINALIZAR', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showEndShiftDialog(BuildContext context, WidgetRef ref, ShiftModel shift) async {
+    final ctrl = TextEditingController();
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Finalizar Jornada', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: ctrl,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(labelText: 'Odómetro Final', filled: true, fillColor: Colors.black26, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none)),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+            onPressed: () {
+              if (ctrl.text.isNotEmpty) {
+                ref.read(tripRepositoryProvider).endShift(shift.id, int.parse(ctrl.text));
+                Navigator.pop(ctx);
+              }
+            },
+            child: const Text('CERRAR JORNADA'),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRouteRow(IconData icon, String label, String value) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: Colors.grey),
+        const SizedBox(width: 8),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+            Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+          ],
+        ),
+      ],
+    );
+  }
+}
