@@ -46,3 +46,13 @@ app.*.map.json
 
 # Secrets
 .env
+*.json
+!firebase.json
+!firestore.indexes.json
+!firestore.rules
+
+# Data files
+*.xlsx
+*.csv
+*.txt
+*.ps1
