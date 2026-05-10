@@ -118,5 +118,9 @@ service cloud.firestore {
       allow read: if isAuthenticated() && isCompanyAdmin();
       allow write: if false; // Nadie escribe desde la app
     }
+    // 7. Solicitudes de Servicio (IA)
+    match /service_requests/{docId} {
+      allow read, write: if isAuthenticated();
+    }
   }
 }
