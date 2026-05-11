@@ -16,6 +16,7 @@ class TripModel {
   final double value;
   final String billingType;     // 'OS' (Ziyu) | 'OT' (Manual)
   final double? totalKm;        // Kilómetros recorridos en este viaje
+  final String? bookingNumber;
   final String? vehicleId;     // Patente del vehículo asociado
   final String comments;        // Mantenido en modelo por retrocompatibilidad, no se muestra en UI
 
@@ -31,6 +32,7 @@ class TripModel {
     this.endDate,
     required this.cargoType,
     this.containerNumber,
+    this.bookingNumber,
     this.guideNumber,
     required this.client,
     required this.mandante,
@@ -53,6 +55,7 @@ class TripModel {
       'endDate': endDate?.toIso8601String(),
       'cargoType': cargoType,
       'containerNumber': containerNumber,
+      'bookingNumber': bookingNumber,
       'guideNumber': guideNumber,
       'client': client,
       'mandante': mandante,
@@ -77,6 +80,7 @@ class TripModel {
       endDate: map['endDate'] != null ? DateTime.parse(map['endDate']) : null,
       cargoType: map['cargoType'] ?? (map['containerNumber'] != null ? 'completo' : 'suelta'),
       containerNumber: map['containerNumber'],
+      bookingNumber: map['bookingNumber'],
       guideNumber: map['guideNumber'],
       client: map['client'] ?? '',
       mandante: map['mandante'] ?? '',
@@ -100,6 +104,7 @@ class TripModel {
     DateTime? endDate,
     String? cargoType,
     String? containerNumber,
+    String? bookingNumber,
     String? guideNumber,
     String? client,
     String? mandante,
@@ -121,6 +126,7 @@ class TripModel {
       endDate: endDate ?? this.endDate,
       cargoType: cargoType ?? this.cargoType,
       containerNumber: containerNumber ?? this.containerNumber,
+      bookingNumber: bookingNumber ?? this.bookingNumber,
       guideNumber: guideNumber ?? this.guideNumber,
       client: client ?? this.client,
       mandante: mandante ?? this.mandante,

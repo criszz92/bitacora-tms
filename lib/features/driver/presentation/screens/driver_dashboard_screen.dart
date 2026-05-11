@@ -12,6 +12,7 @@ import '../../../admin/domain/models/incidencia_model.dart';
 import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/services/location_service.dart';
+import '../../../admin/domain/models/service_request_model.dart';
 
 class DriverDashboardScreen extends ConsumerWidget {
   const DriverDashboardScreen({super.key});
@@ -58,6 +59,8 @@ class DriverDashboardScreen extends ConsumerWidget {
               'Jornada Cerrada',
               style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
             ),
+            const SizedBox(height: 12),
+            _buildAssignedRequestBanner(context, ref), // Banner dinámico
             const SizedBox(height: 16),
             const Text(
               'Para registrar viajes o viáticos, debes iniciar tu día de trabajo indicando el camión y el kilometraje.',
@@ -230,6 +233,7 @@ class DriverDashboardScreen extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildExpirationBanner(ref),
+          _buildAssignedRequestBanner(context, ref), // Banner dinámico
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -790,6 +794,95 @@ class DriverDashboardScreen extends ConsumerWidget {
           ],
         ),
       ],
+    );
+  }
+
+  // ================= BANNER DE ASIGNACIÓN IA =================
+
+  Widget _buildAssignedRequestBanner(BuildContext context, WidgetRef ref) {
+    final assignedAsync = ref.watch(assignedRequestsProvider);
+
+    return assignedAsync.when(
+      data: (requests) {
+        if (requests.isEmpty) return const SizedBox.shrink();
+
+        final request = requests.first;
+        final shift = ref.read(activeShiftProvider).value;
+        final hasShift = shift != null;
+        
+        return Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 20),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.blueAccent.withValues(alpha: 0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.stars, color: Colors.white, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'SOLICITUD DE ${request.clientName.toUpperCase()}',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1),
+                  ),
+                  const Spacer(),
+                  const Icon(Icons.arrow_forward_ios, color: Colors.white70, size: 12),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${request.origin} → ${request.destination}',
+                style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.blueAccent,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 0,
+                  ),
+                  onPressed: () {
+                    if (!hasShift) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('⚠ Tienes un servicio asignado. Para verlo debes INICIAR JORNADA.'),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                    } else {
+                      context.push('/confirm-assigned-trip', extra: request);
+                    }
+                  },
+                  child: Text(
+                    hasShift ? 'ACEPTAR E INICIAR VIAJE' : 'INICIA JORNADA PARA VER VIAJE',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
     );
   }
 }

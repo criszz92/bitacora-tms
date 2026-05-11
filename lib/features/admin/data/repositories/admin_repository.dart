@@ -348,5 +348,24 @@ class AdminRepository {
       // Si no existe el doc, lo creamos solo con el historial (fallback raro)
       await docRef.set({'utmHistory': newHistory}, SetOptions(merge: true));
     }
+  // ─── SOLICITUDES DE SERVICIO (IA Inbox) ───────────────────────────────────
+
+  /// Busca el último viaje realizado en la misma ruta para sugerir una tarifa.
+  Future<double?> getSuggestedRate(String idEmpresa, String origin, String destination) async {
+    final snap = await _db
+        .collection('viajes')
+        .where('idEmpresa', isEqualTo: idEmpresa)
+        .where('origin', isEqualTo: origin)
+        .where('destination', isEqualTo: destination)
+        .orderBy('startDate', descending: true)
+        .limit(1)
+        .get();
+    
+    if (snap.docs.isEmpty) return null;
+    return (snap.docs.first.data()['value'] as num?)?.toDouble();
+  }
+
+  Future<void> updateServiceRequest(String requestId, Map<String, dynamic> data) async {
+    await _db.collection('service_requests').doc(requestId).update(data);
   }
 }

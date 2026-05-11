@@ -7,6 +7,7 @@ import '../../domain/models/shift_model.dart';
 import '../../domain/models/vehicle_model.dart';
 import '../../domain/models/viatico_model.dart';
 import '../../../auth/domain/models/user_model.dart';
+import '../../../admin/domain/models/service_request_model.dart';
 import '../../../admin/domain/models/incidencia_model.dart';
 import '../../../../core/models/audit_log_model.dart';
 import '../../../../core/utils/security_utils.dart';
@@ -211,6 +212,22 @@ class TripRepository {
       documentoId: sanitized.id,
       detalles: {'tipo': sanitized.tipo},
     );
+  }
+
+  // ================= ASIGNACIONES INTELIGENTES =================
+  
+  /// Escucha solicitudes asignadas a este chofer específico
+  Stream<List<ServiceRequest>> watchAssignedRequests() {
+    return _firestore
+        .collection('service_requests')
+        .where('assignedTo', isEqualTo: currentChoferId)
+        .where('status', isEqualTo: 'assigned')
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) => ServiceRequest.fromFirestore(doc)).toList());
+  }
+
+  Future<void> updateServiceRequestStatus(String requestId, String status) async {
+    await _firestore.collection('service_requests').doc(requestId).update({'status': status});
   }
 
   // ================= AUXILIARES DE SEGURIDAD =================

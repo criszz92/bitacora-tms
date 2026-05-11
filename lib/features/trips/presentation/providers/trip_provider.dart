@@ -6,6 +6,7 @@ import '../../domain/models/shift_model.dart';
 import '../../domain/models/vehicle_model.dart';
 import '../../domain/models/viatico_model.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../admin/domain/models/service_request_model.dart';
 
 // Provides the repository instance, re-creándose si el usuario cambia
 final tripRepositoryProvider = Provider<TripRepository>((ref) {
@@ -57,6 +58,12 @@ final viaticosProvider = StreamProvider<List<ViaticoModel>>((ref) {
   final repo = ref.watch(tripRepositoryProvider);
   return repo.watchViaticos();
 });
+// Escucha las solicitudes de servicio asignadas por el coordinador al chofer
+final assignedRequestsProvider = StreamProvider<List<ServiceRequest>>((ref) {
+  final repo = ref.watch(tripRepositoryProvider);
+  return repo.watchAssignedRequests();
+});
+
 // Escucha el camión específico que el conductor está operando en su jornada actual
 final currentVehicleProvider = Provider<AsyncValue<VehicleModel?>>((ref) {
   final shift = ref.watch(activeShiftProvider).value;
