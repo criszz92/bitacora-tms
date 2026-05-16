@@ -11,7 +11,6 @@ import '../../features/driver/presentation/screens/viaticos_request_screen.dart'
 import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/auth/presentation/screens/register_profile_screen.dart';
 import '../../features/driver/presentation/screens/monthly_summary_screen.dart';
-import '../../features/trips/presentation/screens/trip_confirmation_screen.dart';
 import '../../features/admin/domain/models/service_request_model.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
 
@@ -105,7 +104,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/add-trip',
-        builder: (context, state) => const TripFormScreen(),
+        builder: (context, state) => TripFormScreen(
+          preAssignment: state.extra is ServiceRequest ? state.extra as ServiceRequest : null,
+        ),
       ),
       GoRoute(
         path: '/start-shift',
@@ -120,13 +121,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final userId = state.uri.queryParameters['userId'];
           return MonthlySummaryScreen(userId: userId);
-        },
-      ),
-      GoRoute(
-        path: '/confirm-assigned-trip',
-        builder: (context, state) {
-          final request = state.extra as ServiceRequest;
-          return TripConfirmationScreen(request: request);
         },
       ),
     ],

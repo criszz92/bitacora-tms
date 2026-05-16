@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 // ── MODELO ──────────────────────────────────────────────────────────────────
 
@@ -12,7 +16,7 @@ class GpsUnit {
   final String driverName;
   final LatLng position;
   final double speed;
-  final String status; // 'moving', 'idle', 'stopped'
+  final String status; // 'online', 'offline', 'unknown'
   final DateTime lastUpdate;
 
   GpsUnit({
@@ -26,42 +30,67 @@ class GpsUnit {
   });
 }
 
-// ── SERVICE (MOCK) ──────────────────────────────────────────────────────────
+// ── SERVICE (DIRECT API POLLING) ──────────────────────────────────────────
 
-class GpsService {
-  // Aquí integraremos la API de liot.cl luego
-  Future<List<GpsUnit>> fetchUnits() async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    return [
-      GpsUnit(
-        id: '1',
-        plate: 'ABCD-12',
-        driverName: 'Juan Pérez',
-        position: const LatLng(-36.8270, -73.0503), // Concepción
-        speed: 85.0,
-        status: 'moving',
-        lastUpdate: DateTime.now(),
-      ),
-      GpsUnit(
-        id: '2',
-        plate: 'WXYZ-34',
-        driverName: 'Pedro Soto',
-        position: const LatLng(-36.7200, -73.1200), // Talcahuano
-        speed: 0.0,
-        status: 'stopped',
-        lastUpdate: DateTime.now().subtract(const Duration(minutes: 5)),
-      ),
-    ];
+class DirectGpsService {
+  // Probamos con AllOrigins que es más permisivo con los Preflights de CORS
+  final String baseUrl = "https://api.allorigins.win/raw?url=http://liot.cl:8082/api";
+
+  Future<List<GpsUnit>> fetchLiotData() async {
+    try {
+      // 1. Obtener credenciales de Firestore
+      final secretDoc = await FirebaseFirestore.instance.collection('secrets').doc('Liot').get();
+      if (!secretDoc.exists) throw Exception('No se encontraron credenciales de Liot.');
+      
+      final data = secretDoc.data()!;
+      // Extraemos del campo que mostraste en la captura o usamos placeholders
+      final user = data['user'] ?? 'tte.inostroza@gmail.com'; 
+      final pass = data['pass'] ?? '2025liot';
+
+      final auth = base64Encode(utf8.encode('$user:$pass'));
+      final headers = { 'Authorization': 'Basic $auth', 'Accept': 'application/json' };
+
+      // 2. Obtener Dispositivos
+      final devRes = await http.get(Uri.parse('$baseUrl/devices'), headers: headers);
+      if (devRes.statusCode != 200) throw Exception('Error API Devices: ${devRes.statusCode}');
+      final List devices = json.decode(devRes.body);
+
+      // 3. Obtener Posiciones
+      final posRes = await http.get(Uri.parse('$baseUrl/positions'), headers: headers);
+      if (posRes.statusCode != 200) throw Exception('Error API Positions: ${posRes.statusCode}');
+      final List positions = json.decode(posRes.body);
+
+      // 4. Cruzar datos
+      return devices.map((dev) {
+        final pos = positions.firstWhere((p) => p['deviceId'] == dev['id'], orElse: () => null);
+        return GpsUnit(
+          id: dev['id'].toString(),
+          plate: dev['name'] ?? 'S/P',
+          driverName: 'Chofer',
+          position: LatLng(
+            (pos?['latitude'] as num?)?.toDouble() ?? 0.0,
+            (pos?['longitude'] as num?)?.toDouble() ?? 0.0,
+          ),
+          speed: (pos?['speed'] as num?)?.toDouble() ?? 0.0,
+          status: dev['status'] ?? 'unknown',
+          lastUpdate: pos != null ? DateTime.parse(pos['deviceTime']) : DateTime.now(),
+        );
+      }).toList();
+    } catch (e) {
+      debugPrint("Error GPS Directo: $e");
+      return [];
+    }
   }
 }
 
-final gpsServiceProvider = Provider((ref) => GpsService());
+final gpsServiceProvider = Provider((ref) => DirectGpsService());
 
 final fleetStreamProvider = StreamProvider<List<GpsUnit>>((ref) async* {
   final service = ref.read(gpsServiceProvider);
   while (true) {
-    yield await service.fetchUnits();
-    await Future.delayed(const Duration(seconds: 10)); // Simular tiempo real
+    final units = await service.fetchLiotData();
+    yield units;
+    await Future.delayed(const Duration(seconds: 60)); // Poll cada minuto
   }
 });
 
@@ -89,45 +118,72 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> {
           Expanded(
             flex: 7,
             child: fleetAsync.when(
-              data: (units) => FlutterMap(
-                mapController: _mapController,
-                options: MapOptions(
-                  initialCenter: units.isNotEmpty ? units.first.position : const LatLng(-36.8270, -73.0503),
-                  initialZoom: 12,
-                ),
-                children: [
-                  TileLayer(
-                    urlTemplate: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-                    subdomains: const ['a', 'b', 'c', 'd'],
-                  ),
-                  MarkerLayer(
-                    markers: units.map((unit) => Marker(
-                      point: unit.position,
-                      width: 40,
-                      height: 40,
-                      child: Column(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.black87,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(unit.plate, style: const TextStyle(color: Colors.white, fontSize: 8)),
-                          ),
-                          Icon(
-                            Icons.local_shipping,
-                            color: unit.status == 'moving' ? Colors.greenAccent : (unit.status == 'idle' ? Colors.orange : Colors.redAccent),
-                            size: 24,
-                          ),
-                        ],
+              data: (units) => units.isEmpty 
+                ? const Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.satellite_alt, color: Colors.orange, size: 48),
+                        SizedBox(height: 16),
+                        Text('Esperando señal de Liot...', style: TextStyle(color: Colors.white, fontSize: 18)),
+                        SizedBox(height: 8),
+                        Text('Verifique su extensión de CORS y conexión.', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      ],
+                    ),
+                  )
+                : FlutterMap(
+                    mapController: _mapController,
+                    options: MapOptions(
+                      initialCenter: units.isNotEmpty ? units.first.position : const LatLng(-36.8270, -73.0503),
+                      initialZoom: 12,
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+                        subdomains: const ['a', 'b', 'c', 'd'],
                       ),
-                    )).toList(),
+                      MarkerLayer(
+                        markers: units.map((unit) => Marker(
+                          point: unit.position,
+                          width: 40,
+                          height: 40,
+                          child: Column(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.black87,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(unit.plate, style: const TextStyle(color: Colors.white, fontSize: 8)),
+                              ),
+                              Icon(
+                                Icons.local_shipping,
+                                color: unit.status == 'online' ? Colors.greenAccent : (unit.status == 'offline' ? Colors.redAccent : Colors.orange),
+                                size: 24,
+                              ),
+                            ],
+                          ),
+                        )).toList(),
+                      ),
+                    ],
                   ),
-                ],
+              loading: () => const Center(child: CircularProgressIndicator(color: Colors.orange)),
+              error: (e, s) => Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.error_outline, color: Colors.redAccent, size: 48),
+                    const SizedBox(height: 16),
+                    const Text('Error de Conexión GPS', style: TextStyle(color: Colors.white, fontSize: 18)),
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 40),
+                      child: Text('$e', textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                    ),
+                  ],
+                ),
               ),
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, s) => Center(child: Text('Error: $e')),
             ),
           ),
 
@@ -168,7 +224,7 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> {
   }
 
   Widget _buildUnitCard(GpsUnit unit) {
-    Color statusColor = unit.status == 'moving' ? Colors.greenAccent : (unit.status == 'idle' ? Colors.orange : Colors.redAccent);
+    Color statusColor = unit.status == 'online' ? Colors.greenAccent : (unit.status == 'offline' ? Colors.redAccent : Colors.orange);
     
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -194,7 +250,7 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> {
                   child: Text(unit.plate, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12)),
                 ),
                 const Spacer(),
-                Text(unit.status == 'moving' ? '${unit.speed} km/h' : 'Detenido', 
+                Text(unit.status == 'online' ? '${unit.speed.toStringAsFixed(1)} knots' : 'Desconectado', 
                   style: const TextStyle(color: Colors.white70, fontSize: 12)),
               ],
             ),

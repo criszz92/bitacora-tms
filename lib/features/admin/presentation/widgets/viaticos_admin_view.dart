@@ -160,6 +160,10 @@ class ViaticosAdminView extends ConsumerWidget {
   }
 
   Future<void> _showViaticoDetails(BuildContext context, WidgetRef ref, ViaticoModel v, String choferName) async {
+    final config = ref.read(companyConfigProvider).value;
+    final choferes = ref.read(choferesProvider).value ?? [];
+    final chofer = choferes.firstWhere((c) => c.uid == v.idChofer, orElse: () => UserModel(uid: '', email: '', nombre: '', rol: '', idEmpresa: ''));
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -183,25 +187,114 @@ class ViaticosAdminView extends ConsumerWidget {
                   child: Text('No se encontraron viajes en este periodo.', style: TextStyle(color: Colors.grey)),
                 );
               }
-              return ListView.builder(
-                shrinkWrap: true,
-                itemCount: trips.length,
-                itemBuilder: (context, i) {
-                  final t = trips[i];
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.local_shipping, color: Color(0xFFE0E0E0)),
-                    title: Text('${t.origin} → ${t.destination}', style: const TextStyle(color: Colors.white, fontSize: 13)),
-                    subtitle: Text('${_fmtDate(t.startDate)} · ${t.client.isEmpty ? 'Sin cliente' : t.client}', style: const TextStyle(color: Colors.grey, fontSize: 11)),
-                    trailing: Text('\$${t.value.toStringAsFixed(0)}', style: const TextStyle(color: Color(0xFFFFFFFF), fontWeight: FontWeight.bold)),
-                  );
-                },
+
+              // Calcular totales y lógica de viáticos
+              double totalFlete = 0;
+              double totalViatico = 0;
+              final Map<String, bool> dayHasPaid = {};
+
+              // Pre-calcular montos para usarlos en la UI y totales
+              final List<Map<String, dynamic>> processedTrips = [];
+              
+              for (final t in trips) {
+                double viaticoCalc = 0;
+                String viaticoLabel = '';
+                
+                if (config != null) {
+                  final isLongTrip = (t.totalKm ?? 0) >= config.umbralKilometrosViatico;
+                  final dayKey = '${t.startDate.year}-${t.startDate.month}-${t.startDate.day}';
+                  
+                  if (config.tipoViatico == 'POR_JORNADA') {
+                    if (dayHasPaid.containsKey(dayKey)) {
+                      viaticoLabel = 'Incluido';
+                      viaticoCalc = 0;
+                    } else {
+                      final dayTrips = trips.where((tri) => 
+                        '${tri.startDate.year}-${tri.startDate.month}-${tri.startDate.day}' == dayKey).toList();
+                      final hasLong = dayTrips.any((tri) => (tri.totalKm ?? 0) >= config.umbralKilometrosViatico);
+                      viaticoCalc = hasLong ? (chofer.montoViaticoLargo ?? 10000) : (chofer.montoViaticoLocal ?? 6500);
+                      viaticoLabel = '\$${viaticoCalc.toStringAsFixed(0)}';
+                      dayHasPaid[dayKey] = true;
+                    }
+                  } else {
+                    viaticoCalc = isLongTrip ? (chofer.montoViaticoLargo ?? 10000) : (chofer.montoViaticoLocal ?? 6500);
+                    viaticoLabel = '\$${viaticoCalc.toStringAsFixed(0)}';
+                  }
+                }
+
+                totalFlete += t.value;
+                totalViatico += viaticoCalc;
+                
+                processedTrips.add({
+                  'trip': t,
+                  'viaticoCalc': viaticoCalc,
+                  'viaticoLabel': viaticoLabel,
+                });
+              }
+
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Expanded(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: processedTrips.length,
+                      itemBuilder: (context, i) {
+                        final data = processedTrips[i];
+                        final TripModel t = data['trip'];
+                        final String viaticoLabel = data['viaticoLabel'];
+
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.local_shipping, color: Color(0xFFE0E0E0)),
+                          title: Text('${t.origin} → ${t.destination}', style: const TextStyle(color: Colors.white, fontSize: 13)),
+                          subtitle: Text('${_fmtDate(t.startDate)} · ${t.client.isEmpty ? 'Sin cliente' : t.client}', style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                          trailing: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text('Flete: \$${t.value.toStringAsFixed(0)}', style: const TextStyle(color: Colors.white, fontSize: 12)),
+                              Text('+ Viático: $viaticoLabel', style: const TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const Divider(color: Colors.grey),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Totales:', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text('Fletes: \$${totalFlete.toStringAsFixed(0)}', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                            Text('Viáticos: \$${totalViatico.toStringAsFixed(0)}', style: const TextStyle(color: Colors.greenAccent, fontSize: 13, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 4),
+                            Text('TOTAL RENDICIÓN: \$${(totalFlete + totalViatico).toStringAsFixed(0)}', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                          ],
+                        )
+                      ],
+                    ),
+                  )
+                ],
               );
             },
           ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar', style: TextStyle(color: Colors.grey))),
+          if (v.isPendiente)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _eliminarRendicion(context, ref, v);
+              },
+              child: const Text('Eliminar', style: TextStyle(color: Colors.redAccent)),
+            ),
           if (v.isPendiente)
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFFFFF), foregroundColor: Colors.black),
@@ -214,6 +307,41 @@ class ViaticosAdminView extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _eliminarRendicion(BuildContext context, WidgetRef ref, ViaticoModel v) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('Eliminar Rendición', style: TextStyle(color: Colors.white)),
+        content: const Text(
+          '¿Estás seguro de que deseas eliminar esta rendición pendiente?\n\nAl eliminarla, el conductor podrá volver a solicitar viáticos para estos días.',
+          style: TextStyle(color: Colors.grey),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await ref.read(adminRepositoryProvider).deleteViatico(v.id);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Rendición eliminada.'), backgroundColor: Colors.green));
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+        }
+      }
+    }
   }
 
   Future<void> _marcarPagado(BuildContext context, WidgetRef ref, ViaticoModel v) async {

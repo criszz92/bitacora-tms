@@ -31,7 +31,7 @@ class DriverDashboardScreen extends ConsumerWidget {
         child: activeShiftAsync.when(
           data: (shift) {
             if (shift == null) {
-              return _buildNoShiftView(context);
+              return _buildNoShiftView(context, ref);
             }
             // Listener para reportes automáticos de documentos
             _setupAutoDocumentReportListener(ref, shift);
@@ -46,7 +46,7 @@ class DriverDashboardScreen extends ConsumerWidget {
   }
 
   // ================= PANTALLA DE BLOQUEO =================
-  Widget _buildNoShiftView(BuildContext context) {
+  Widget _buildNoShiftView(BuildContext context, WidgetRef ref) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32.0),
@@ -805,8 +805,8 @@ class DriverDashboardScreen extends ConsumerWidget {
     return assignedAsync.when(
       data: (requests) {
         if (requests.isEmpty) return const SizedBox.shrink();
-
-        final request = requests.first;
+        
+        final ServiceRequest request = requests.first;
         final shift = ref.read(activeShiftProvider).value;
         final hasShift = shift != null;
         
@@ -868,7 +868,7 @@ class DriverDashboardScreen extends ConsumerWidget {
                         ),
                       );
                     } else {
-                      context.push('/confirm-assigned-trip', extra: request);
+                      context.push('/add-trip', extra: request);
                     }
                   },
                   child: Text(
@@ -882,7 +882,7 @@ class DriverDashboardScreen extends ConsumerWidget {
         );
       },
       loading: () => const SizedBox.shrink(),
-      error: (_, __) => const SizedBox.shrink(),
+      error: (err, stack) => const SizedBox.shrink(),
     );
   }
 }

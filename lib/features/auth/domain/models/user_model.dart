@@ -21,6 +21,7 @@ class UserModel {
   
   // Toggles de configuración de pagos
   final Map<String, bool>? configuracionPagos;
+  final String? patenteAsignada;
 
   UserModel({
     required this.uid,
@@ -39,6 +40,7 @@ class UserModel {
     this.baseImponible,
     this.empresaAsumeLeyes,
     this.configuracionPagos,
+    this.patenteAsignada,
   });
 
   factory UserModel.fromMap(Map<String, dynamic> map, String documentId) {
@@ -61,6 +63,7 @@ class UserModel {
       configuracionPagos: map['configuracionPagos'] != null 
           ? Map<String, bool>.from(map['configuracionPagos']) 
           : null,
+      patenteAsignada: map['patenteAsignada'],
     );
   }
 
@@ -81,6 +84,7 @@ class UserModel {
       if (baseImponible != null) 'baseImponible': baseImponible,
       if (empresaAsumeLeyes != null) 'empresaAsumeLeyes': empresaAsumeLeyes,
       if (configuracionPagos != null) 'configuracionPagos': configuracionPagos,
+      if (patenteAsignada != null) 'patenteAsignada': patenteAsignada,
     };
   }
 }

@@ -54,10 +54,27 @@ class _ViaticosRequestScreenState extends ConsumerState<ViaticosRequestScreen> {
       final config = ref.read(companyConfigProvider).value ?? CompanyConfigModel(idEmpresa: user?.idEmpresa ?? '');
       if (user == null) throw Exception('No hay usuario activo');
 
+      final existingViaticos = ref.read(viaticosProvider).value ?? [];
+      for (final v in existingViaticos) {
+        // Verificar superposición: StartA <= EndB y EndA >= StartB
+        final sA = DateUtils.dateOnly(_selectedRange!.start);
+        final eA = DateUtils.dateOnly(_selectedRange!.end);
+        final sB = DateUtils.dateOnly(v.fechaInicio);
+        final eB = DateUtils.dateOnly(v.fechaFin);
+        
+        if (sA.isBefore(eB.add(const Duration(days: 1))) && eA.isAfter(sB.subtract(const Duration(days: 1)))) {
+           throw Exception('El rango seleccionado se superpone con la rendición del ${_fmtDate(v.fechaInicio)} al ${_fmtDate(v.fechaFin)}.\n\nPara corregir, debes eliminar esa rendición pendiente.');
+        }
+      }
+
       final trips = await ref.read(tripRepositoryProvider).getTripsByDateRange(
             _selectedRange!.start,
             _selectedRange!.end,
           );
+
+      if (trips.isEmpty) {
+        throw Exception('No hay viajes registrados en este rango de fechas.');
+      }
 
       // Genera y comparte el PDF
       await PdfService.generateAndShareViaticosPdf(
@@ -338,9 +355,110 @@ class _ViaticosRequestScreenState extends ConsumerState<ViaticosRequestScreen> {
                   fontWeight: FontWeight.bold),
             ),
           ),
+          const SizedBox(width: 8),
+          // ── Menú de opciones ──
+          PopupMenuButton<String>(
+            icon: Icon(Icons.more_vert, color: textColor, size: 20),
+            color: const Color(0xFF1E1E1E),
+            onSelected: (val) {
+              if (val == 'pdf') {
+                _regenerarPdf(v);
+              } else if (val == 'delete') {
+                _eliminarRendicion(v);
+              }
+            },
+            itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'pdf',
+                child: Row(
+                  children: [
+                    Icon(Icons.picture_as_pdf, color: Colors.white, size: 18),
+                    SizedBox(width: 8),
+                    Text('Descargar PDF', style: TextStyle(color: Colors.white, fontSize: 13)),
+                  ],
+                ),
+              ),
+              if (isPendiente)
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
+                      SizedBox(width: 8),
+                      Text('Eliminar Rendición', style: TextStyle(color: Colors.redAccent, fontSize: 13)),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ],
       ),
     );
+  }
+
+  // ─── Funciones de opciones ────────────────────────────────────────────────
+
+  Future<void> _regenerarPdf(ViaticoModel v) async {
+    setState(() => _isGenerating = true);
+    try {
+      final user = ref.read(currentUserProfileProvider).value;
+      final config = ref.read(companyConfigProvider).value ?? CompanyConfigModel(idEmpresa: user?.idEmpresa ?? '');
+      if (user == null) throw Exception('No hay usuario activo');
+
+      final trips = await ref.read(tripRepositoryProvider).getTripsByDateRange(
+            v.fechaInicio,
+            v.fechaFin,
+          );
+
+      if (trips.isEmpty) {
+         throw Exception('No se encontraron viajes para ese periodo.');
+      }
+
+      await PdfService.generateAndShareViaticosPdf(
+          user, v.fechaInicio, v.fechaFin, trips, config);
+
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      }
+    } finally {
+      if (mounted) setState(() => _isGenerating = false);
+    }
+  }
+
+  Future<void> _eliminarRendicion(ViaticoModel v) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('Eliminar Rendición', style: TextStyle(color: Colors.white)),
+        content: const Text(
+          '¿Estás seguro de que deseas eliminar esta rendición pendiente?\n\nAl eliminarla, los días y viajes quedarán liberados para que puedas incluirlos en una nueva rendición.',
+          style: TextStyle(color: Colors.grey),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await ref.read(tripRepositoryProvider).deleteViatico(v.id);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Rendición eliminada correctamente.'), backgroundColor: Colors.green));
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al eliminar: $e'), backgroundColor: Colors.red));
+        }
+      }
+    }
   }
 
   String _fmtDate(DateTime dt) =>

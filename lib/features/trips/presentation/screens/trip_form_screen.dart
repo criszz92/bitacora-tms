@@ -8,6 +8,8 @@ import '../../domain/services/fuzzy_search_service.dart';
 import '../../domain/services/container_validator.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../core/services/location_service.dart';
+import '../../../admin/domain/models/service_request_model.dart';
+import '../providers/trip_draft_provider.dart';
 
 // ─── Tipos de carga disponibles ───────────────────────────────────────────────
 enum CargoType {
@@ -23,7 +25,8 @@ enum CargoType {
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 class TripFormScreen extends ConsumerStatefulWidget {
-  const TripFormScreen({super.key});
+  final ServiceRequest? preAssignment;
+  const TripFormScreen({super.key, this.preAssignment});
 
   @override
   ConsumerState<TripFormScreen> createState() => _TripFormScreenState();
@@ -49,14 +52,96 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
   @override
   void initState() {
     super.initState();
-    _containerCtrl.addListener(() {
-      final raw = ContainerValidator.clean(_containerCtrl.text);
-      if (raw.length == 11) {
-        setState(() => _containerError = ContainerValidator.validate(_containerCtrl.text));
-      } else if (raw.isEmpty) {
-        setState(() => _containerError = null);
-      }
+    
+    // Cargar datos iniciales (Borrador o Pre-asignación)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeData();
     });
+
+    // Validadores de contenedor en tiempo real
+    _containerCtrl.addListener(_onContainerChange);
+    
+    // Listeners para auto-guardado de borrador
+    _originCtrl.addListener(_saveDraft);
+    _destCtrl.addListener(_saveDraft);
+    _clientCtrl.addListener(_saveDraft);
+    _mandanteCtrl.addListener(_saveDraft);
+    _valueCtrl.addListener(_saveDraft);
+    _containerCtrl.addListener(_saveDraft);
+  }
+
+  void _initializeData() {
+    final draft = ref.read(tripDraftProvider);
+    
+    // Prioridad 1: Si venimos de una pre-asignación NUEVA (distinta a la guardada)
+    if (widget.preAssignment != null && widget.preAssignment!.id != draft.preAssignmentId) {
+      _applyPreAssignment(widget.preAssignment!);
+      return;
+    }
+
+    // Prioridad 2: Si hay un borrador con datos, lo recuperamos
+    if (draft.origin.isNotEmpty || draft.destination.isNotEmpty || draft.client.isNotEmpty) {
+      setState(() {
+        _originCtrl.text = draft.origin;
+        _destCtrl.text = draft.destination;
+        _clientCtrl.text = draft.client;
+        _mandanteCtrl.text = draft.mandante;
+        _valueCtrl.text = draft.value;
+        _containerCtrl.text = draft.container;
+        _isZiyu = draft.isZiyu;
+        _cargoType = CargoType.values.firstWhere((e) => e.name == draft.cargoType, orElse: () => CargoType.completo);
+      });
+    } else if (widget.preAssignment != null) {
+      // Prioridad 3: Si no hay borrador pero hay pre-asignación
+      _applyPreAssignment(widget.preAssignment!);
+    }
+  }
+
+  void _applyPreAssignment(ServiceRequest req) {
+    setState(() {
+      _originCtrl.text = req.origin;
+      _destCtrl.text = req.destination;
+      _clientCtrl.text = req.clientName;
+      _mandanteCtrl.text = 'MEDLOG TRUCK'; // Valor por defecto común
+      _valueCtrl.text = _formatValue(req.proposedValue ?? 0);
+      _isZiyu = true;
+      _cargoType = req.loadType?.toLowerCase().contains('suelta') == true ? CargoType.suelta : CargoType.completo;
+    });
+    _saveDraft();
+  }
+
+  String _formatValue(double val) {
+    if (val == 0) return '';
+    final s = val.toInt().toString();
+    final buffer = StringBuffer();
+    for (int i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) buffer.write('.');
+      buffer.write(s[i]);
+    }
+    return buffer.toString();
+  }
+
+  void _onContainerChange() {
+    final raw = ContainerValidator.clean(_containerCtrl.text);
+    if (raw.length == 11) {
+      setState(() => _containerError = ContainerValidator.validate(_containerCtrl.text));
+    } else if (raw.isEmpty) {
+      setState(() => _containerError = null);
+    }
+  }
+
+  void _saveDraft() {
+    ref.read(tripDraftProvider.notifier).updateDraft(TripDraft(
+      client: _clientCtrl.text,
+      origin: _originCtrl.text,
+      destination: _destCtrl.text,
+      container: _containerCtrl.text,
+      value: _valueCtrl.text,
+      mandante: _mandanteCtrl.text,
+      cargoType: _cargoType.name,
+      isZiyu: _isZiyu,
+      preAssignmentId: widget.preAssignment?.id,
+    ));
   }
 
   @override
@@ -79,11 +164,22 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
       final shift = ref.read(activeShiftProvider).value;
       if (user == null || shift == null) throw Exception('No hay jornada activa.');
 
+      // RESPALDO DE PATENTE: Si la jornada no la tiene, intentamos del perfil o avisamos
+      String? vehicleId = shift.patenteCamion.trim().isEmpty ? null : shift.patenteCamion;
+      if (vehicleId == null && user.patenteAsignada != null) {
+        vehicleId = user.patenteAsignada;
+      }
+
+      if (vehicleId == null || vehicleId.isEmpty) {
+        throw Exception('No se detectó patente para este viaje. Por favor verifique su perfil o jornada.');
+      }
+
       // Parsea el valor eliminando separadores de miles
       final value = double.tryParse(_valueCtrl.text.replaceAll('.', '')) ?? 0.0;
 
+      final newTripId = 'VIAJE-${DateTime.now().millisecondsSinceEpoch}';
       final newTrip = TripModel(
-        id: 'VIAJE-${DateTime.now().millisecondsSinceEpoch}',
+        id: newTripId,
         idEmpresa: user.idEmpresa,
         idChofer: user.uid,
         idJornada: shift.id,
@@ -102,16 +198,27 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
         mandante: _mandanteCtrl.text.trim(),
         value: value,
         billingType: _isZiyu ? 'OS' : 'OT',
-        vehicleId: shift.patenteCamion, // AUTOMÁTICO: Rescatamos la patente de la jornada
+        vehicleId: vehicleId, // USAMOS EL RESPALDO
         comments: '',
       );
 
       await ref.read(tripRepositoryProvider).startTrip(newTrip);
 
+      // Si venimos de una pre-asignación, la marcamos como completada
+      if (widget.preAssignment != null) {
+        await ref.read(tripRepositoryProvider).updateServiceRequestStatus(widget.preAssignment!.id, 'completed');
+      }
+
+      // Limpiar borrador al éxito
+      await ref.read(tripDraftProvider.notifier).clearDraft();
+
       // VALIDAR PERMISOS Y ACTIVAR TELEMETRÍA GPS
       final hasPermission = await LocationService.checkAndRequestPermissions();
       if (hasPermission) {
-        await LocationService.startTracking();
+        await LocationService.startTracking(
+          tripId: newTripId,
+          empresaId: user.idEmpresa,
+        );
       } else {
         // El viaje se guarda, pero avisamos que no habrá GPS
         if (mounted) {
@@ -395,6 +502,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
     const medlog = 'MEDLOG TRUCK';
 
     return Autocomplete<String>(
+      initialValue: TextEditingValue(text: controller.text),
       optionsBuilder: (TextEditingValue textValue) {
         final query = textValue.text.trim();
 

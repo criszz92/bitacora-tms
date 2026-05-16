@@ -81,7 +81,7 @@ class TripRepository {
         .collection('viajes')
         .where('idEmpresa', isEqualTo: currentEmpresaId)
         .where('idChofer', isEqualTo: currentChoferId)
-        .get();
+        .get(const GetOptions(source: Source.server));
 
     final trips = snapshot.docs.map((doc) => TripModel.fromMap(doc.data(), doc.id)).toList();
     
@@ -184,6 +184,12 @@ class TripRepository {
   Future<void> saveViatico(ViaticoModel viatico) async {
     await _firestore.collection('viaticos').doc(viatico.id).set(viatico.toMap());
   }
+
+  /// Elimina una rendición de viáticos pendiente de Firestore.
+  Future<void> deleteViatico(String viaticoId) async {
+    await _firestore.collection('viaticos').doc(viaticoId).delete();
+  }
+
 
   /// Escucha en tiempo real las rendiciones del chofer para pintar el calendario.
   Stream<List<ViaticoModel>> watchViaticos() {
