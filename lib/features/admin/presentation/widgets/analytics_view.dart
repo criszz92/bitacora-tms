@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../providers/admin_provider.dart';
 import 'package:intl/intl.dart';
-import 'operational_chat_widget.dart';
+
 
 class AnalyticsView extends ConsumerWidget {
   const AnalyticsView({super.key});
@@ -65,21 +65,7 @@ class AnalyticsView extends ConsumerWidget {
             style: TextStyle(color: Colors.white24, fontSize: 12)),
           const SizedBox(height: 20),
           
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                flex: 6,
-                child: _buildAIAssistant(ref),
-              ),
-              const SizedBox(width: 40),
-              // Columna del Chat Interactivo
-              const Expanded(
-                flex: 4,
-                child: OperationalChatWidget(),
-              ),
-            ],
-          ),
+          _buildAIAssistant(ref),
           
           const SizedBox(height: 48),
 

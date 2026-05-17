@@ -119,7 +119,7 @@ class LocationService {
           LatLng(position.latitude, position.longitude),
         );
 
-        if (traveled > 5 && traveled < 1000) {
+        if (traveled > 5 && traveled < 50000) {
           currentDistance += (traveled / 1000);
           await prefs.setDouble(_distanceKey, currentDistance);
         }
@@ -187,19 +187,28 @@ class LocationService {
     await prefs.setString(_currentTripIdKey, tripId);
     await prefs.setString(_currentEmpresaIdKey, empresaId);
     
+    _lastKnownDistance = 0.0;
+    
     final service = FlutterBackgroundService();
+
+    service.on('update').listen((event) {
+      if (event != null && event['distance'] != null) {
+        _lastKnownDistance = (event['distance'] as num).toDouble();
+      }
+    });
+    
     await service.startService();
   }
 
+  static double _lastKnownDistance = 0.0;
+
   static Future<double> stopTracking() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.reload(); // Sincronizar con el isolate de fondo
-    final double finalDistance = prefs.getDouble(_distanceKey) ?? 0.0;
-    await prefs.setBool(_trackingActiveKey, false);
-    
     final service = FlutterBackgroundService();
     service.invoke('stopService');
     
-    return finalDistance;
+    final distanceToReturn = _lastKnownDistance;
+    _lastKnownDistance = 0.0;
+    
+    return distanceToReturn;
   }
 }

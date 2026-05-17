@@ -189,7 +189,7 @@ class ViaticosAdminView extends ConsumerWidget {
               }
 
               // Calcular totales y lógica de viáticos
-              double totalFlete = 0;
+
               double totalViatico = 0;
               final Map<String, bool> dayHasPaid = {};
 
@@ -222,7 +222,7 @@ class ViaticosAdminView extends ConsumerWidget {
                   }
                 }
 
-                totalFlete += t.value;
+
                 totalViatico += viaticoCalc;
                 
                 processedTrips.add({
@@ -253,8 +253,7 @@ class ViaticosAdminView extends ConsumerWidget {
                             mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-                              Text('Flete: \$${t.value.toStringAsFixed(0)}', style: const TextStyle(color: Colors.white, fontSize: 12)),
-                              Text('+ Viático: $viaticoLabel', style: const TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                              Text('Viático: $viaticoLabel', style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
                             ],
                           ),
                         );
@@ -271,10 +270,7 @@ class ViaticosAdminView extends ConsumerWidget {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            Text('Fletes: \$${totalFlete.toStringAsFixed(0)}', style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                            Text('Viáticos: \$${totalViatico.toStringAsFixed(0)}', style: const TextStyle(color: Colors.greenAccent, fontSize: 13, fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 4),
-                            Text('TOTAL RENDICIÓN: \$${(totalFlete + totalViatico).toStringAsFixed(0)}', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                            Text('TOTAL VIÁTICOS: \$${totalViatico.toStringAsFixed(0)}', style: const TextStyle(color: Colors.greenAccent, fontSize: 16, fontWeight: FontWeight.bold)),
                           ],
                         )
                       ],

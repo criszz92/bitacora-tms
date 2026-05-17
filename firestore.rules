@@ -113,6 +113,11 @@ service cloud.firestore {
       allow create: if isAuthenticated() && isCreatingForSameEmpresa();
     }
 
+    match /incidencias/{docId} {
+      allow read, update, delete: if isAuthenticated() && isSameEmpresa();
+      allow create: if isAuthenticated() && isCreatingForSameEmpresa();
+    }
+
     // 6. Secretos (Solo lectura para ADMIN)
     match /secrets/{docId} {
       allow read: if isAuthenticated() && isCompanyAdmin();

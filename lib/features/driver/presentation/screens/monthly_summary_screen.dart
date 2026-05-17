@@ -65,41 +65,32 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
                 }
                 final comision = totalFacturacion * ((config?.porcentajeComision ?? 0) / 100);
                 
-                // Viáticos:
+                // Viáticos: Siempre Por Jornada
                 double viaticos = 0;
                 
-                if (config?.tipoViatico == 'POR_JORNADA') {
-                  final Map<String, List<TripModel>> tripsByDay = {};
-                  for (var t in trips) {
-                    final dayKey = "${t.startDate.year}-${t.startDate.month}-${t.startDate.day}";
-                    tripsByDay.putIfAbsent(dayKey, () => []).add(t);
-                  }
-
-                  tripsByDay.forEach((day, dayTrips) {
-                    bool hasLongTrip = dayTrips.any((t) => (t.totalKm ?? 0) >= (config?.umbralKilometrosViatico ?? 100));
-                    viaticos += hasLongTrip ? (driver.montoViaticoLargo ?? 10000) : (driver.montoViaticoLocal ?? 6500);
-                  });
-                } else {
-                  for(var t in trips) {
-                    final isLong = (t.totalKm ?? 0) >= (config?.umbralKilometrosViatico ?? 100);
-                    viaticos += isLong ? (driver.montoViaticoLargo ?? 10000) : (driver.montoViaticoLocal ?? 6500);
-                  }
+                final Map<String, List<TripModel>> tripsByDay = {};
+                for (var t in trips) {
+                  final dayKey = "${t.startDate.year}-${t.startDate.month}-${t.startDate.day}";
+                  tripsByDay.putIfAbsent(dayKey, () => []).add(t);
                 }
+
+                tripsByDay.forEach((day, dayTrips) {
+                  bool hasLongTrip = dayTrips.any((t) => (t.totalKm ?? 0) >= (config?.umbralKilometrosViatico ?? 100));
+                  viaticos += hasLongTrip ? (driver.montoViaticoLargo ?? 10000) : (driver.montoViaticoLocal ?? 6500);
+                });
 
                 // Helper para saber qué viaje "paga" el viático en modo jornada
                 final List<String> primaryTripIds = [];
-                if (config?.tipoViatico == 'POR_JORNADA') {
-                  final Map<String, String> dayToPrimaryId = {};
-                  // Ordenamos para que el viaje "Largo" sea el primario si existe
-                  final sortedTrips = List<TripModel>.from(trips)..sort((a, b) => (b.totalKm ?? 0).compareTo(a.totalKm ?? 0));
-                  for (var t in sortedTrips) {
-                    final dayKey = "${t.startDate.year}-${t.startDate.month}-${t.startDate.day}";
-                    if (!dayToPrimaryId.containsKey(dayKey)) {
-                      dayToPrimaryId[dayKey] = t.id;
-                    }
+                final Map<String, String> dayToPrimaryId = {};
+                // Ordenamos para que el viaje "Largo" sea el primario si existe
+                final sortedTrips = List<TripModel>.from(trips)..sort((a, b) => (b.totalKm ?? 0).compareTo(a.totalKm ?? 0));
+                for (var t in sortedTrips) {
+                  final dayKey = "${t.startDate.year}-${t.startDate.month}-${t.startDate.day}";
+                  if (!dayToPrimaryId.containsKey(dayKey)) {
+                    dayToPrimaryId[dayKey] = t.id;
                   }
-                  primaryTripIds.addAll(dayToPrimaryId.values);
                 }
+                primaryTripIds.addAll(dayToPrimaryId.values);
 
                 return SingleChildScrollView(
                   padding: const EdgeInsets.all(20),
@@ -125,7 +116,7 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
                       const SizedBox(height: 16),
                       
                       ...trips.map((t) {
-                        final isPrimary = config?.tipoViatico != 'POR_JORNADA' || primaryTripIds.contains(t.id);
+                        final isPrimary = primaryTripIds.contains(t.id);
                         return _tripItem(t, config!, driver, isPrimary: isPrimary);
                       }),
                       

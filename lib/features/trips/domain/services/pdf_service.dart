@@ -31,35 +31,39 @@ class PdfService {
                pw.Text('No hay viajes registrados en este periodo.', style: const pw.TextStyle(fontSize: 14))
             else
                 pw.TableHelper.fromTextArray(
-                  headers: ['Fecha', 'Ruta', 'KM', 'Tipo', 'Monto'],
+                  headers: ['Fecha', 'Ruta', 'Patente', 'KM', 'Tipo', 'Monto'],
                   headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
                   cellAlignment: pw.Alignment.centerLeft,
                   data: () {
                     final List<List<String>> rows = [];
                     final Map<String, bool> dayHasPaid = {};
-                    for (var t in trips) {
+                    
+                    // Asegurarnos de que los viajes estén ordenados cronológicamente
+                    final sortedTrips = List<TripModel>.from(trips)
+                      ..sort((a, b) => a.startDate.compareTo(b.startDate));
+                      
+                    for (var t in sortedTrips) {
                       final km = t.totalKm ?? 0.0;
                       final isLong = km >= config.umbralKilometrosViatico;
                       final dayKey = '${t.startDate.year}-${t.startDate.month}-${t.startDate.day}';
                       String montoStr = '';
-                      if (config.tipoViatico == 'POR_JORNADA') {
-                        if (dayHasPaid.containsKey(dayKey)) {
-                          montoStr = 'Incluido';
-                        } else {
-                          final dayTrips = trips.where((tri) => 
-                            '${tri.startDate.year}-${tri.startDate.month}-${tri.startDate.day}' == dayKey).toList();
-                          final hasLong = dayTrips.any((tri) => (tri.totalKm ?? 0) >= config.umbralKilometrosViatico);
-                          final monto = hasLong ? (user.montoViaticoLargo ?? 10000) : (user.montoViaticoLocal ?? 6500);
-                          montoStr = '\$ ${monto.toInt()}';
-                          dayHasPaid[dayKey] = true;
-                        }
+                      
+                      // Forzamos POR_JORNADA siempre como regla de negocio
+                      if (dayHasPaid.containsKey(dayKey)) {
+                        montoStr = 'Incluido';
                       } else {
-                        final monto = isLong ? (user.montoViaticoLargo ?? 10000) : (user.montoViaticoLocal ?? 6500);
+                        final dayTrips = sortedTrips.where((tri) => 
+                          '${tri.startDate.year}-${tri.startDate.month}-${tri.startDate.day}' == dayKey).toList();
+                        final hasLong = dayTrips.any((tri) => (tri.totalKm ?? 0) >= config.umbralKilometrosViatico);
+                        final monto = hasLong ? (user.montoViaticoLargo ?? 10000) : (user.montoViaticoLocal ?? 6500);
                         montoStr = '\$ ${monto.toInt()}';
+                        dayHasPaid[dayKey] = true;
                       }
+
                       rows.add([
                         '${t.startDate.day}/${t.startDate.month}/${t.startDate.year}',
                         '${t.origin} -> ${t.destination}',
+                        t.vehicleId ?? 'S/P',
                         '${km.toStringAsFixed(0)} KM',
                         isLong ? 'Largo' : 'Local',
                         montoStr
@@ -92,27 +96,18 @@ class PdfService {
   }
 
   static String _calculateTotal(List<TripModel> trips, UserModel user, CompanyConfigModel config) {
-    if (config.tipoViatico == 'POR_VIAJE') {
-      double total = 0;
-      for (final t in trips) {
-        final km = t.totalKm ?? 0.0;
-        final isLong = km >= config.umbralKilometrosViatico;
-        total += isLong ? (user.montoViaticoLargo ?? 10000) : (user.montoViaticoLocal ?? 6500);
-      }
-      return total.toInt().toString();
-    } else {
-      final Map<String, List<TripModel>> tripsByDay = {};
-      for (final t in trips) {
-        final dayKey = '${t.startDate.year}-${t.startDate.month}-${t.startDate.day}';
-        tripsByDay.putIfAbsent(dayKey, () => []).add(t);
-      }
-
-      double total = 0;
-      for (final dayTrips in tripsByDay.values) {
-        bool existsLongTrip = dayTrips.any((t) => (t.totalKm ?? 0.0) >= config.umbralKilometrosViatico);
-        total += existsLongTrip ? (user.montoViaticoLargo ?? 10000) : (user.montoViaticoLocal ?? 6500);
-      }
-      return total.toInt().toString();
+    // Forzamos la lógica POR_JORNADA
+    final Map<String, List<TripModel>> tripsByDay = {};
+    for (final t in trips) {
+      final dayKey = '${t.startDate.year}-${t.startDate.month}-${t.startDate.day}';
+      tripsByDay.putIfAbsent(dayKey, () => []).add(t);
     }
+
+    double total = 0;
+    for (final dayTrips in tripsByDay.values) {
+      bool existsLongTrip = dayTrips.any((t) => (t.totalKm ?? 0.0) >= config.umbralKilometrosViatico);
+      total += existsLongTrip ? (user.montoViaticoLargo ?? 10000) : (user.montoViaticoLocal ?? 6500);
+    }
+    return total.toInt().toString();
   }
 }
