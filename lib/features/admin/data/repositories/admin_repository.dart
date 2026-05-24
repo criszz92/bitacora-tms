@@ -123,6 +123,11 @@ class AdminRepository {
     });
   }
 
+  /// Elimina una rendición de viáticos pendiente de Firestore (Modo Admin).
+  Future<void> deleteViatico(String viaticoId) async {
+    await _db.collection('viaticos').doc(viaticoId).delete();
+  }
+
   /// Obtiene los viajes asociados a un chofer en un rango de fechas.
   Future<List<TripModel>> getTripsForViatico(String idEmpresa, String idChofer, DateTime start, DateTime end) async {
     final snapshot = await _db
@@ -348,6 +353,8 @@ class AdminRepository {
       // Si no existe el doc, lo creamos solo con el historial (fallback raro)
       await docRef.set({'utmHistory': newHistory}, SetOptions(merge: true));
     }
+  }
+
   // ─── SOLICITUDES DE SERVICIO (IA Inbox) ───────────────────────────────────
 
   /// Busca el último viaje realizado en la misma ruta para sugerir una tarifa.

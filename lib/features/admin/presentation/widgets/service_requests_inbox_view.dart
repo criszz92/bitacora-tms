@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 import '../../domain/models/service_request_model.dart';
 import '../providers/admin_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
-import '../../../auth/domain/models/user_model.dart';
 
 // ── PROVIDERS ───────────────────────────────────────────────────────────────
 
@@ -131,7 +130,6 @@ class ServiceRequestsInboxView extends ConsumerWidget {
                           style: const TextStyle(color: Colors.white38, fontSize: 13)),
                       ],
                     ),
-                  ),
                   const SizedBox(height: 20),
                   if (request.status == ServiceRequestStatus.assigned)
                     Container(
@@ -233,95 +231,125 @@ class ServiceRequestsInboxView extends ConsumerWidget {
   }
 
   Future<void> _showAssignDriverDialog(BuildContext context, WidgetRef ref, ServiceRequest request) async {
-    final choferes = ref.read(choferesProvider).value ?? [];
-    final user = ref.read(currentUserProfileProvider).value;
-    if (user == null) return;
+    try {
+      final user = ref.read(currentUserProfileProvider).value;
+      if (user == null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Error: Usuario no identificado. Reintente.')),
+          );
+        }
+        return;
+      }
 
-    final repo = ref.read(adminRepositoryProvider);
-    
-    // Buscar tarifa sugerida por historial
-    final suggestedRate = await repo.getSuggestedRate(user.idEmpresa, request.origin, request.destination);
-    final valueController = TextEditingController(
-      text: suggestedRate != null ? suggestedRate.toInt().toString() : ''
-    );
+      final repo = ref.read(adminRepositoryProvider);
+      final choferes = ref.read(choferesProvider).value ?? [];
+      
+      // Buscar tarifa sugerida por historial (con timeout o catch para que no bloquee)
+      double? suggestedRate;
+      try {
+        suggestedRate = await repo.getSuggestedRate(user.idEmpresa, request.origin, request.destination);
+      } catch (e) {
+        debugPrint('Error obteniendo tarifa sugerida: $e');
+      }
 
-    if (!context.mounted) return;
+      final valueController = TextEditingController(
+        text: suggestedRate != null ? suggestedRate.toInt().toString() : ''
+      );
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Asignar Conductor', style: TextStyle(color: Colors.white)),
-        content: SizedBox(
-          width: 400,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (suggestedRate != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 20),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.lightbulb_outline, color: Colors.green, size: 20),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'Tarifa sugerida (historial): \$${NumberFormat('#,###', 'es_CL').format(suggestedRate)}',
-                            style: const TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold),
+      if (!context.mounted) return;
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          title: const Text('Asignar Conductor', style: TextStyle(color: Colors.white)),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (suggestedRate != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 20),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.lightbulb_outline, color: Colors.green, size: 20),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Tarifa sugerida (historial): \$${NumberFormat('#,###', 'es_CL').format(suggestedRate)}',
+                              style: const TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
+                TextField(
+                  controller: valueController,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'Tarifa del Viaje (\$)',
+                    labelStyle: TextStyle(color: Colors.grey),
+                    enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white10)),
+                  ),
                 ),
-              TextField(
-                controller: valueController,
-                keyboardType: TextInputType.number,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  labelText: 'Tarifa del Viaje ($)',
-                  labelStyle: TextStyle(color: Colors.grey),
-                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white10)),
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Text('Seleccione Conductor:', style: TextStyle(color: Colors.grey, fontSize: 12)),
-              const SizedBox(height: 12),
-              Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: choferes.length,
-                  itemBuilder: (context, index) {
-                    final chofer = choferes[index];
-                    return ListTile(
-                      leading: const CircleAvatar(backgroundColor: Colors.white10, child: Icon(Icons.person, color: Colors.white70)),
-                      title: Text(chofer.nombre, style: const TextStyle(color: Colors.white, fontSize: 14)),
-                      subtitle: Text(chofer.rut ?? '', style: const TextStyle(color: Colors.white24, fontSize: 11)),
-                      onTap: () async {
-                        final val = double.tryParse(valueController.text) ?? suggestedRate ?? 0.0;
-                        await repo.updateServiceRequest(request.id, {
-                          'status': 'assigned',
-                          'assignedTo': chofer.uid,
-                          'assignedToName': chofer.nombre,
-                          'proposedValue': val,
-                          'assignedAt': FieldValue.serverTimestamp(),
-                        });
-                        if (context.mounted) Navigator.pop(context);
+                const SizedBox(height: 20),
+                const Text('Seleccione Conductor:', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                const SizedBox(height: 12),
+                if (choferes.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Text('No hay conductores registrados', style: TextStyle(color: Colors.white24)),
+                  )
+                else
+                  Flexible(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: choferes.length,
+                      itemBuilder: (context, index) {
+                        final chofer = choferes[index];
+                        return ListTile(
+                          leading: const CircleAvatar(backgroundColor: Colors.white10, child: Icon(Icons.person, color: Colors.white70)),
+                          title: Text(chofer.nombre, style: const TextStyle(color: Colors.white, fontSize: 14)),
+                          subtitle: Text(chofer.rut ?? '', style: const TextStyle(color: Colors.white24, fontSize: 11)),
+                          onTap: () async {
+                            final val = double.tryParse(valueController.text.replaceAll('.', '')) ?? suggestedRate ?? 0.0;
+                            await repo.updateServiceRequest(request.id, {
+                              'status': 'assigned',
+                              'assignedTo': chofer.uid,
+                              'assignedToName': chofer.nombre,
+                              'proposedValue': val,
+                              'assignedAt': FieldValue.serverTimestamp(),
+                            });
+                            if (context.mounted) Navigator.pop(context);
+                          },
+                        );
                       },
-                    );
-                  },
-                ),
-              ),
-            ],
+                    ),
+                  ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+          ],
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al abrir diálogo: $e')),
+        );
+      }
+    }
   }
 }

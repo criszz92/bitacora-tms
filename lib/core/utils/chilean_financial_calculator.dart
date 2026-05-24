@@ -266,8 +266,13 @@ class ChileanFinancialCalculator {
       final typeLower = expense.type.toLowerCase();
       final isMaintenance = typeLower.contains('manten');
 
-      final neto = expense.amount / 1.19;
-      final iva = expense.amount - neto;
+      double neto = expense.amount / 1.19;
+      double iva = expense.amount - neto;
+      
+      if (typeLower == 'peaje') {
+        neto = expense.amount;
+        iva = 0;
+      }
       
       // El IVA siempre se recupera, sin importar si es mantención real o no.
       totalIvaCredito += iva;
@@ -367,6 +372,7 @@ class ChileanFinancialCalculator {
 
     final Map<String, double> driverDailyValue = {};
     final Map<String, int> tripsPerDriverDay = {};
+    final Map<String, double> tripViaticos = {};
 
     for (final driver in allDrivers) {
       if (driver.rol == 'CHOFER') {
@@ -386,9 +392,38 @@ class ChileanFinancialCalculator {
           }
         }
         
+        double totalViaticos = 0;
+        if (config.tipoViatico == 'POR_VIAJE') {
+          for (final t in driverTrips) {
+            final v = ((t.totalKm ?? 0) >= config.umbralKilometrosViatico) ? (driver.montoViaticoLargo ?? 10000) : (driver.montoViaticoLocal ?? 6500);
+            tripViaticos[t.id] = v;
+            totalViaticos += v;
+          }
+        } else {
+          final Map<String, List<TripModel>> tripsByDay = {};
+          for (final t in driverTrips) {
+            final dayKey = '${t.startDate.year}-${t.startDate.month}-${t.startDate.day}';
+            tripsByDay.putIfAbsent(dayKey, () => []).add(t);
+          }
+          for (final dayTrips in tripsByDay.values) {
+            bool existsLongTrip = dayTrips.any((t) => (t.totalKm ?? 0.0) >= config.umbralKilometrosViatico);
+            final dayV = existsLongTrip ? (driver.montoViaticoLargo ?? 10000) : (driver.montoViaticoLocal ?? 6500);
+            totalViaticos += dayV;
+            for (final t in dayTrips) {
+               tripViaticos[t.id] = dayV / dayTrips.length;
+            }
+          }
+        }
+        
         final totalUniqueDays = uniqueDays.length;
         final dMonthlyCost = calculateMonthlyEmployerCost(driver: driver, config: config, monthlyTrips: driverTrips);
-        driverDailyValue[driver.uid] = totalUniqueDays > 0 ? (dMonthlyCost / totalUniqueDays) : dMonthlyCost;
+        
+        double totalComisiones = 0;
+        for (final t in driverTrips) totalComisiones += t.value * (config.porcentajeComision / 100);
+        
+        double fixedCost = dMonthlyCost - totalComisiones - totalViaticos;
+        
+        driverDailyValue[driver.uid] = totalUniqueDays > 0 ? (fixedCost / totalUniqueDays) : fixedCost;
       }
     }
 
@@ -440,17 +475,15 @@ class ChileanFinancialCalculator {
       double commissionCost = trip.value * (config.porcentajeComision / 100);
 
       // C) Viáticos
-      double viatico = (tripKm >= config.umbralKilometrosViatico)
-          ? (driver.montoViaticoLargo ?? 10000) 
-          : (driver.montoViaticoLocal ?? 6500);
+      double viatico = tripViaticos[trip.id] ?? 0.0;
 
-      double personalCost = baseSalaryCost + commissionCost + viatico;
+      double personalCost = baseSalaryCost + commissionCost;
       double maintenanceCost = tripKm * costoMantenimientoPorKm;
 
       routeStats.putIfAbsent(routeKey, () => []).add({
         'income': trip.value,
         'fuel': fuelCost / 1.19,
-        'tolls': tollsCost / 1.19,
+        'tolls': tollsCost,
         'viatico': viatico,
         'personal': personalCost,
         'maintenance': maintenanceCost,

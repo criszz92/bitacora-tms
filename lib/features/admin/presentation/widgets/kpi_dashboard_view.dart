@@ -269,7 +269,10 @@ class KpiDashboardView extends ConsumerWidget {
 
   Widget _buildTripsList(List trips, BuildContext context, WidgetRef ref, List<VehicleModel> vehicles) {
     return Column(children: trips.map<Widget>((t) {
-      final vehicle = vehicles.firstWhere((v) => v.id == t.vehicleId, orElse: () => VehicleModel(id: '', patente: 'S/P', idEmpresa: ''));
+      final vehicle = vehicles.firstWhere(
+        (v) => v.id == t.vehicleId || v.patente == t.vehicleId, 
+        orElse: () => VehicleModel(id: '', patente: t.vehicleId ?? 'S/P', idEmpresa: '')
+      );
       return InkWell(
         onTap: () => _showEditTripDialog(context, ref, t, vehicles),
         child: Container(
