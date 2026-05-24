@@ -419,7 +419,9 @@ class ChileanFinancialCalculator {
         final dMonthlyCost = calculateMonthlyEmployerCost(driver: driver, config: config, monthlyTrips: driverTrips);
         
         double totalComisiones = 0;
-        for (final t in driverTrips) totalComisiones += t.value * (config.porcentajeComision / 100);
+        for (final t in driverTrips) {
+          totalComisiones += t.value * (config.porcentajeComision / 100);
+        }
         
         double fixedCost = dMonthlyCost - totalComisiones - totalViaticos;
         
@@ -452,11 +454,6 @@ class ChileanFinancialCalculator {
       if (truckTotalKm > 0) {
         tollsCost += ((vehicleGenericTollsCost[vid] ?? 0) / truckTotalKm) * tripKm;
       }
-
-      final driver = allDrivers.firstWhere(
-        (d) => d.uid == trip.idChofer, 
-        orElse: () => UserModel(uid: '', email: '', rol: 'CHOFER', nombre: 'Desconocido', idEmpresa: '')
-      );
 
       // A) Costo Fijo (Valor Día Exacto)
       double baseSalaryCost = 0;

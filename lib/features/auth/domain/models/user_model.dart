@@ -22,6 +22,7 @@ class UserModel {
   // Toggles de configuración de pagos
   final Map<String, bool>? configuracionPagos;
   final String? patenteAsignada;
+  final String? fcmToken; // Token de Firebase Cloud Messaging
 
   UserModel({
     required this.uid,
@@ -41,6 +42,7 @@ class UserModel {
     this.empresaAsumeLeyes,
     this.configuracionPagos,
     this.patenteAsignada,
+    this.fcmToken,
   });
 
   factory UserModel.fromMap(Map<String, dynamic> map, String documentId) {
@@ -64,6 +66,7 @@ class UserModel {
           ? Map<String, bool>.from(map['configuracionPagos']) 
           : null,
       patenteAsignada: map['patenteAsignada'],
+      fcmToken: map['fcmToken'],
     );
   }
 
@@ -85,6 +88,7 @@ class UserModel {
       if (empresaAsumeLeyes != null) 'empresaAsumeLeyes': empresaAsumeLeyes,
       if (configuracionPagos != null) 'configuracionPagos': configuracionPagos,
       if (patenteAsignada != null) 'patenteAsignada': patenteAsignada,
+      if (fcmToken != null) 'fcmToken': fcmToken,
     };
   }
 }

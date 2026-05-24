@@ -105,3 +105,150 @@ exports.syncLiotGps = functions.pubsub.schedule("every 2 minutes").onRun(async (
     return null;
   }
 });
+
+// ─── HELPER FUNCTIONS PARA NOTIFICACIONES PUSH ──────────────────────────────────
+
+async function notifyAdmins(idEmpresa, title, body) {
+  const usersSnapshot = await admin.firestore().collection("usuarios")
+    .where("idEmpresa", "==", idEmpresa)
+    .where("rol", "==", "ADMIN")
+    .get();
+
+  const tokens = [];
+  usersSnapshot.forEach(doc => {
+    const data = doc.data();
+    if (data.fcmToken) tokens.push(data.fcmToken);
+  });
+
+  if (tokens.length > 0) {
+    await admin.messaging().sendEachForMulticast({
+      tokens,
+      notification: { title, body }
+    });
+  }
+}
+
+async function notifyDriver(idChofer, title, body) {
+  const userDoc = await admin.firestore().collection("usuarios").doc(idChofer).get();
+  if (userDoc.exists) {
+    const token = userDoc.data().fcmToken;
+    if (token) {
+      await admin.messaging().send({
+        token,
+        notification: { title, body }
+      });
+    }
+  }
+}
+
+// ─── MANTENIMIENTO PREDICTIVO Y ODÓMETRO (ON TRIP FINISHED) ───────────────────
+
+exports.onTripFinished = functions.firestore
+  .document("viajes/{tripId}")
+  .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
+
+    // Solo actuar cuando el estado cambia a "Finalizado" y hay kilómetros totales.
+    if (before.status === after.status || after.status !== "Finalizado" || !after.totalKm) {
+      return null;
+    }
+
+    const totalKm = after.totalKm;
+    const vehiclePatente = after.patenteCamion;
+    if (!vehiclePatente) return null;
+
+    // Buscar el vehiculo
+    const vehiculosRef = admin.firestore().collection("vehiculos");
+    const snapshot = await vehiculosRef.where("patente", "==", vehiclePatente).limit(1).get();
+    
+    if (snapshot.empty) return null;
+
+    const vehicleDoc = snapshot.docs[0];
+    const vehicleData = vehicleDoc.data();
+    const currentOdometer = vehicleData.currentOdometer || 0;
+    const newOdometer = currentOdometer + totalKm;
+
+    // Actualizar el odómetro
+    await vehicleDoc.ref.update({ currentOdometer: newOdometer });
+
+    // Chequear mantenimiento preventivo (Aviso a los 500 km)
+    const nextOilChangeKm = vehicleData.nextOilChangeKm;
+    if (nextOilChangeKm && (nextOilChangeKm - newOdometer) <= 500) {
+      const msgTitle = "Alerta de Mantenimiento Preventivo 🛠️";
+      const msgBody = `El camión ${vehiclePatente} está a ${(nextOilChangeKm - newOdometer).toFixed(0)} km de su cambio de aceite.`;
+
+      await notifyAdmins(vehicleData.idEmpresa, msgTitle, msgBody);
+      await notifyDriver(after.idChofer, msgTitle, msgBody);
+    }
+    return null;
+  });
+
+// ─── NOTIFICACIÓN DE INCIDENCIAS OPERATIVAS ───────────────────────────────────
+
+exports.onIncidenceCreated = functions.firestore
+  .document("incidencias/{incidenceId}")
+  .onCreate(async (snap, context) => {
+    const data = snap.data();
+    const vehiculo = data.vehiculoId || "Vehículo Desconocido";
+    const descripcion = data.descripcion || "Sin descripción";
+
+    // Buscar el nombre del chofer
+    const userDoc = await admin.firestore().collection("usuarios").doc(data.idChofer).get();
+    const driverName = userDoc.exists ? userDoc.data().nombre : "Un conductor";
+
+    const title = "Nuevo Reporte Operativo ⚠️";
+    const body = `${driverName} reportó incidencia en ${vehiculo}: ${descripcion}`;
+
+    await notifyAdmins(data.idEmpresa, title, body);
+    return null;
+  });
+
+// ─── CHEQUEO DIARIO DE DOCUMENTACIÓN (CRON JOB) ───────────────────────────────
+
+exports.dailyDocumentCheck = functions.pubsub.schedule("every day 08:00").onRun(async (context) => {
+  const vehiculosRef = admin.firestore().collection("vehiculos");
+  const snapshot = await vehiculosRef.get();
+
+  const now = new Date();
+  const alertThreshold = new Date();
+  alertThreshold.setDate(now.getDate() + 7); // Notificar con 7 días de anticipación
+
+  const notificationsByCompany = {};
+
+  snapshot.forEach(doc => {
+    const v = doc.data();
+    if (!v.idEmpresa) return;
+
+    const checkDate = (dateString, docName) => {
+      if (!dateString) return;
+      const expDate = new Date(dateString);
+      if (expDate <= alertThreshold && expDate >= now) {
+        if (!notificationsByCompany[v.idEmpresa]) {
+          notificationsByCompany[v.idEmpresa] = [];
+        }
+        notificationsByCompany[v.idEmpresa].push(`El ${docName} de ${v.patente} vence en menos de 7 días.`);
+      } else if (expDate < now) {
+        if (!notificationsByCompany[v.idEmpresa]) {
+          notificationsByCompany[v.idEmpresa] = [];
+        }
+        notificationsByCompany[v.idEmpresa].push(`URGENTE: El ${docName} de ${v.patente} está VENCIDO.`);
+      }
+    };
+
+    checkDate(v.rtExpirationDate, "Revisión Técnica");
+    checkDate(v.soapExpirationDate, "SOAP");
+    checkDate(v.permisoExpirationDate, "Permiso de Circulación");
+  });
+
+  // Enviar un mensaje consolidado a los admins de cada empresa
+  for (const [idEmpresa, messages] of Object.entries(notificationsByCompany)) {
+    if (messages.length > 0) {
+      const title = "Alertas de Documentación de Flota 🚨";
+      const body = messages.join("\\n");
+      await notifyAdmins(idEmpresa, title, body);
+    }
+  }
+
+  return null;
+});

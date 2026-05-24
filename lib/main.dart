@@ -8,14 +8,16 @@ import 'core/router/app_router.dart';
 import 'core/services/location_service.dart';
 import 'firebase_options.dart';
 import 'features/trips/domain/services/fuzzy_search_service.dart';
+import 'core/services/push_notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('es_CL', null);
 
-  // Inicializar servicio de telemetría (GPS en segundo plano) solo en móvil
+  // Inicializar servicio de telemetría (GPS en segundo plano) y Notificaciones Push solo en móvil
   if (!kIsWeb) {
     await LocationService.initializeService();
+    await PushNotificationService.initialize();
   }
 
   await Firebase.initializeApp(
