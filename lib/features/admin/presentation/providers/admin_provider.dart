@@ -249,7 +249,13 @@ final expenseBreakdownProvider = Provider<AsyncValue<Map<String, double>>>((ref)
   final summary = ref.watch(financialSummaryProvider).value ?? {};
   final expenses = ref.watch(monthlyExpensesProvider).value ?? [];
   final Map<String, double> breakdown = {};
-  for (final e in expenses) { breakdown[e.type] = (breakdown[e.type] ?? 0) + e.amount; }
+  for (final e in expenses) { 
+    double netAmount = e.amount;
+    if (e.type.toLowerCase() != 'peaje') {
+      netAmount = e.amount / 1.19;
+    }
+    breakdown[e.type] = (breakdown[e.type] ?? 0) + netAmount; 
+  }
   final personalCost = summary['costosPersonal'] ?? 0;
   if (personalCost > 0) breakdown['Personal/Sueldos'] = personalCost;
   return AsyncValue.data(breakdown);
