@@ -16,7 +16,7 @@ service cloud.firestore {
 
     // Verifica si el documento existente pertenece a la misma empresa del usuario
     function isSameEmpresa() {
-      return resource.data.idEmpresa == getUserEmpresa();
+      return resource == null || resource.data.idEmpresa == getUserEmpresa();
     }
 
     // Verifica si el nuevo documento que se intenta crear pertenece a la misma empresa del usuario
@@ -114,6 +114,16 @@ service cloud.firestore {
     }
 
     match /incidencias/{docId} {
+      allow read, update, delete: if isAuthenticated() && isSameEmpresa();
+      allow create: if isAuthenticated() && isCreatingForSameEmpresa();
+    }
+
+    match /cotizaciones/{docId} {
+      allow read, update, delete: if isAuthenticated() && isSameEmpresa();
+      allow create: if isAuthenticated() && isCreatingForSameEmpresa();
+    }
+
+    match /contadores/{docId} {
       allow read, update, delete: if isAuthenticated() && isSameEmpresa();
       allow create: if isAuthenticated() && isCreatingForSameEmpresa();
     }

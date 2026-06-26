@@ -14,15 +14,15 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('es_CL', null);
 
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
   // Inicializar servicio de telemetría (GPS en segundo plano) y Notificaciones Push solo en móvil
   if (!kIsWeb) {
     await LocationService.initializeService();
     await PushNotificationService.initialize();
   }
-
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
 
   // Pre-carga los 3.647 clientes de Ziyu en RAM al iniciar la app.
   // Esto garantiza que el Fuzzy Search sea instantáneo desde el primer uso,
@@ -49,7 +49,7 @@ class BitacoraApp extends ConsumerWidget {
     final router = ref.watch(appRouterProvider);
 
     return MaterialApp.router(
-      title: 'Bitacora TMS',
+      title: 'HEIRLOG-TMS',
       theme: AppTheme.darkTheme,
       routerConfig: router,
       debugShowCheckedModeBanner: false,

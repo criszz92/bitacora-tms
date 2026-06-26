@@ -95,10 +95,20 @@ class FlotaAdminView extends ConsumerWidget {
                     style: const TextStyle(
                         fontWeight: FontWeight.bold, fontSize: 20, letterSpacing: 1.5)),
               ),
-              IconButton(
-                icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-                tooltip: 'Eliminar camión',
-                onPressed: () => _confirmDelete(context, ref, v),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined, color: Colors.orange, size: 20),
+                    tooltip: 'Editar camión',
+                    onPressed: () => _showAddDialog(context, ref, v.idEmpresa, vehiculoAEditar: v),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                    tooltip: 'Eliminar camión',
+                    onPressed: () => _confirmDelete(context, ref, v),
+                  ),
+                ],
               ),
             ],
           ),
@@ -117,25 +127,29 @@ class FlotaAdminView extends ConsumerWidget {
     );
   }
 
-  Future<void> _showAddDialog(BuildContext context, WidgetRef ref, String idEmpresa) async {
-    final patenteCtrl = TextEditingController();
-    final marcaCtrl = TextEditingController();
-    final modeloCtrl = TextEditingController();
-    final anioCtrl = TextEditingController();
+  Future<void> _showAddDialog(BuildContext context, WidgetRef ref, String idEmpresa, {VehicleModel? vehiculoAEditar}) async {
+    final patenteCtrl = TextEditingController(text: vehiculoAEditar?.patente);
+    final marcaCtrl = TextEditingController(text: vehiculoAEditar?.marca);
+    final modeloCtrl = TextEditingController(text: vehiculoAEditar?.modelo);
+    final anioCtrl = TextEditingController(text: vehiculoAEditar?.anio?.toString());
+    String selectedCategoria = vehiculoAEditar?.categoriaPeaje ?? 'camion_mas_2_ejes';
     final formKey = GlobalKey<FormState>();
 
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('Agregar Camión', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(vehiculoAEditar == null ? 'Agregar Camión' : 'Editar Camión', style: const TextStyle(fontWeight: FontWeight.bold)),
         content: SizedBox(
           width: 360,
-          child: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
+          child: StatefulBuilder(
+            builder: (context, setState) {
+              return Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                 _dialogField(patenteCtrl, 'Patente *', TextCapitalization.characters, true),
                 const SizedBox(height: 12),
                 _dialogField(marcaCtrl, 'Marca (opcional)', TextCapitalization.words, false),
@@ -144,8 +158,38 @@ class FlotaAdminView extends ConsumerWidget {
                 const SizedBox(height: 12),
                 _dialogField(anioCtrl, 'Año (opcional)', TextCapitalization.none, false,
                     inputType: TextInputType.number),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedCategoria,
+                  decoration: InputDecoration(
+                    labelText: 'Categoría de Peaje',
+                    filled: true,
+                    fillColor: const Color(0xFF2A2A2A),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                    isDense: true,
+                  ),
+                  dropdownColor: const Color(0xFF2A2A2A),
+                  items: const [
+                    DropdownMenuItem(value: 'camion_2_ejes', child: Text('Equipo de 2 ejes')),
+                    DropdownMenuItem(value: 'camion_mas_2_ejes', child: Text('Equipo de más de 2 ejes')),
+                  ],
+                  onChanged: (v) {
+                    if (v != null) {
+                      setState(() {
+                        selectedCategoria = v;
+                      });
+                    }
+                  },
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Considera el total de ejes del equipo completo (cabeza tractora + remolque/semirremolque), no solo la cabeza tractora.',
+                  style: TextStyle(color: Colors.grey, fontSize: 11),
+                ),
               ],
             ),
+          );
+            },
           ),
         ),
         actions: [
@@ -159,14 +203,26 @@ class FlotaAdminView extends ConsumerWidget {
             onPressed: () async {
               if (!formKey.currentState!.validate()) return;
               final vehicle = VehicleModel(
-                id: 'VEH-${DateTime.now().millisecondsSinceEpoch}',
+                id: vehiculoAEditar?.id ?? 'VEH-${DateTime.now().millisecondsSinceEpoch}',
                 idEmpresa: idEmpresa,
                 patente: patenteCtrl.text.trim().toUpperCase(),
                 marca: marcaCtrl.text.trim().isEmpty ? null : marcaCtrl.text.trim(),
                 modelo: modeloCtrl.text.trim().isEmpty ? null : modeloCtrl.text.trim(),
                 anio: int.tryParse(anioCtrl.text.trim()),
+                categoriaPeaje: selectedCategoria,
+                currentOdometer: vehiculoAEditar?.currentOdometer ?? 0.0,
+                nextOilChangeKm: vehiculoAEditar?.nextOilChangeKm,
+                rtExpirationDate: vehiculoAEditar?.rtExpirationDate,
+                soapExpirationDate: vehiculoAEditar?.soapExpirationDate,
+                permisoExpirationDate: vehiculoAEditar?.permisoExpirationDate,
+                rendimientoKmPorLitro: vehiculoAEditar?.rendimientoKmPorLitro ?? 2.5,
               );
-              await ref.read(adminRepositoryProvider).addVehicle(vehicle);
+              
+              if (vehiculoAEditar == null) {
+                await ref.read(adminRepositoryProvider).addVehicle(vehicle);
+              } else {
+                await ref.read(adminRepositoryProvider).updateVehicle(vehicle);
+              }
               if (ctx.mounted) Navigator.pop(ctx);
             },
             child: const Text('Guardar'),

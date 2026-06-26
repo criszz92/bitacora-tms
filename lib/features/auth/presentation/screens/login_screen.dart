@@ -57,7 +57,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               const Icon(Icons.local_shipping, size: 80, color: Color(0xFFFFFFFF)),
               const SizedBox(height: 24),
               const Text(
-                'BITACORA TMS',
+                'HEIRLOG-TMS',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: 2),
               ),

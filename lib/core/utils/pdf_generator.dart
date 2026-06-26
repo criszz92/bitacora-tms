@@ -3,6 +3,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:intl/intl.dart';
 import '../../features/auth/domain/models/user_model.dart';
+import '../../features/trips/domain/models/trip_model.dart';
 
 class PdfGenerator {
   static Future<Uint8List> generateLiquidacionSueldo({
@@ -45,7 +46,7 @@ class PdfGenerator {
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
-                      pw.Text('BITÁCORA TMS', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
+                      pw.Text('HEIRLOG-TMS', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
                       pw.Text('Liquidación de Remuneraciones', style: const pw.TextStyle(fontSize: 14, color: PdfColors.grey700)),
                     ],
                   ),
@@ -220,6 +221,161 @@ class PdfGenerator {
           pw.Text(label, style: pw.TextStyle(fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal)),
           pw.Text(currency.format(amount), style: pw.TextStyle(fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal)),
         ],
+      ),
+    );
+  }
+
+  static Future<Uint8List> generateDriverMonthlyReport({
+    required UserModel driver,
+    required DateTime period,
+    required List<TripModel> trips,
+    required double viaticos,
+    required double comision,
+    required double totalFacturacion,
+    required int totalKm,
+    required Map<String, double> facturacionPorCliente,
+  }) async {
+    final pdf = pw.Document();
+    final currency = NumberFormat.currency(locale: 'es_CL', symbol: '\$', decimalDigits: 0);
+    final monthStr = DateFormat('MMMM yyyy', 'es_CL').format(period).toUpperCase();
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4.landscape,
+        margin: const pw.EdgeInsets.all(40),
+        build: (pw.Context context) {
+          return [
+            // HEADER
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('HEIRLOG-TMS', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
+                    pw.Text('Reporte Mensual de Operaciones', style: const pw.TextStyle(fontSize: 14, color: PdfColors.grey700)),
+                  ],
+                ),
+                pw.Container(
+                  padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: pw.BoxDecoration(
+                    color: PdfColors.grey200,
+                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                  ),
+                  child: pw.Text('Período: $monthStr', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                ),
+              ],
+            ),
+            pw.SizedBox(height: 30),
+
+            // CONDUCTOR INFO
+            pw.Container(
+              padding: const pw.EdgeInsets.all(12),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.grey400),
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+              ),
+              child: pw.Row(
+                children: [
+                  pw.Expanded(
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text('Conductor: ${driver.nombre}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                        pw.SizedBox(height: 4),
+                        pw.Text('RUT: ${driver.rut ?? 'Sin RUT'}'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 30),
+
+            // RESUMEN KPI
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                _buildKpiCard('Total Viajes', '${trips.length}'),
+                _buildKpiCard('Total KM', '$totalKm km'),
+                _buildKpiCard('Facturación Camión', currency.format(totalFacturacion)),
+              ],
+            ),
+            pw.SizedBox(height: 20),
+
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                _buildKpiCard('Comisión', currency.format(comision), color: PdfColors.orange100),
+                _buildKpiCard('Viáticos', currency.format(viaticos), color: PdfColors.green100),
+              ],
+            ),
+            pw.SizedBox(height: 30),
+
+            // DESGLOSE POR CLIENTE
+            if (facturacionPorCliente.isNotEmpty) ...[
+              pw.Text('Desglose por Cliente', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 10),
+              pw.TableHelper.fromTextArray(
+                context: context,
+                headers: ['Cliente', 'Monto Facturado'],
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                data: facturacionPorCliente.entries.map((e) => [e.key, currency.format(e.value)]).toList(),
+              ),
+              pw.SizedBox(height: 30),
+            ],
+
+            // DETALLE DE VIAJES
+            pw.Text('Detalle de Viajes', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 10),
+            pw.TableHelper.fromTextArray(
+              context: context,
+              headers: ['Fecha', 'Guía', 'Destino', 'Contenedor', 'KM', 'Cliente', 'Tipo', 'Valor'],
+              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
+              cellStyle: const pw.TextStyle(fontSize: 10),
+              data: trips.map((t) {
+                return [
+                  '${t.startDate.day}/${t.startDate.month}/${t.startDate.year}',
+                  t.guideNumber ?? '-',
+                  t.destination,
+                  t.containerNumber ?? '-',
+                  '${t.totalKm?.toInt() ?? 0}',
+                  t.client,
+                  t.billingType,
+                  currency.format(t.value),
+                ];
+              }).toList(),
+            ),
+            pw.SizedBox(height: 30),
+            
+            pw.Center(
+               child: pw.Text('Documento generado automáticamente por HEIRLOG-TMS (powered by Bitácora)', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700))
+            )
+          ];
+        },
+      ),
+    );
+
+    return pdf.save();
+  }
+
+  static pw.Widget _buildKpiCard(String title, String value, {PdfColor color = PdfColors.grey200}) {
+    return pw.Expanded(
+      child: pw.Container(
+        margin: const pw.EdgeInsets.symmetric(horizontal: 4),
+        padding: const pw.EdgeInsets.all(12),
+        decoration: pw.BoxDecoration(
+          color: color,
+          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+        ),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(title, style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+            pw.SizedBox(height: 4),
+            pw.Text(value, style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+          ],
+        ),
       ),
     );
   }

@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:file_picker/file_picker.dart';
+import 'package:image/image.dart' as img;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/admin_provider.dart';
@@ -19,6 +23,19 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
   final _comisionCtrl = TextEditingController();
   final _utmCtrl = TextEditingController();
   final _dieselNetoCtrl = TextEditingController();
+  final _diasLaboralesCtrl = TextEditingController();
+  final _margenObjetivoCtrl = TextEditingController();
+
+  // Emisor
+  final _razonSocialCtrl = TextEditingController();
+  final _rutCtrl = TextEditingController();
+  final _giroCtrl = TextEditingController();
+  final _direccionCtrl = TextEditingController();
+  final _telefonoCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  String _logoBase64 = '';
+  Uint8List? _logoPreviewBytes;
+  bool _isUploadingLogo = false;
   
   String _tipoViatico = 'POR_VIAJE';
   bool _isSaving = false;
@@ -42,10 +59,82 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
     _comisionCtrl.text = config.porcentajeComision.toString();
     _utmCtrl.text = config.valorUTM.toStringAsFixed(0);
     _dieselNetoCtrl.text = config.precioDieselNeto.toStringAsFixed(0);
+    _diasLaboralesCtrl.text = config.diasLaboralesMes.toString();
+    _margenObjetivoCtrl.text = config.margenObjetivoCotizacion.toStringAsFixed(1);
+    _razonSocialCtrl.text = config.emisorRazonSocial;
+    _rutCtrl.text = config.emisorRut;
+    _giroCtrl.text = config.emisorGiro;
+    _direccionCtrl.text = config.emisorDireccion;
+    _telefonoCtrl.text = config.emisorTelefono;
+    _emailCtrl.text = config.emisorEmail;
     setState(() {
       _tipoViatico = config.tipoViatico;
+      _logoBase64 = config.emisorLogoBase64;
+      _logoPreviewBytes = config.emisorLogoBase64.isNotEmpty
+          ? base64Decode(config.emisorLogoBase64)
+          : null;
       _maintenanceRules = List<Map<String, dynamic>>.from(config.maintenanceRules.map((e) => Map<String, dynamic>.from(e)));
     });
+  }
+
+  Future<void> _pickLogo() async {
+    setState(() => _isUploadingLogo = true);
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final bytes = result.files.first.bytes;
+      if (bytes == null) return;
+
+      // Decodificar la imagen (soporta PNG, JPEG, BMP, GIF, etc.)
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No se pudo leer la imagen. Intenta con PNG o JPEG.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Redimensionar a máx 300px de ancho manteniendo proporción
+      final resized = decoded.width > 300
+          ? img.copyResize(decoded, width: 300)
+          : decoded;
+
+      // Re-codificar como PNG (preserva transparencia para logos)
+      final compressedBytes = Uint8List.fromList(img.encodePng(resized));
+
+      final b64 = base64Encode(compressedBytes);
+      setState(() {
+        _logoBase64 = b64;
+        _logoPreviewBytes = compressedBytes;
+      });
+
+      if (mounted) {
+        final sizeKB = (compressedBytes.lengthInBytes / 1024).toStringAsFixed(1);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✓ Logo procesado: ${resized.width}x${resized.height}px · $sizeKB KB'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al procesar logo: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isUploadingLogo = false);
+    }
   }
 
   Future<void> _saveConfig() async {
@@ -53,6 +142,8 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
     try {
       final user = ref.read(currentUserProfileProvider).value;
       if (user == null) return;
+
+      final currentConfig = ref.read(companyConfigProvider).value;
 
       final newConfig = CompanyConfigModel(
         idEmpresa: user.idEmpresa,
@@ -64,7 +155,19 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
         tipoViatico: _tipoViatico,
         valorUTM: double.tryParse(_utmCtrl.text.replaceAll('.', '')) ?? 65000,
         precioDieselNeto: double.tryParse(_dieselNetoCtrl.text.replaceAll('.', '')) ?? 800,
+        diasLaboralesMes: int.tryParse(_diasLaboralesCtrl.text) ?? 22,
+        margenObjetivoCotizacion: double.tryParse(_margenObjetivoCtrl.text) ?? 25.0,
         maintenanceRules: _maintenanceRules,
+        utmHistory: currentConfig?.utmHistory ?? {},
+        dieselHistory: currentConfig?.dieselHistory ?? {},
+        extras: currentConfig?.extras ?? {},
+        emisorRazonSocial: _razonSocialCtrl.text.trim(),
+        emisorRut: _rutCtrl.text.trim(),
+        emisorGiro: _giroCtrl.text.trim(),
+        emisorDireccion: _direccionCtrl.text.trim(),
+        emisorTelefono: _telefonoCtrl.text.trim(),
+        emisorEmail: _emailCtrl.text.trim(),
+        emisorLogoBase64: _logoBase64,
       );
 
       await ref.read(adminRepositoryProvider).updateCompanyConfig(newConfig);
@@ -209,6 +312,14 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
                                 Expanded(child: _buildTextField(_tasaMutualCtrl, 'Tasa Mutual (%)', 'Ej: 0.90')),
                               ],
                             ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(child: _buildTextField(_diasLaboralesCtrl, 'Días Laborales/Mes', 'Ej: 22')),
+                                const SizedBox(width: 16),
+                                Expanded(child: _buildTextField(_margenObjetivoCtrl, 'Margen Cotizador (%)', 'Ej: 25.0')),
+                              ],
+                            ),
                           ],
                         ),
                         const SizedBox(height: 24),
@@ -309,6 +420,106 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
                 ],
               ),
               
+              const SizedBox(height: 24),
+              // ─── SECCIÓN DATOS DEL EMISOR (para cotizaciones PDF) ───
+              _buildSectionCard(
+                title: 'Datos del Emisor (Proformas / Cotizaciones)',
+                icon: Icons.business_outlined,
+                children: [
+                  const Text(
+                    'Esta información aparece en el encabezado del PDF de cotizaciones.',
+                    style: TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(child: _buildTextField(_razonSocialCtrl, 'Razón Social', 'Ej: Transportes Inostroza SpA')),
+                      const SizedBox(width: 16),
+                      Expanded(child: _buildTextField(_rutCtrl, 'RUT Empresa', 'Ej: 76.123.456-7')),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTextField(_giroCtrl, 'Giro Comercial', 'Ej: Transporte de Carga por Carretera'),
+                  const SizedBox(height: 16),
+                  _buildTextField(_direccionCtrl, 'Dirección', 'Ej: Av. Principal 1234, Santiago'),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(child: _buildTextField(_telefonoCtrl, 'Teléfono', 'Ej: +56 9 1234 5678')),
+                      const SizedBox(width: 16),
+                      Expanded(child: _buildTextField(_emailCtrl, 'Email de Contacto', 'Ej: contacto@empresa.cl')),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  // Logo
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Preview
+                      Container(
+                        width: 120,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.white12),
+                        ),
+                        child: _logoPreviewBytes != null
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.memory(_logoPreviewBytes!, fit: BoxFit.contain),
+                              )
+                            : const Center(
+                                child: Icon(Icons.image_outlined, color: Colors.white24, size: 32),
+                              ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Logo de Empresa', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Máx. 200 KB · PNG o JPEG · Recomendado: 300px de ancho',
+                              style: TextStyle(color: Colors.white38, fontSize: 11),
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                ElevatedButton.icon(
+                                  onPressed: _isUploadingLogo ? null : _pickLogo,
+                                  icon: _isUploadingLogo
+                                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                                      : const Icon(Icons.upload_outlined, size: 16),
+                                  label: const Text('Subir Logo'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.orange,
+                                    foregroundColor: Colors.black,
+                                  ),
+                                ),
+                                if (_logoPreviewBytes != null) ...
+                                  [
+                                    const SizedBox(width: 12),
+                                    TextButton.icon(
+                                      onPressed: () => setState(() {
+                                        _logoBase64 = '';
+                                        _logoPreviewBytes = null;
+                                      }),
+                                      icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
+                                      label: const Text('Eliminar', style: TextStyle(color: Colors.redAccent)),
+                                    ),
+                                  ],
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+
               const SizedBox(height: 40),
               const Divider(color: Colors.white10),
               const SizedBox(height: 20),

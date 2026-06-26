@@ -7,7 +7,8 @@ import 'package:bitacora/features/admin/presentation/providers/admin_provider.da
 import 'package:bitacora/features/admin/domain/models/company_config_model.dart';
 import 'package:bitacora/features/trips/domain/models/trip_model.dart';
 import 'package:bitacora/features/auth/domain/models/user_model.dart';
-
+import 'package:bitacora/core/utils/pdf_generator.dart';
+import 'package:printing/printing.dart';
 class MonthlySummaryScreen extends ConsumerStatefulWidget {
   final String? userId; // Si es null, usa el usuario actual (Conductor)
   
@@ -92,6 +93,16 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
                 }
                 primaryTripIds.addAll(dayToPrimaryId.values);
 
+                // Nuevas métricas
+                int totalKm = 0;
+                final Map<String, double> facturacionPorCliente = {};
+                for (var t in trips) {
+                   totalKm += (t.totalKm ?? 0).toInt();
+                   if (t.client.isNotEmpty) {
+                      facturacionPorCliente[t.client] = (facturacionPorCliente[t.client] ?? 0) + t.value;
+                   }
+                }
+
                 return SingleChildScrollView(
                   padding: const EdgeInsets.all(20),
                   child: Column(
@@ -105,11 +116,35 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
                         children: [
                           Expanded(child: _summaryCard('Viajes', '${trips.length}', Icons.local_shipping, Colors.blueAccent)),
                           const SizedBox(width: 12),
-                          Expanded(child: _summaryCard('Viáticos', _fmt(viaticos), Icons.payments_outlined, Colors.greenAccent)),
+                          Expanded(child: _summaryCard('Total KM', '$totalKm', Icons.route, Colors.purpleAccent)),
                         ],
                       ),
                       const SizedBox(height: 12),
-                      _summaryCard('Comisión Facturación (${config?.porcentajeComision ?? 0}%)', _fmt(comision), Icons.trending_up, Colors.orangeAccent),
+                      Row(
+                        children: [
+                          Expanded(child: _summaryCard('Viáticos', _fmt(viaticos), Icons.payments_outlined, Colors.greenAccent)),
+                          const SizedBox(width: 12),
+                          Expanded(child: _summaryCard('Comisión (${config?.porcentajeComision ?? 0}%)', _fmt(comision), Icons.trending_up, Colors.orangeAccent)),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _summaryCard('Facturación Camión', _fmt(totalFacturacion), Icons.monetization_on, Colors.yellow),
+                      
+                      if (facturacionPorCliente.isNotEmpty) ...[
+                        const SizedBox(height: 24),
+                        const Text('Desglose por Cliente', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                        const SizedBox(height: 12),
+                        ...facturacionPorCliente.entries.map((e) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(e.key, style: const TextStyle(color: Colors.white70)),
+                              Text(_fmt(e.value), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        )),
+                      ],
                       
                       const SizedBox(height: 32),
                       const Text('Detalle de Viajes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
@@ -122,20 +157,49 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
                       
                       const SizedBox(height: 40),
                       
-                      // Botón WhatsApp
-                      SizedBox(
-                        width: double.infinity,
-                        height: 55,
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF25D366), // WhatsApp Green
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      // Botones de Acción
+                      Row(
+                        children: [
+                          Expanded(
+                            child: SizedBox(
+                              height: 55,
+                              child: ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF25D366), // WhatsApp Green
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                                onPressed: () => _shareViaWhatsApp(driver, trips, viaticos, comision, totalFacturacion, config!),
+                                icon: const Icon(Icons.share),
+                                label: const Text('WhatsApp', style: TextStyle(fontWeight: FontWeight.bold)),
+                              ),
+                            ),
                           ),
-                          onPressed: () => _shareViaWhatsApp(driver, trips, viaticos, comision, config!),
-                          icon: const Icon(Icons.share),
-                          label: const Text('ENVIAR POR WHATSAPP', style: TextStyle(fontWeight: FontWeight.bold)),
-                        ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: SizedBox(
+                              height: 55,
+                              child: ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFE0E0E0),
+                                  foregroundColor: Colors.black,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                                onPressed: () => _generateAndSharePdf(
+                                  driver: driver,
+                                  trips: trips,
+                                  viaticos: viaticos,
+                                  comision: comision,
+                                  totalFacturacion: totalFacturacion,
+                                  totalKm: totalKm,
+                                  facturacionPorCliente: facturacionPorCliente,
+                                ),
+                                icon: const Icon(Icons.picture_as_pdf),
+                                label: const Text('Generar PDF', style: TextStyle(fontWeight: FontWeight.bold)),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 20),
                     ],
@@ -254,34 +318,78 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
     }
   }
 
-  Future<void> _shareViaWhatsApp(UserModel driver, List<TripModel> trips, double viaticos, double comision, CompanyConfigModel config) async {
+  Future<void> _shareViaWhatsApp(UserModel driver, List<TripModel> trips, double viaticos, double comision, double facturacion, CompanyConfigModel config) async {
     final months = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
     final monthStr = '${months[_selectedMonth.month]} ${_selectedMonth.year}';
     
-    String message = '*RESUMEN MENSUAL - BITÁCORA TMS*\n';
+    String message = '*RESUMEN MENSUAL - HEIRLOG-TMS*\n';
     message += '----------------------------------\n';
     message += '*Conductor:* ${driver.nombre}\n';
     message += '*Periodo:* $monthStr\n';
     message += '----------------------------------\n\n';
-    message += '*RESUMEN FINANCIERO:*\n';
+    message += '*RESUMEN OPERACIONAL:*\n';
     message += '• Viajes Totales: ${trips.length}\n';
+    message += '• Facturación Camión: ${_fmt(facturacion)}\n';
     message += '• Viáticos Acumulados: ${_fmt(viaticos)}\n';
-    message += '• Comisión Facturación (${config.porcentajeComision}%): ${_fmt(comision)}\n';
+    message += '• Comisión (${config.porcentajeComision}%): ${_fmt(comision)}\n';
     message += '----------------------------------\n\n';
     message += '*DETALLE DE VIAJES:*\n';
     
     for (var t in trips) {
       final km = t.totalKm ?? 0;
-      message += '• ${t.startDate.day}/${t.startDate.month}: ${t.destination} (${km.toInt()} KM)\n';
+      message += '• ${t.startDate.day}/${t.startDate.month}: ${t.destination} (${km.toInt()} KM) - ${t.client}\n';
     }
     
-    message += '\n_Generado automáticamente por Bitácora TMS_';
+    message += '\n_Generado automáticamente por HEIRLOG-TMS (powered by Bitácora)_';
 
     final encodedMessage = Uri.encodeComponent(message);
-    final url = 'https://wa.me/?text=$encodedMessage';
+    // Para WhatsApp web/app universal es mejor usar wa.me o api.whatsapp.com
+    final url = 'https://api.whatsapp.com/send?text=$encodedMessage';
     
-    if (await canLaunchUrl(Uri.parse(url))) {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    try {
+      if (await canLaunchUrl(Uri.parse(url))) {
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo abrir WhatsApp')));
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al abrir WhatsApp: $e')));
+      }
+    }
+  }
+
+  Future<void> _generateAndSharePdf({
+    required UserModel driver,
+    required List<TripModel> trips,
+    required double viaticos,
+    required double comision,
+    required double totalFacturacion,
+    required int totalKm,
+    required Map<String, double> facturacionPorCliente,
+  }) async {
+    try {
+      final bytes = await PdfGenerator.generateDriverMonthlyReport(
+        driver: driver,
+        period: _selectedMonth,
+        trips: trips,
+        viaticos: viaticos,
+        comision: comision,
+        totalFacturacion: totalFacturacion,
+        totalKm: totalKm,
+        facturacionPorCliente: facturacionPorCliente,
+      );
+
+      final monthStr = '${_selectedMonth.month}_${_selectedMonth.year}';
+      final filename = 'Reporte_${driver.nombre.replaceAll(' ', '_')}_$monthStr.pdf';
+
+      await Printing.sharePdf(bytes: bytes, filename: filename);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error generando PDF: $e')));
+      }
     }
   }
 }

@@ -7,6 +7,7 @@ import '../../../auth/domain/models/user_model.dart';
 import '../../domain/models/liquidacion_model.dart';
 import '../../domain/models/company_config_model.dart';
 import '../../domain/models/incidencia_model.dart';
+import '../../domain/models/cotizacion_model.dart';
 
 /// Repositorio exclusivo del Admin.
 /// A diferencia del TripRepository (scoped al chofer actual),
@@ -374,5 +375,83 @@ class AdminRepository {
 
   Future<void> updateServiceRequest(String requestId, Map<String, dynamic> data) async {
     await _db.collection('service_requests').doc(requestId).update(data);
+  }
+
+  // ─── COTIZACIONES ───────────────────────────────────────────────────────────
+
+  Future<CotizacionModel> saveCotizacion(CotizacionModel cotizacion) async {
+    final docRef = _db.collection('cotizaciones').doc(); 
+    
+    final year = DateTime.now().year;
+    final counterRef = _db.collection('contadores').doc('cotizaciones_${cotizacion.idEmpresa}_$year');
+    
+    String assignedNum = '';
+
+    await _db.runTransaction<void>((transaction) async {
+      final counterDoc = await transaction.get(counterRef);
+      int seq = 0;
+      if (counterDoc.exists) {
+        seq = (counterDoc.data()?['seq'] as num?)?.toInt() ?? 0;
+      }
+      final int newSeq = seq + 1;
+      transaction.set(
+          counterRef,
+          {'seq': newSeq, 'idEmpresa': cotizacion.idEmpresa},
+          SetOptions(merge: true),
+      );
+
+      assignedNum = 'COT-$year-${newSeq.toString().padLeft(3, '0')}';
+
+      final updatedCotizacion = cotizacion.copyWith(
+        id: docRef.id,
+        numeroCotizacion: assignedNum,
+      );
+
+      transaction.set(docRef, updatedCotizacion.toMap());
+    });
+
+    return cotizacion.copyWith(id: docRef.id, numeroCotizacion: assignedNum);
+  }
+
+  Future<void> updateCotizacion(CotizacionModel cotizacion) async {
+    // Preserve static fields by letting the backend override whatever is in the passed model 
+    // with the existing static fields if needed, OR we can just do an update of specific fields.
+    // However, the cleanest is to update the document with all fields from the model, but 
+    // we should trust the presentation layer passed the original static fields in the model.
+    // The user said: "Debe preservar explícitamente estos campos estaticos del documento original (no tomarlos del modelo que llega): createdAt, numeroCotizacion, creadoPor, idEmpresa."
+    // So we fetch the existing doc, merge it into the new model, and then update.
+    
+    final docRef = _db.collection('cotizaciones').doc(cotizacion.id);
+    final doc = await docRef.get();
+    
+    if (doc.exists) {
+      final data = doc.data()!;
+      final updatedData = cotizacion.toMap();
+      
+      // Preserve static fields
+      updatedData['createdAt'] = data['createdAt'];
+      updatedData['numeroCotizacion'] = data['numeroCotizacion'];
+      updatedData['creadoPor'] = data['creadoPor'];
+      updatedData['idEmpresa'] = data['idEmpresa'];
+      
+      await docRef.update(updatedData);
+    }
+  }
+
+  Future<void> softDeleteCotizacion(String id) async {
+    await _db.collection('cotizaciones').doc(id).update({'eliminada': true});
+  }
+
+  Future<void> updateCotizacionStatus(String id, String newStatus) async {
+    await _db.collection('cotizaciones').doc(id).update({'estado': newStatus});
+  }
+
+  Stream<List<CotizacionModel>> watchCotizaciones(String idEmpresa) {
+    return _db
+        .collection('cotizaciones')
+        .where('idEmpresa', isEqualTo: idEmpresa)
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((s) => s.docs.map((d) => CotizacionModel.fromMap(d.data(), d.id)).toList());
   }
 }

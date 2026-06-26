@@ -11,7 +11,18 @@ class CompanyConfigModel {
   final double precioDieselNeto; // Precio de referencia neto base
   final Map<String, double> dieselHistory; // Historial mensual {"2024-05": 1050.0}
   final List<Map<String, dynamic>> maintenanceRules; // Reglas dinámicas de mantenimiento
+  final int diasLaboralesMes;            // default: 22
+  final double margenObjetivoCotizacion; // default: 25.0 (porcentaje)
   final Map<String, dynamic> extras;
+
+  // ─── Datos del Emisor (para PDF de cotizaciones) ─────────────────────────
+  final String emisorRazonSocial;
+  final String emisorRut;
+  final String emisorGiro;
+  final String emisorDireccion;
+  final String emisorTelefono;
+  final String emisorEmail;
+  final String emisorLogoBase64; // Logo comprimido en Base64 (~300px ancho)
 
   CompanyConfigModel({
     required this.idEmpresa,
@@ -26,7 +37,16 @@ class CompanyConfigModel {
     this.precioDieselNeto = 800,
     this.dieselHistory = const {},
     this.maintenanceRules = const [],
+    this.diasLaboralesMes = 22,
+    this.margenObjetivoCotizacion = 25.0,
     this.extras = const {},
+    this.emisorRazonSocial = '',
+    this.emisorRut = '',
+    this.emisorGiro = '',
+    this.emisorDireccion = '',
+    this.emisorTelefono = '',
+    this.emisorEmail = '',
+    this.emisorLogoBase64 = '',
   });
 
   factory CompanyConfigModel.fromMap(Map<String, dynamic> map, String id) {
@@ -67,7 +87,16 @@ class CompanyConfigModel {
       precioDieselNeto: (map['precioDieselNeto'] as num?)?.toDouble() ?? 800,
       dieselHistory: dHistory,
       maintenanceRules: mRules,
+      diasLaboralesMes: map['diasLaboralesMes'] as int? ?? 22,
+      margenObjetivoCotizacion: (map['margenObjetivoCotizacion'] as num?)?.toDouble() ?? 25.0,
       extras: map['extras'] ?? {},
+      emisorRazonSocial: map['emisorRazonSocial'] ?? '',
+      emisorRut: map['emisorRut'] ?? '',
+      emisorGiro: map['emisorGiro'] ?? '',
+      emisorDireccion: map['emisorDireccion'] ?? '',
+      emisorTelefono: map['emisorTelefono'] ?? '',
+      emisorEmail: map['emisorEmail'] ?? '',
+      emisorLogoBase64: map['emisorLogoBase64'] ?? '',
     );
   }
 
@@ -84,8 +113,67 @@ class CompanyConfigModel {
       'precioDieselNeto': precioDieselNeto,
       'dieselHistory': dieselHistory,
       'maintenanceRules': maintenanceRules,
+      'diasLaboralesMes': diasLaboralesMes,
+      'margenObjetivoCotizacion': margenObjetivoCotizacion,
       'extras': extras,
+      'emisorRazonSocial': emisorRazonSocial,
+      'emisorRut': emisorRut,
+      'emisorGiro': emisorGiro,
+      'emisorDireccion': emisorDireccion,
+      'emisorTelefono': emisorTelefono,
+      'emisorEmail': emisorEmail,
+      'emisorLogoBase64': emisorLogoBase64,
     };
+  }
+
+  CompanyConfigModel copyWith({
+    String? idEmpresa,
+    double? sueldoMinimo,
+    double? umbralKilometrosViatico,
+    double? tasaMutual,
+    double? tasaSIS,
+    double? porcentajeComision,
+    String? tipoViatico,
+    double? valorUTM,
+    Map<String, double>? utmHistory,
+    double? precioDieselNeto,
+    Map<String, double>? dieselHistory,
+    List<Map<String, dynamic>>? maintenanceRules,
+    int? diasLaboralesMes,
+    double? margenObjetivoCotizacion,
+    Map<String, dynamic>? extras,
+    String? emisorRazonSocial,
+    String? emisorRut,
+    String? emisorGiro,
+    String? emisorDireccion,
+    String? emisorTelefono,
+    String? emisorEmail,
+    String? emisorLogoBase64,
+  }) {
+    return CompanyConfigModel(
+      idEmpresa: idEmpresa ?? this.idEmpresa,
+      sueldoMinimo: sueldoMinimo ?? this.sueldoMinimo,
+      umbralKilometrosViatico: umbralKilometrosViatico ?? this.umbralKilometrosViatico,
+      tasaMutual: tasaMutual ?? this.tasaMutual,
+      tasaSIS: tasaSIS ?? this.tasaSIS,
+      porcentajeComision: porcentajeComision ?? this.porcentajeComision,
+      tipoViatico: tipoViatico ?? this.tipoViatico,
+      valorUTM: valorUTM ?? this.valorUTM,
+      utmHistory: utmHistory ?? this.utmHistory,
+      precioDieselNeto: precioDieselNeto ?? this.precioDieselNeto,
+      dieselHistory: dieselHistory ?? this.dieselHistory,
+      maintenanceRules: maintenanceRules ?? this.maintenanceRules,
+      diasLaboralesMes: diasLaboralesMes ?? this.diasLaboralesMes,
+      margenObjetivoCotizacion: margenObjetivoCotizacion ?? this.margenObjetivoCotizacion,
+      extras: extras ?? this.extras,
+      emisorRazonSocial: emisorRazonSocial ?? this.emisorRazonSocial,
+      emisorRut: emisorRut ?? this.emisorRut,
+      emisorGiro: emisorGiro ?? this.emisorGiro,
+      emisorDireccion: emisorDireccion ?? this.emisorDireccion,
+      emisorTelefono: emisorTelefono ?? this.emisorTelefono,
+      emisorEmail: emisorEmail ?? this.emisorEmail,
+      emisorLogoBase64: emisorLogoBase64 ?? this.emisorLogoBase64,
+    );
   }
 
   /// Retorna el valor de UTM para un mes específico (YYYY-MM)

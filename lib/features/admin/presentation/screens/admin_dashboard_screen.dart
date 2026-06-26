@@ -14,6 +14,7 @@ import '../widgets/config_admin_view.dart';
 import '../widgets/control_tower_view.dart';
 import '../widgets/service_requests_inbox_view.dart';
 import '../widgets/mantenimiento_admin_view.dart';
+import '../screens/cotizador_screen.dart';
 import '../../presentation/providers/admin_provider.dart';
 
 class AdminDashboardScreen extends ConsumerStatefulWidget {
@@ -63,8 +64,10 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('Bitácora TMS',
+                const Text('HEIRLOG-TMS',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const Text('powered by Bitácora TMS',
+                    style: TextStyle(fontSize: 9, color: Colors.grey, fontStyle: FontStyle.italic)),
                 Text(
                   userProfile?.nombre ?? 'Administrador',
                   style: const TextStyle(fontSize: 11, color: Colors.grey),
@@ -113,6 +116,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       (Icons.auto_awesome_outlined, 'Solicitudes IA', 0),
       (Icons.analytics_outlined, 'Analítica', 0),
       (Icons.cloud_sync_outlined, 'Ziyu / Proformas', 0),
+      (Icons.calculate_outlined, 'Cotizador', 0),
       (Icons.receipt_outlined, 'Liquidaciones', 0),
       (Icons.payments_outlined, 'Remuneraciones', 0),
       (Icons.receipt_long_outlined, 'Viáticos', pendientesCount),
@@ -208,7 +212,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
           // Footer con versión
           const Padding(
             padding: EdgeInsets.all(20),
-            child: Text('Bitácora TMS v0.9',
+            child: Text('HEIRLOG-TMS v1.0\npowered by Bitácora TMS',
                 style: TextStyle(color: Colors.grey, fontSize: 10)),
           ),
         ],
@@ -225,13 +229,14 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
         2 => const ServiceRequestsInboxView(key: ValueKey(2)),
         3 => const AnalyticsView(key: ValueKey(3)),
         4 => const ZiyuConciliationView(key: ValueKey(4)),
-        5 => const LiquidacionesAdminView(key: ValueKey(5)),
-        6 => const RemuneracionesView(key: ValueKey(6)),
-        7 => const ViaticosAdminView(key: ValueKey(7)),
-        8 => const FlotaAdminView(key: ValueKey(8)),
-        9 => const MantenimientoAdminView(key: ValueKey(9)),
-        10 => const ConductoresView(key: ValueKey(10)),
-        11 => const ConfigAdminView(key: ValueKey(11)),
+        5 => const CotizadorScreen(key: ValueKey(5)),
+        6 => const LiquidacionesAdminView(key: ValueKey(6)),
+        7 => const RemuneracionesView(key: ValueKey(7)),
+        8 => const ViaticosAdminView(key: ValueKey(8)),
+        9 => const FlotaAdminView(key: ValueKey(9)),
+        10 => const MantenimientoAdminView(key: ValueKey(10)),
+        11 => const ConductoresView(key: ValueKey(11)),
+        12 => const ConfigAdminView(key: ValueKey(12)),
         _ => const KpiDashboardView(key: ValueKey(0)),
       },
     );

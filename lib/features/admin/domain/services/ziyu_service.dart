@@ -101,6 +101,8 @@ class ZiyuService {
 
   // ─── Parseo de PDF (Experimental) ──────────────────────────────────────────
 
+  // ─── Parseo de PDF (Mejorado Multi-Formato) ──────────────────────────────────────────
+
   static List<ZiyuRecord> _parsePdf(List<int> bytes) {
     try {
       final PdfDocument document = PdfDocument(inputBytes: bytes);
@@ -108,42 +110,91 @@ class ZiyuService {
       document.dispose();
       
       final records = <ZiyuRecord>[];
+      final lines = text.split('\n');
       
-      // 1. Buscar Contenedores (4 letras + 7 dígitos)
-      final containerRegex = RegExp(r'\b([A-Z]{4}[0-9]{7})\b');
-      final containers = containerRegex.allMatches(text).map((m) => m.group(1)!).toSet();
-      
-      // 2. Buscar números que parezcan guías (6 a 10 dígitos)
-      final guideRegex = RegExp(r'\b([0-9]{6,10})\b');
-      final guides = guideRegex.allMatches(text).map((m) => m.group(1)!).toSet();
-
-      // 3. Buscar Montos (formato CLP: 100.000 o similar)
-      final valueRegex = RegExp(r'([0-9]{1,3}(\.[0-9]{3}){1,2})'); 
-      final allValues = valueRegex.allMatches(text).map((m) => m.group(1)!.replaceAll('.', '')).toList();
-
-      // Intentar crear registros basados en contenedores encontrados
-      for (final container in containers) {
-        double? foundValue;
-        if (allValues.isNotEmpty) {
-           // Tomamos el valor más alto o el primero como heurística simple
-           foundValue = double.tryParse(allValues.first);
+      // Extraer Número de OS/OT del encabezado (Ej: OT796959)
+      String? osNumber;
+      final osRegex = RegExp(r'\b(O[ST][0-9]{5,8})\b', caseSensitive: false);
+      for (final line in lines.take(20)) {
+        final match = osRegex.firstMatch(line);
+        if (match != null) {
+          osNumber = match.group(1);
+          break;
         }
-        
+      }
+
+      // 1. Buscar todos los contenedores y en qué línea están
+      final containerRegex = RegExp(r'\b([A-Z]{4}[0-9]{7})\b');
+      final containerMap = <String, double?>{}; // Contenedor -> Valor (si se encuentra en la misma línea)
+      final List<String> orderedContainers = [];
+
+      // 2. Extraer valores monetarios de las líneas (ej: 20.000,00 o CLP 20.000)
+      // Buscamos números con formato chileno N.NNN,NN o N.NNN
+      final valueRegex = RegExp(r'\b(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)\b');
+
+      bool inTarifaSection = false;
+
+      for (int i = 0; i < lines.length; i++) {
+        final line = lines[i];
+        final upperLine = line.toUpperCase();
+
+        // Detectar si entramos a una sección de tarifas
+        if (upperLine.contains('DETALLE DE TARIFA') || upperLine.contains('VALORES') || upperLine.contains('TARIFA')) {
+          inTarifaSection = true;
+        }
+
+        // Buscar contenedores
+        final cMatch = containerRegex.firstMatch(line);
+        if (cMatch != null) {
+          final container = cMatch.group(1)!;
+          if (!orderedContainers.contains(container)) {
+             orderedContainers.add(container);
+          }
+          
+          // Si encontramos un contenedor en la sección de tarifa, extraer el valor de ESA línea
+          if (inTarifaSection || _lineHasValues(line, valueRegex)) {
+            final val = _extractLastValue(line, valueRegex);
+            if (val != null) {
+               containerMap[container] = val;
+            }
+          }
+        } else if (inTarifaSection && orderedContainers.isNotEmpty) {
+           // A veces el contenedor está en la sección anterior, y aquí solo hay tarifas con el mismo índice
+           // Esto es más complejo, pero si la línea tiene un "TOTAL" y un valor, podríamos asignarlo 
+           // al último contenedor sin valor, o iterar.
+           // Por simplicidad, confiaremos en que la sección de tarifas lista los contenedores de nuevo.
+        }
+      }
+
+      // Si no encontramos valores en la misma línea que los contenedores,
+      // intentaremos un fallback: buscar la sección "Detalle de Tarifa" y 
+      // extraer los totales en orden.
+      if (containerMap.isEmpty || containerMap.values.every((v) => v == null)) {
+         _fallbackExtractValues(lines, orderedContainers, containerMap, valueRegex);
+      }
+
+      // Crear los registros finales
+      for (int i = 0; i < orderedContainers.length; i++) {
+        final container = orderedContainers[i];
         records.add(ZiyuRecord(
-          rowIndex: 0,
+          rowIndex: i + 1,
+          osNumber: osNumber,
           containerNumber: container,
-          value: foundValue,
-          rawData: 'Documento PDF | Contenedor: $container',
+          value: containerMap[container],
+          rawData: 'PDF | OS: ${osNumber ?? 'S/N'} | Contenedor: $container | Valor detectado: ${containerMap[container] ?? 'N/A'}',
         ));
       }
 
-      // Si no hay contenedores, intentar con guías
+      // Si no hay contenedores, intentar con guías como último recurso (genérico)
       if (records.isEmpty) {
+        final guideRegex = RegExp(r'\b([0-9]{6,10})\b');
+        final guides = guideRegex.allMatches(text).map((m) => m.group(1)!).toSet();
         for (final guide in guides) {
           records.add(ZiyuRecord(
             rowIndex: 0,
+            osNumber: osNumber,
             guideNumber: guide,
-            rawData: 'Documento PDF | Guía: $guide',
+            rawData: 'PDF | OS: ${osNumber ?? 'S/N'} | Guía: $guide',
           ));
         }
       }
@@ -155,6 +206,51 @@ class ZiyuService {
       return records;
     } catch (e) {
       throw Exception('Error al leer el PDF: $e');
+    }
+  }
+
+  static bool _lineHasValues(String line, RegExp valueRegex) {
+     return valueRegex.hasMatch(line);
+  }
+
+  static double? _extractLastValue(String line, RegExp valueRegex) {
+    // Generalmente el TOTAL es la última columna numérica de la fila
+    final matches = valueRegex.allMatches(line);
+    if (matches.isEmpty) return null;
+    
+    // Tomar la última coincidencia (suele ser el total)
+    final lastMatchStr = matches.last.group(1)!;
+    // Limpiar formato chileno a double standard (20.000,00 -> 20000.00)
+    final cleanStr = lastMatchStr.replaceAll('.', '').replaceAll(',', '.');
+    return double.tryParse(cleanStr);
+  }
+
+  static void _fallbackExtractValues(List<String> lines, List<String> containers, Map<String, double?> containerMap, RegExp valueRegex) {
+    // Si la tabla de tarifas está separada y NO tiene el nombre del contenedor,
+    // asumimos que están en el mismo orden que en la sección de servicio.
+    bool inTarifaSection = false;
+    int valueIndex = 0;
+
+    for (final line in lines) {
+       final upperLine = line.toUpperCase();
+       if (upperLine.contains('DETALLE DE TARIFA') || upperLine.contains('VALORES')) {
+          inTarifaSection = true;
+          continue;
+       }
+
+       if (inTarifaSection) {
+          final val = _extractLastValue(line, valueRegex);
+          if (val != null && val > 0) { // Ignorar ceros o valores nulos
+             if (valueIndex < containers.length) {
+                final container = containers[valueIndex];
+                // Solo asignar si no tenía valor
+                if (containerMap[container] == null) {
+                   containerMap[container] = val;
+                   valueIndex++;
+                }
+             }
+          }
+       }
     }
   }
 

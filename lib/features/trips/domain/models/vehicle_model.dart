@@ -12,6 +12,8 @@ class VehicleModel {
   final DateTime? rtExpirationDate; // Vencimiento Revisión Técnica
   final DateTime? soapExpirationDate; // Vencimiento SOAP
   final DateTime? permisoExpirationDate; // Vencimiento Permiso Circulación
+  final double rendimientoKmPorLitro; // default: 2.5
+  final String categoriaPeaje; // "camion_2_ejes" | "camion_mas_2_ejes"
 
   VehicleModel({
     required this.id,
@@ -25,6 +27,8 @@ class VehicleModel {
     this.rtExpirationDate,
     this.soapExpirationDate,
     this.permisoExpirationDate,
+    this.rendimientoKmPorLitro = 2.5,
+    this.categoriaPeaje = 'camion_mas_2_ejes',
   });
 
   Map<String, dynamic> toMap() {
@@ -39,6 +43,8 @@ class VehicleModel {
       'rtExpirationDate': rtExpirationDate?.toIso8601String(),
       'soapExpirationDate': soapExpirationDate?.toIso8601String(),
       'permisoExpirationDate': permisoExpirationDate?.toIso8601String(),
+      'rendimientoKmPorLitro': rendimientoKmPorLitro,
+      'categoriaPeaje': categoriaPeaje,
     };
   }
 
@@ -55,6 +61,40 @@ class VehicleModel {
       rtExpirationDate: map['rtExpirationDate'] != null ? DateTime.parse(map['rtExpirationDate']) : null,
       soapExpirationDate: map['soapExpirationDate'] != null ? DateTime.parse(map['soapExpirationDate']) : null,
       permisoExpirationDate: map['permisoExpirationDate'] != null ? DateTime.parse(map['permisoExpirationDate']) : null,
+      rendimientoKmPorLitro: (map['rendimientoKmPorLitro'] as num?)?.toDouble() ?? 2.5,
+      categoriaPeaje: map['categoriaPeaje'] ?? 'camion_mas_2_ejes',
+    );
+  }
+
+  VehicleModel copyWith({
+    String? id,
+    String? idEmpresa,
+    String? patente,
+    String? marca,
+    String? modelo,
+    int? anio,
+    double? currentOdometer,
+    double? nextOilChangeKm,
+    DateTime? rtExpirationDate,
+    DateTime? soapExpirationDate,
+    DateTime? permisoExpirationDate,
+    double? rendimientoKmPorLitro,
+    String? categoriaPeaje,
+  }) {
+    return VehicleModel(
+      id: id ?? this.id,
+      idEmpresa: idEmpresa ?? this.idEmpresa,
+      patente: patente ?? this.patente,
+      marca: marca ?? this.marca,
+      modelo: modelo ?? this.modelo,
+      anio: anio ?? this.anio,
+      currentOdometer: currentOdometer ?? this.currentOdometer,
+      nextOilChangeKm: nextOilChangeKm ?? this.nextOilChangeKm,
+      rtExpirationDate: rtExpirationDate ?? this.rtExpirationDate,
+      soapExpirationDate: soapExpirationDate ?? this.soapExpirationDate,
+      permisoExpirationDate: permisoExpirationDate ?? this.permisoExpirationDate,
+      rendimientoKmPorLitro: rendimientoKmPorLitro ?? this.rendimientoKmPorLitro,
+      categoriaPeaje: categoriaPeaje ?? this.categoriaPeaje,
     );
   }
 

@@ -193,7 +193,7 @@ class _RegisterProfileScreenState
         const Icon(Icons.shield_outlined, size: 80, color: Color(0xFFFFFFFF)),
         const SizedBox(height: 24),
         const Text(
-          'Bienvenido a Bitácora TMS',
+          'Bienvenido a HEIRLOG-TMS',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white),
         ),

@@ -3,6 +3,7 @@ import '../../features/admin/domain/models/company_config_model.dart';
 import '../../features/trips/domain/models/trip_model.dart';
 import '../../features/admin/domain/models/analytics_models.dart';
 import '../../features/trips/domain/models/expense_model.dart';
+import '../../features/trips/domain/models/vehicle_model.dart';
 
 class ChileanFinancialCalculator {
   /// Calcula el costo total para el empleador de un conductor específico en un mes.
@@ -528,5 +529,109 @@ class ChileanFinancialCalculator {
 
     results.sort((a, b) => b.netMargin.compareTo(a.netMargin));
     return results;
+  }
+
+  /// Calcula en tiempo real si un servicio de transporte propuesto es rentable,
+  /// mostrando un desglose quirúrgico de costos y el margen neto real "al bolsillo".
+  static Map<String, double> calculateTripQuote({
+    required UserModel driver,
+    required VehicleModel vehicle,
+    required CompanyConfigModel config,
+    required double kmPosicionamiento,
+    required double kmRuta,
+    required double tarifaPropuesta,
+    required double precioDieselNeto,
+    required double peajes,
+    required double viaticoManual,
+    required int diasViaje,
+    required double margenObjetivo, // porcentaje, ej. 25.0
+    bool idaYVuelta = false,
+    double? customUtmValue,
+  }) {
+    // 1. KM total
+    final double kmRutaEfectivo = idaYVuelta ? (kmRuta * 2) : kmRuta;
+    final double kmTotal = kmPosicionamiento + kmRutaEfectivo;
+
+    // Peajes efectivos
+    final double peajesEfectivo = idaYVuelta ? (peajes * 2) : peajes;
+
+    // 2. Combustible
+    final double rendimiento = vehicle.rendimientoKmPorLitro;
+    final double litrosConsumidos = rendimiento > 0 ? (kmTotal / rendimiento) : 0;
+    final double combustibleNeto = litrosConsumidos * precioDieselNeto;
+    final double combustibleBruto = combustibleNeto * 1.19;
+    final double creditoIvaCombustible = combustibleBruto - combustibleNeto;
+
+    // 3. IVA Débito sobre la tarifa
+    final double ivaDebito = tarifaPropuesta * 0.19;
+
+    // 4. Comisión del chofer
+    final double comision = tarifaPropuesta * (config.porcentajeComision / 100);
+
+    // 5. Mantenimiento
+    double costoMantenimientoPorKm = 0.0;
+    for (var rule in config.maintenanceRules) {
+      final cost = (rule['cost'] as num?)?.toDouble() ?? 0;
+      final km = (rule['km'] as num?)?.toDouble() ?? 1;
+      if (km > 0) costoMantenimientoPorKm += (cost / km);
+    }
+    final double mantenimiento = kmTotal * costoMantenimientoPorKm;
+
+    // 6. Costo fijo del chofer (prorrateo diario)
+    final double costoMensualFijo = calculateMonthlyEmployerCost(
+      driver: driver,
+      config: config,
+      monthlyTrips: [],
+    );
+    final double costoFijoDiario = config.diasLaboralesMes > 0 
+        ? costoMensualFijo / config.diasLaboralesMes 
+        : 0;
+    final double costoFijoChofer = costoFijoDiario * diasViaje;
+
+    // 7. Recuperación Ley 19.764
+    final double utmToUse = customUtmValue ?? config.valorUTM;
+    final double recuperacionLey19764 = litrosConsumidos * (1.5 * utmToUse / 1000);
+
+    // 8. Costo total real (suma de todos los costos operativos)
+    final double costoTotalReal = combustibleNeto +
+        peajesEfectivo +
+        comision +
+        viaticoManual +
+        mantenimiento +
+        costoFijoChofer;
+
+    // 9. Margen Neto Real "al bolsillo"
+    final double ivaNetoPagar = ivaDebito - creditoIvaCombustible - recuperacionLey19764;
+    final double resultadoOperacional = tarifaPropuesta - costoTotalReal;
+    final double margenNetoReal = resultadoOperacional - ivaNetoPagar;
+
+    // 10. Indicadores
+    final double margenPorcentaje = tarifaPropuesta > 0 
+        ? (margenNetoReal / tarifaPropuesta) * 100 
+        : 0;
+    final double cpk = kmTotal > 0 ? (tarifaPropuesta / kmTotal) : 0;
+
+    // 11. Tarifa mínima sugerida para alcanzar el margen objetivo
+    final double tarifaMinimaSugerida = (margenObjetivo < 100)
+        ? costoTotalReal / (1 - margenObjetivo / 100)
+        : costoTotalReal;
+
+    return {
+      'kmTotal': kmTotal,
+      'litrosConsumidos': litrosConsumidos,
+      'combustibleNeto': combustibleNeto,
+      'combustibleBruto': combustibleBruto,
+      'creditoIvaCombustible': creditoIvaCombustible,
+      'ivaDebito': ivaDebito,
+      'comision': comision,
+      'mantenimiento': mantenimiento,
+      'costoFijoChofer': costoFijoChofer,
+      'recuperacionLey19764': recuperacionLey19764,
+      'costoTotalReal': costoTotalReal,
+      'margenNetoReal': margenNetoReal,
+      'margenPorcentaje': margenPorcentaje,
+      'cpk': cpk,
+      'tarifaMinimaSugerida': tarifaMinimaSugerida,
+    };
   }
 }
