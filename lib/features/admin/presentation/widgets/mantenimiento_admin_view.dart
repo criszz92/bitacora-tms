@@ -391,11 +391,11 @@ class _FleetStatusTab extends ConsumerWidget {
   }
 
   void _showEditMaintenanceDialog(BuildContext context, WidgetRef ref, VehicleModel vehicle) {
+    final lastServiceCtrl = TextEditingController(text: (vehicle.lastServiceOdometer ?? vehicle.currentOdometer).toStringAsFixed(0));
     final odometerCtrl = TextEditingController(text: vehicle.currentOdometer.toStringAsFixed(0));
-    // El campo del intervalo: si ya tiene configurado un próximo cambio, calculamos el intervalo previo
     final previousInterval = (vehicle.nextOilChangeKm != null && vehicle.lastServiceOdometer != null)
         ? (vehicle.nextOilChangeKm! - vehicle.lastServiceOdometer!).toStringAsFixed(0)
-        : '10000';
+        : '15000';
     final intervalCtrl = TextEditingController(text: previousInterval);
 
     DateTime? rtDate = vehicle.rtExpirationDate;
@@ -406,10 +406,9 @@ class _FleetStatusTab extends ConsumerWidget {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) {
-          // Calculamos el próximo km en tiempo real según lo que el usuario escribe
-          final currentKm = double.tryParse(odometerCtrl.text) ?? vehicle.currentOdometer;
-          final interval = double.tryParse(intervalCtrl.text) ?? 10000;
-          final calculatedNextKm = currentKm + interval;
+          final lastService = double.tryParse(lastServiceCtrl.text) ?? (vehicle.lastServiceOdometer ?? vehicle.currentOdometer);
+          final interval = double.tryParse(intervalCtrl.text) ?? 15000;
+          final calculatedNextKm = lastService + interval;
 
           return AlertDialog(
             backgroundColor: const Color(0xFF1A1A1A),
@@ -437,11 +436,14 @@ class _FleetStatusTab extends ConsumerWidget {
                     style: TextStyle(color: Colors.orange, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.5),
                   ),
                   const SizedBox(height: 12),
-                  _buildField('Kilometraje Actual', odometerCtrl, Icons.speed,
+                  _buildField('Último Cambio de Aceite (km)', lastServiceCtrl, Icons.history,
                     onChanged: (_) => setState(() {})),
                   const SizedBox(height: 12),
-                  _buildField('¿Cuántos km para el próximo cambio?', intervalCtrl, Icons.loop,
-                    hint: 'Ej: 10000',
+                  _buildField('Kilometraje Actual (Chofer)', odometerCtrl, Icons.speed,
+                    onChanged: (_) => setState(() {})),
+                  const SizedBox(height: 12),
+                  _buildField('Kilómetros para próximo cambio', intervalCtrl, Icons.loop,
+                    hint: 'Ej: 15000',
                     onChanged: (_) => setState(() {})),
                   const SizedBox(height: 12),
                   // Vista previa del cálculo automático
@@ -499,9 +501,10 @@ class _FleetStatusTab extends ConsumerWidget {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
                 onPressed: () async {
-                  final newOdometer = double.tryParse(odometerCtrl.text) ?? vehicle.currentOdometer;
-                  final newInterval = double.tryParse(intervalCtrl.text) ?? 10000;
-                  final newNextKm = newOdometer + newInterval;
+                  final newLastService = double.tryParse(lastServiceCtrl.text) ?? (vehicle.lastServiceOdometer ?? vehicle.currentOdometer);
+                  final newCurrent = double.tryParse(odometerCtrl.text) ?? vehicle.currentOdometer;
+                  final newInterval = double.tryParse(intervalCtrl.text) ?? 15000;
+                  final newNextKm = newLastService + newInterval;
 
                   final updated = VehicleModel(
                     id: vehicle.id,
@@ -510,10 +513,9 @@ class _FleetStatusTab extends ConsumerWidget {
                     marca: vehicle.marca,
                     modelo: vehicle.modelo,
                     anio: vehicle.anio,
-                    currentOdometer: newOdometer,
+                    currentOdometer: newCurrent,
                     nextOilChangeKm: newNextKm,
-                    // Guardamos el odómetro actual como punto de partida de la nueva barra
-                    lastServiceOdometer: newOdometer,
+                    lastServiceOdometer: newLastService,
                     rtExpirationDate: rtDate,
                     soapExpirationDate: soapDate,
                     permisoExpirationDate: permisoDate,
