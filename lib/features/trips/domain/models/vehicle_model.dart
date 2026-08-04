@@ -9,6 +9,7 @@ class VehicleModel {
   // --- NUEVOS CAMPOS DE MANTENIMIENTO ---
   final double currentOdometer;    // Kilometraje actual del camión
   final double? nextOilChangeKm;   // KM objetivo para próximo cambio de aceite
+  final double? lastServiceOdometer; // KM en que se configuró el último servicio (punto de partida de la barra)
   final DateTime? rtExpirationDate; // Vencimiento Revisión Técnica
   final DateTime? soapExpirationDate; // Vencimiento SOAP
   final DateTime? permisoExpirationDate; // Vencimiento Permiso Circulación
@@ -24,6 +25,7 @@ class VehicleModel {
     this.anio,
     this.currentOdometer = 0.0,
     this.nextOilChangeKm,
+    this.lastServiceOdometer,
     this.rtExpirationDate,
     this.soapExpirationDate,
     this.permisoExpirationDate,
@@ -40,6 +42,7 @@ class VehicleModel {
       'anio': anio,
       'currentOdometer': currentOdometer,
       'nextOilChangeKm': nextOilChangeKm,
+      'lastServiceOdometer': lastServiceOdometer,
       'rtExpirationDate': rtExpirationDate?.toIso8601String(),
       'soapExpirationDate': soapExpirationDate?.toIso8601String(),
       'permisoExpirationDate': permisoExpirationDate?.toIso8601String(),
@@ -58,6 +61,7 @@ class VehicleModel {
       anio: map['anio'],
       currentOdometer: (map['currentOdometer'] as num?)?.toDouble() ?? 0.0,
       nextOilChangeKm: (map['nextOilChangeKm'] as num?)?.toDouble(),
+      lastServiceOdometer: (map['lastServiceOdometer'] as num?)?.toDouble(),
       rtExpirationDate: map['rtExpirationDate'] != null ? DateTime.parse(map['rtExpirationDate']) : null,
       soapExpirationDate: map['soapExpirationDate'] != null ? DateTime.parse(map['soapExpirationDate']) : null,
       permisoExpirationDate: map['permisoExpirationDate'] != null ? DateTime.parse(map['permisoExpirationDate']) : null,
@@ -75,6 +79,7 @@ class VehicleModel {
     int? anio,
     double? currentOdometer,
     double? nextOilChangeKm,
+    double? lastServiceOdometer,
     DateTime? rtExpirationDate,
     DateTime? soapExpirationDate,
     DateTime? permisoExpirationDate,
@@ -90,6 +95,7 @@ class VehicleModel {
       anio: anio ?? this.anio,
       currentOdometer: currentOdometer ?? this.currentOdometer,
       nextOilChangeKm: nextOilChangeKm ?? this.nextOilChangeKm,
+      lastServiceOdometer: lastServiceOdometer ?? this.lastServiceOdometer,
       rtExpirationDate: rtExpirationDate ?? this.rtExpirationDate,
       soapExpirationDate: soapExpirationDate ?? this.soapExpirationDate,
       permisoExpirationDate: permisoExpirationDate ?? this.permisoExpirationDate,

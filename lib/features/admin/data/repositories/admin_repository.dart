@@ -32,6 +32,16 @@ class AdminRepository {
         .map((s) => s.docs.map((d) => TripModel.fromMap(d.data(), d.id)).toList());
   }
 
+  Future<void> saveTrip(TripModel trip) async {
+    if (trip.id.isEmpty) {
+      final docRef = _db.collection('viajes').doc();
+      final newTrip = trip.copyWith(id: docRef.id);
+      await docRef.set(newTrip.toMap());
+    } else {
+      await _db.collection('viajes').doc(trip.id).update(trip.toMap());
+    }
+  }
+
   Future<void> updateTripMap(String tripId, Map<String, dynamic> data) async {
     await _db.collection('viajes').doc(tripId).update(data);
   }

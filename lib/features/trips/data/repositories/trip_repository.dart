@@ -126,7 +126,7 @@ class TripRepository {
   Future<void> endTrip(String tripId, {double? totalKm}) async {
     await _firestore.collection('viajes').doc(tripId).update({
       'status': 'Finalizado',
-      'endTime': DateTime.now().toIso8601String(),
+      'endDate': DateTime.now().toIso8601String(),
       ...(totalKm != null ? {'totalKm': totalKm} : {}),
     });
   }
@@ -137,7 +137,7 @@ class TripRepository {
     
     await _firestore.collection('viajes').doc(tripId).update({
       'status': 'Finalizado',
-      'endTime': DateTime.now().toIso8601String(),
+      'endDate': DateTime.now().toIso8601String(),
       ...(sanitizedGuide != null ? {'guideNumber': sanitizedGuide} : {}),
       ...(totalKm != null ? {'totalKm': totalKm} : {}),
     });

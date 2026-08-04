@@ -213,29 +213,81 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
       await ref.read(tripDraftProvider.notifier).clearDraft();
 
       // VALIDAR PERMISOS Y ACTIVAR TELEMETRÍA GPS
-      final hasPermission = await LocationService.checkAndRequestPermissions();
-      if (hasPermission) {
-        await LocationService.startTracking(
-          tripId: newTripId,
-          empresaId: user.idEmpresa,
-        );
-      } else {
-        // El viaje se guarda, pero avisamos que no habrá GPS
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('⚠ No se pudieron obtener permisos de GPS. El kilometraje real no se registrará.'),
-              backgroundColor: Colors.orange,
-            ),
+      final permissionResult = await LocationService.checkAndRequestPermissions();
+      switch (permissionResult) {
+        case LocationPermissionResult.granted:
+          // Iniciar tracking GPS en background
+          await LocationService.startTracking(
+            tripId: newTripId,
+            empresaId: user.idEmpresa,
           );
-        }
+          debugPrint('[GPS] Tracking iniciado para viaje $newTripId');
+        case LocationPermissionResult.serviceDisabled:
+          // El GPS del dispositivo está apagado
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('⚠ El GPS del dispositivo está apagado. Actívalo para registrar kilómetros reales.'),
+                backgroundColor: Colors.orange,
+                duration: Duration(seconds: 5),
+              ),
+            );
+          }
+        case LocationPermissionResult.denied:
+          // Denegado temporalmente — el sistema ya mostró el diálogo nativo
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('⚠ Permiso de ubicación denegado. El km real no se registrará en este viaje.'),
+                backgroundColor: Colors.orange,
+                duration: Duration(seconds: 4),
+              ),
+            );
+          }
+        case LocationPermissionResult.deniedForever:
+          // Denegado permanentemente — hay que ir a Ajustes
+          if (mounted) {
+            showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                backgroundColor: const Color(0xFF1E1E1E),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                title: const Row(
+                  children: [
+                    Icon(Icons.location_off, color: Colors.orange),
+                    SizedBox(width: 10),
+                    Text('Permiso de GPS requerido', style: TextStyle(color: Colors.white, fontSize: 16)),
+                  ],
+                ),
+                content: const Text(
+                  'El permiso de ubicación fue denegado permanentemente. Para registrar el kilometraje real de tus viajes, debes habilitarlo manualmente en los Ajustes del sistema.',
+                  style: TextStyle(color: Colors.white70, fontSize: 13),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Continuar sin GPS', style: TextStyle(color: Colors.grey)),
+                  ),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.black),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      LocationService.openAppSettings();
+                    },
+                    icon: const Icon(Icons.settings, size: 16),
+                    label: const Text('Abrir Ajustes', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            );
+          }
       }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('✓ Viaje iniciado correctamente'),
-            backgroundColor: Color(0xFFFFFFFF),
+            backgroundColor: Color(0xFF2E7D32),
           ),
         );
         context.pop();

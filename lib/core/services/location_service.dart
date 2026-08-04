@@ -8,6 +8,14 @@ import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+/// Resultado detallado de la solicitud de permisos GPS.
+enum LocationPermissionResult {
+  granted,        // Permiso concedido — GPS activo
+  denied,         // Denegado temporalmente — se puede volver a pedir
+  deniedForever,  // Denegado permanentemente — hay que ir a Ajustes
+  serviceDisabled, // El servicio de ubicación está apagado en el dispositivo
+}
+
 class LocationService {
   static const String _distanceKey = 'current_trip_distance';
   static const String _lastLatKey = 'last_lat';
@@ -16,31 +24,47 @@ class LocationService {
   static const String _currentTripIdKey = 'current_trip_id';
   static const String _currentEmpresaIdKey = 'current_empresa_id';
 
-  static Future<bool> checkAndRequestPermissions() async {
-    bool serviceEnabled;
-    LocationPermission permission;
-
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+  /// Verifica y solicita permisos GPS.
+  /// Retorna un [LocationPermissionResult] detallado para que la UI
+  /// pueda reaccionar de forma específica (ej: abrir Ajustes del sistema).
+  static Future<LocationPermissionResult> checkAndRequestPermissions() async {
+    // 1. Verificar si el servicio de ubicación está habilitado
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      return false;
+      debugPrint('[GPS] Servicio de ubicación deshabilitado en el dispositivo.');
+      return LocationPermissionResult.serviceDisabled;
     }
 
-    permission = await Geolocator.checkPermission();
+    // 2. Verificar permiso actual
+    LocationPermission permission = await Geolocator.checkPermission();
+    debugPrint('[GPS] Permiso actual: $permission');
+
+    // 3. Si está denegado temporalmente, solicitamos
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        return false;
-      }
+      debugPrint('[GPS] Permiso tras solicitud: $permission');
     }
 
+    // 4. Clasificar el resultado
     if (permission == LocationPermission.deniedForever) {
-      return false;
+      debugPrint('[GPS] Permiso denegado permanentemente — se requiere ir a Ajustes.');
+      return LocationPermissionResult.deniedForever;
     }
 
-    // Para rastreo en segundo plano, idealmente necesitamos Always
-    // pero permitimos continuar si al menos es WhileInUse por ahora, 
-    // aunque lo ideal es solicitar Always explícitamente en Android 10+.
-    return true;
+    if (permission == LocationPermission.denied) {
+      debugPrint('[GPS] Permiso denegado temporalmente.');
+      return LocationPermissionResult.denied;
+    }
+
+    // whileInUse o always → OK
+    debugPrint('[GPS] Permiso concedido: $permission');
+    return LocationPermissionResult.granted;
+  }
+
+  /// Abre la pantalla de ajustes del sistema para que el usuario
+  /// pueda habilitar los permisos de ubicación manualmente.
+  static Future<void> openAppSettings() async {
+    await Geolocator.openAppSettings();
   }
 
 
@@ -69,6 +93,7 @@ class LocationService {
         initialNotificationTitle: 'Bitácora Telemetría',
         initialNotificationContent: 'Preparando rastreo...',
         foregroundServiceNotificationId: 888,
+        autoStartOnBoot: false,
       ),
       iosConfiguration: IosConfiguration(
         autoStart: false,
@@ -178,6 +203,10 @@ class LocationService {
     });
   }
 
+  // Suscripción IPC para recibir actualizaciones del servicio background
+  static StreamSubscription? _updateSubscription;
+  static double _lastKnownDistance = 0.0;
+
   static Future<void> startTracking({required String tripId, required String empresaId}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_distanceKey, 0.0);
@@ -191,7 +220,10 @@ class LocationService {
     
     final service = FlutterBackgroundService();
 
-    service.on('update').listen((event) {
+    // Cancelar listener previo para evitar duplicados y memory leaks
+    _updateSubscription?.cancel();
+
+    _updateSubscription = service.on('update').listen((event) {
       if (event != null && event['distance'] != null) {
         _lastKnownDistance = (event['distance'] as num).toDouble();
       }
@@ -200,14 +232,35 @@ class LocationService {
     await service.startService();
   }
 
-  static double _lastKnownDistance = 0.0;
-
   static Future<double> stopTracking() async {
     final service = FlutterBackgroundService();
+    
+    // 1. Leer la distancia persistida ANTES de matar el servicio.
+    //    SharedPreferences es la fuente de verdad (escrita por el isolate de background).
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload(); // Forzar recarga fresca desde disco
+    final persistedDistance = prefs.getDouble(_distanceKey) ?? 0.0;
+    
+    // 2. Usar el mayor entre el valor en memoria (IPC) y el persistido (disco).
+    //    Esto cubre ambos escenarios: listener activo vs listener perdido.
+    final distanceToReturn = persistedDistance > _lastKnownDistance
+        ? persistedDistance
+        : _lastKnownDistance;
+    
+    // 3. Detener el servicio de background
     service.invoke('stopService');
     
-    final distanceToReturn = _lastKnownDistance;
+    // 4. Cancelar la suscripción IPC
+    _updateSubscription?.cancel();
+    _updateSubscription = null;
+    
+    // 5. Limpiar estado en SharedPreferences y memoria
     _lastKnownDistance = 0.0;
+    await prefs.setBool(_trackingActiveKey, false);
+    await prefs.remove(_distanceKey);
+    await prefs.remove(_lastLatKey);
+    await prefs.remove(_lastLngKey);
+    await prefs.remove(_currentTripIdKey);
     
     return distanceToReturn;
   }

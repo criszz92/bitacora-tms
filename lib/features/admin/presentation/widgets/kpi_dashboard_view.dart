@@ -111,6 +111,18 @@ class KpiDashboardView extends ConsumerWidget {
           ),
         ),
         ElevatedButton.icon(
+          onPressed: () => _showAddTripDialog(context, ref, vehicles),
+          icon: const Icon(Icons.add_road, size: 18),
+          label: const Text('Registrar Viaje'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blueAccent,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          ),
+        ),
+        const SizedBox(width: 8),
+        ElevatedButton.icon(
           onPressed: () => _showAddExpenseDialog(context, ref, vehicles),
           icon: const Icon(Icons.add, size: 18),
           label: const Text('Registrar Gasto'),
@@ -287,7 +299,7 @@ class KpiDashboardView extends ConsumerWidget {
               Text('[${DateFormat('dd/MM').format(t.startDate)}] ${t.client ?? ""} | ${(t.containerNumber != null && t.containerNumber!.isNotEmpty) ? t.containerNumber : (t.guideNumber ?? "S/ID")}', 
                   style: const TextStyle(color: Colors.grey, fontSize: 11)),
             ])),
-            Text(_fmt(t.value ?? 0), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            Text(_fmt((t.value ?? 0) + (t.extraCostos ?? 0) + (t.sobreEstadia ?? 0)), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ]),
         ),
       );
@@ -416,15 +428,131 @@ class KpiDashboardView extends ConsumerWidget {
     ));
   }
 
+  void _showAddTripDialog(BuildContext context, WidgetRef ref, List<VehicleModel> vehicles) {
+    final originCtrl = TextEditingController();
+    final destCtrl = TextEditingController();
+    final clientCtrl = TextEditingController();
+    final valueCtrl = TextEditingController();
+    final extraCtrl = TextEditingController();
+    final sobreEstadiaCtrl = TextEditingController();
+    final containerCtrl = TextEditingController();
+    final guideCtrl = TextEditingController();
+    final kmCtrl = TextEditingController();
+    
+    final dashboardMonth = ref.read(selectedMonthProvider);
+    final now = DateTime.now();
+    DateTime selectedDate = (dashboardMonth.year == now.year && dashboardMonth.month == now.month) 
+        ? now : DateTime(dashboardMonth.year, dashboardMonth.month, 1);
+        
+    String? selectedVehicle;
+    String? selectedDriverId;
+    final drivers = ref.read(choferesProvider).value ?? [];
+
+    showDialog(context: context, builder: (ctx) => Dialog(
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: Container(
+        width: 450,
+        constraints: const BoxConstraints(maxHeight: 750),
+        padding: const EdgeInsets.all(24),
+        child: StatefulBuilder(builder: (context, setDialogState) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              Text('Registrar Viaje', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+            ]),
+            const SizedBox(height: 24),
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    InkWell(
+                      onTap: () async {
+                        final d = await showDatePicker(context: context, initialDate: selectedDate, firstDate: DateTime(2020), lastDate: DateTime(2100));
+                        if (d != null) setDialogState(() => selectedDate = d);
+                      },
+                      child: Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.05), border: Border.all(color: Colors.white12), borderRadius: BorderRadius.circular(12)), child: Row(children: [const Icon(Icons.calendar_today, color: Colors.blueAccent, size: 16), const SizedBox(width: 12), Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Fecha del Viaje', style: TextStyle(color: Colors.grey, fontSize: 10)), Text('${selectedDate.day}/${selectedDate.month}/${selectedDate.year}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))])])),
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(initialValue: selectedDriverId, dropdownColor: const Color(0xFF1A1A1A), style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'Chofer (Requerido)', labelStyle: TextStyle(color: Colors.grey)), items: drivers.map((d) => DropdownMenuItem(value: d.uid, child: Text(d.nombre))).toList(), onChanged: (val) => setDialogState(() => selectedDriverId = val)),
+                    const SizedBox(height: 16),
+                    _buildField(originCtrl, 'Origen'),
+                    const SizedBox(height: 16),
+                    _buildField(destCtrl, 'Destino'),
+                    const SizedBox(height: 16),
+                    _buildField(clientCtrl, 'Cliente'),
+                    const SizedBox(height: 16),
+                    _buildNumericField(valueCtrl, 'Valor Base (\$)'),
+                    const SizedBox(height: 16),
+                    _buildNumericField(extraCtrl, 'Extra Costos (\$)'),
+                    const SizedBox(height: 16),
+                    _buildNumericField(sobreEstadiaCtrl, 'Sobre Estadía (\$)'),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(initialValue: selectedVehicle, dropdownColor: const Color(0xFF1A1A1A), style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'Vehículo', labelStyle: TextStyle(color: Colors.grey)), items: [const DropdownMenuItem(value: null, child: Text('No asignado')), ...vehicles.map((v) => DropdownMenuItem(value: v.id, child: Text(v.patente)))], onChanged: (val) => setDialogState(() => selectedVehicle = val)),
+                    const SizedBox(height: 16),
+                    _buildField(containerCtrl, 'Nº Contenedor'),
+                    const SizedBox(height: 16),
+                    _buildField(guideCtrl, 'Nº Guía'),
+                    const SizedBox(height: 16),
+                    _buildNumericField(kmCtrl, 'Kilómetros Recorridos'),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 32),
+            Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
+              const SizedBox(width: 12),
+              ElevatedButton(onPressed: () async {
+                if (selectedDriverId == null) return;
+                try {
+                  final profile = ref.read(currentUserProfileProvider).value;
+                  final newTrip = TripModel(
+                    id: '',
+                    idEmpresa: profile?.idEmpresa ?? '',
+                    idChofer: selectedDriverId!,
+                    idJornada: 'ADMIN',
+                    startDate: selectedDate,
+                    endDate: selectedDate,
+                    origin: originCtrl.text,
+                    destination: destCtrl.text,
+                    status: 'Finalizado',
+                    cargoType: 'Carga General',
+                    client: clientCtrl.text,
+                    mandante: clientCtrl.text,
+                    value: NumberUtils.tryParseDouble(valueCtrl.text) ?? 0.0,
+                    billingType: 'OT',
+                    extraCostos: NumberUtils.tryParseDouble(extraCtrl.text) ?? 0.0,
+                    sobreEstadia: NumberUtils.tryParseDouble(sobreEstadiaCtrl.text) ?? 0.0,
+                    containerNumber: containerCtrl.text,
+                    guideNumber: guideCtrl.text,
+                    vehicleId: selectedVehicle,
+                    totalKm: NumberUtils.tryParseDouble(kmCtrl.text) ?? 0.0,
+                    comments: 'Registrado manualmente por ADMIN',
+                  );
+                  await ref.read(adminRepositoryProvider).saveTrip(newTrip);
+                } catch (e) { /* Error silenciado */ }
+                if (ctx.mounted) Navigator.pop(ctx);
+              }, style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16)), child: const Text('Guardar', style: TextStyle(fontWeight: FontWeight.bold))),
+            ]),
+          ],
+        )),
+      ),
+    ));
+  }
+
   void _showEditTripDialog(BuildContext context, WidgetRef ref, dynamic t, List<VehicleModel> vehicles) {
     final originCtrl = TextEditingController(text: (t.origin ?? "").toString());
     final destCtrl = TextEditingController(text: (t.destination ?? "").toString());
     final clientCtrl = TextEditingController(text: (t.client ?? "").toString());
     final valueCtrl = TextEditingController(text: (t.value ?? 0).toStringAsFixed(0));
+    final extraCtrl = TextEditingController(text: (t.extraCostos ?? 0).toStringAsFixed(0));
+    final sobreEstadiaCtrl = TextEditingController(text: (t.sobreEstadia ?? 0).toStringAsFixed(0));
     final containerCtrl = TextEditingController(text: (t.containerNumber ?? "").toString());
     final guideCtrl = TextEditingController(text: (t.guideNumber ?? "").toString());
     final kmCtrl = TextEditingController(text: (t.totalKm ?? 0).toStringAsFixed(1));
-    String? selectedVehicle = vehicles.any((v) => v.id == t.vehicleId) ? t.vehicleId : null;
+    final matchedVehicle = vehicles.where((v) => v.id == t.vehicleId || v.patente == t.vehicleId).firstOrNull;
+    String? selectedVehicle = matchedVehicle?.id;
 
     showDialog(context: context, builder: (ctx) => Dialog(
       backgroundColor: const Color(0xFF1A1A1A),
@@ -454,7 +582,11 @@ class KpiDashboardView extends ConsumerWidget {
                     const SizedBox(height: 16),
                     _buildField(clientCtrl, 'Cliente'),
                     const SizedBox(height: 16),
-                    _buildNumericField(valueCtrl, 'Valor (\$)'),
+                    _buildNumericField(valueCtrl, 'Valor Base (\$)'),
+                    const SizedBox(height: 16),
+                    _buildNumericField(extraCtrl, 'Extra Costos (\$)'),
+                    const SizedBox(height: 16),
+                    _buildNumericField(sobreEstadiaCtrl, 'Sobre Estadía (\$)'),
                     const SizedBox(height: 16),
                     Row(children: [
                       const Icon(Icons.local_shipping, color: Colors.white, size: 20),
@@ -480,6 +612,8 @@ class KpiDashboardView extends ConsumerWidget {
                   final map = (t as dynamic).toMap();
                   map['origin'] = originCtrl.text; map['destination'] = destCtrl.text; map['client'] = clientCtrl.text;
                   map['value'] = NumberUtils.tryParseDouble(valueCtrl.text) ?? 0.0; 
+                  map['extraCostos'] = NumberUtils.tryParseDouble(extraCtrl.text) ?? 0.0;
+                  map['sobreEstadia'] = NumberUtils.tryParseDouble(sobreEstadiaCtrl.text) ?? 0.0;
                   map['containerNumber'] = containerCtrl.text;
                   map['guideNumber'] = guideCtrl.text; 
                   map['vehicleId'] = selectedVehicle;
@@ -502,7 +636,8 @@ class KpiDashboardView extends ConsumerWidget {
     
     DateTime selectedDate = e.date;
     String type = e.type;
-    String? selectedVehicle = vehicles.any((v) => v.id == e.vehicleId) ? e.vehicleId : null;
+    final matchedVehicle = vehicles.where((v) => v.id == e.vehicleId || v.patente == e.vehicleId).firstOrNull;
+    String? selectedVehicle = matchedVehicle?.id;
     String? selectedTripId = e.tripId;
     final trips = ref.read(monthlyTripsProvider).value ?? [];
 

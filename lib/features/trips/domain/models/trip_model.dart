@@ -19,6 +19,8 @@ class TripModel {
   final String? bookingNumber;
   final String? vehicleId;     // Patente del vehículo asociado
   final String comments;        // Mantenido en modelo por retrocompatibilidad, no se muestra en UI
+  final double? extraCostos;
+  final double? sobreEstadia;
 
   TripModel({
     required this.id,
@@ -41,6 +43,8 @@ class TripModel {
     this.totalKm,
     this.vehicleId,
     required this.comments,
+    this.extraCostos,
+    this.sobreEstadia,
   });
 
   Map<String, dynamic> toMap() {
@@ -64,6 +68,8 @@ class TripModel {
       'totalKm': totalKm,
       'vehicleId': vehicleId,
       'comments': comments,
+      'extraCostos': extraCostos,
+      'sobreEstadia': sobreEstadia,
     };
   }
 
@@ -89,6 +95,8 @@ class TripModel {
       totalKm: map['totalKm']?.toDouble(),
       vehicleId: map['vehicleId'],
       comments: map['comments'] ?? '',
+      extraCostos: map['extraCostos']?.toDouble(),
+      sobreEstadia: map['sobreEstadia']?.toDouble(),
     );
   }
 
@@ -113,6 +121,8 @@ class TripModel {
     double? totalKm,
     String? vehicleId,
     String? comments,
+    double? extraCostos,
+    double? sobreEstadia,
   }) {
     return TripModel(
       id: id ?? this.id,
@@ -135,6 +145,8 @@ class TripModel {
       totalKm: totalKm ?? this.totalKm,
       vehicleId: vehicleId ?? this.vehicleId,
       comments: comments ?? this.comments,
+      extraCostos: extraCostos ?? this.extraCostos,
+      sobreEstadia: sobreEstadia ?? this.sobreEstadia,
     );
   }
 }

@@ -21,7 +21,8 @@ class ChileanFinancialCalculator {
     double comision = 0;
     for (final trip in monthlyTrips) {
       if (trip.idChofer == driver.uid) {
-        comision += trip.value * (config.porcentajeComision / 100);
+        final facturable = trip.value + (trip.extraCostos ?? 0) + (trip.sobreEstadia ?? 0);
+        comision += facturable * (config.porcentajeComision / 100);
       }
     }
 
@@ -245,7 +246,7 @@ class ChileanFinancialCalculator {
     double totalIngresosNetos = 0;
     double totalKmFlota = 0;
     for (final trip in monthlyTrips) {
-      totalIngresosNetos += trip.value;
+      totalIngresosNetos += trip.value + (trip.extraCostos ?? 0) + (trip.sobreEstadia ?? 0);
       totalKmFlota += (trip.totalKm ?? 0);
     }
     double ivaDebito = totalIngresosNetos * 0.19;
@@ -421,7 +422,8 @@ class ChileanFinancialCalculator {
         
         double totalComisiones = 0;
         for (final t in driverTrips) {
-          totalComisiones += t.value * (config.porcentajeComision / 100);
+          final facturable = t.value + (t.extraCostos ?? 0) + (t.sobreEstadia ?? 0);
+          totalComisiones += facturable * (config.porcentajeComision / 100);
         }
         
         double fixedCost = dMonthlyCost - totalComisiones - totalViaticos;
@@ -470,7 +472,8 @@ class ChileanFinancialCalculator {
       }
 
       // B) Costo Variable (Comisión por Facturación)
-      double commissionCost = trip.value * (config.porcentajeComision / 100);
+      final facturable = trip.value + (trip.extraCostos ?? 0) + (trip.sobreEstadia ?? 0);
+      double commissionCost = facturable * (config.porcentajeComision / 100);
 
       // C) Viáticos
       double viatico = tripViaticos[trip.id] ?? 0.0;
@@ -478,8 +481,9 @@ class ChileanFinancialCalculator {
       double personalCost = baseSalaryCost + commissionCost;
       double maintenanceCost = tripKm * costoMantenimientoPorKm;
 
+      final facturableTotal = trip.value + (trip.extraCostos ?? 0) + (trip.sobreEstadia ?? 0);
       routeStats.putIfAbsent(routeKey, () => []).add({
-        'income': trip.value,
+        'income': facturableTotal,
         'fuel': fuelCost / 1.19,
         'tolls': tollsCost,
         'viatico': viatico,
