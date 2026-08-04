@@ -390,9 +390,24 @@ class _FleetStatusTab extends ConsumerWidget {
     );
   }
 
-  void _showEditMaintenanceDialog(BuildContext context, WidgetRef ref, VehicleModel vehicle) {
+  void _showEditMaintenanceDialog(BuildContext context, WidgetRef ref, VehicleModel vehicle) async {
+    // 1. Mostrar un pequeño loading mientras consultamos Firestore
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator(color: Colors.orange)),
+    );
+
+    // 2. Fetch the latest odometer for this specific vehicle from 'jornadas'
+    final latestOdometer = await ref.read(adminRepositoryProvider).getLatestOdometerForVehicle(vehicle.idEmpresa, vehicle.patente);
+    final currentOdToUse = latestOdometer ?? vehicle.currentOdometer;
+
+    // 3. Quitar el loading
+    if (!context.mounted) return;
+    Navigator.of(context).pop();
+
     final lastServiceCtrl = TextEditingController(text: (vehicle.lastServiceOdometer ?? vehicle.currentOdometer).toStringAsFixed(0));
-    final odometerCtrl = TextEditingController(text: vehicle.currentOdometer.toStringAsFixed(0));
+    final odometerCtrl = TextEditingController(text: currentOdToUse.toStringAsFixed(0));
     final previousInterval = (vehicle.nextOilChangeKm != null && vehicle.lastServiceOdometer != null)
         ? (vehicle.nextOilChangeKm! - vehicle.lastServiceOdometer!).toStringAsFixed(0)
         : '15000';
@@ -501,8 +516,8 @@ class _FleetStatusTab extends ConsumerWidget {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
                 onPressed: () async {
-                  final newLastService = double.tryParse(lastServiceCtrl.text) ?? (vehicle.lastServiceOdometer ?? vehicle.currentOdometer);
-                  final newCurrent = double.tryParse(odometerCtrl.text) ?? vehicle.currentOdometer;
+                  final newLastService = double.tryParse(lastServiceCtrl.text) ?? (vehicle.lastServiceOdometer ?? currentOdToUse);
+                  final newCurrent = double.tryParse(odometerCtrl.text) ?? currentOdToUse;
                   final newInterval = double.tryParse(intervalCtrl.text) ?? 15000;
                   final newNextKm = newLastService + newInterval;
 

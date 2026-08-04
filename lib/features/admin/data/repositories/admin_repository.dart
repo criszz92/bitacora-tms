@@ -80,13 +80,43 @@ class AdminRepository {
   Future<List<TripModel>> getTripsForMonth(String idEmpresa, DateTime month) async {
     final monthStart = DateTime(month.year, month.month, 1).toIso8601String();
     final monthEnd = DateTime(month.year, month.month + 1, 1).toIso8601String();
+
     final snap = await _db
         .collection('viajes')
         .where('idEmpresa', isEqualTo: idEmpresa)
         .where('startDate', isGreaterThanOrEqualTo: monthStart)
         .where('startDate', isLessThan: monthEnd)
         .get();
+
     return snap.docs.map((d) => TripModel.fromMap(d.data(), d.id)).toList();
+  }
+
+  /// Obtiene el último odómetro real registrado para un vehículo consultando sus jornadas
+  Future<double?> getLatestOdometerForVehicle(String idEmpresa, String patente) async {
+    try {
+      final snapshot = await _db
+          .collection('jornadas')
+          .where('idEmpresa', isEqualTo: idEmpresa)
+          .where('patenteCamion', isEqualTo: patente)
+          .orderBy('startTime', descending: true)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) return null;
+      
+      final data = snapshot.docs.first.data();
+      final endOdometer = data['endOdometer'];
+      final startOdometer = data['startOdometer'];
+      
+      if (endOdometer != null) {
+        return (endOdometer as num).toDouble();
+      } else if (startOdometer != null) {
+        return (startOdometer as num).toDouble();
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
   }
 
   Future<List<ExpenseModel>> getExpensesForMonth(String idEmpresa, DateTime month) async {
