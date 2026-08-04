@@ -43,6 +43,18 @@ class TripRepository {
 
   Future<void> startShift(ShiftModel shift) async {
     await _firestore.collection('jornadas').doc(shift.id).set(shift.toMap());
+
+    // Actualizar el odómetro actual del vehículo
+    try {
+      final snap = await _firestore.collection('vehiculos')
+          .where('idEmpresa', isEqualTo: shift.idEmpresa)
+          .where('patente', isEqualTo: shift.patenteCamion)
+          .limit(1)
+          .get();
+      if (snap.docs.isNotEmpty) {
+        await snap.docs.first.reference.update({'currentOdometer': shift.startOdometer.toDouble()});
+      }
+    } catch (_) {}
   }
 
   Future<void> endShift(String shiftId, int endOdometer) async {
@@ -51,6 +63,22 @@ class TripRepository {
       'endOdometer': endOdometer,
       'status': 'Cerrada',
     });
+
+    // Actualizar el odómetro actual del vehículo al cerrar la jornada
+    try {
+      final shiftSnap = await _firestore.collection('jornadas').doc(shiftId).get();
+      if (shiftSnap.exists) {
+        final shiftMap = shiftSnap.data()!;
+        final snap = await _firestore.collection('vehiculos')
+            .where('idEmpresa', isEqualTo: shiftMap['idEmpresa'])
+            .where('patente', isEqualTo: shiftMap['patenteCamion'])
+            .limit(1)
+            .get();
+        if (snap.docs.isNotEmpty) {
+          await snap.docs.first.reference.update({'currentOdometer': endOdometer.toDouble()});
+        }
+      }
+    } catch (_) {}
 
     await _logAction(
       accion: 'CIERRE_JORNADA',

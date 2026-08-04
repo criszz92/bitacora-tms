@@ -141,6 +141,12 @@ class _ShiftStartScreenState extends ConsumerState<ShiftStartScreen> {
       },
       onSelected: (String selection) {
         _plateCtrl.text = selection;
+        try {
+          final v = vehicles.firstWhere((veh) => veh.patente.toUpperCase() == selection.toUpperCase());
+          if (v.currentOdometer > 0) {
+            _odometerCtrl.text = v.currentOdometer.toStringAsFixed(0);
+          }
+        } catch (_) {}
       },
       fieldViewBuilder: (context, controller, focusNode, onEditingComplete) {
         controller.addListener(() { _plateCtrl.text = controller.text; });
