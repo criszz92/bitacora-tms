@@ -532,10 +532,14 @@ class DriverDashboardScreen extends ConsumerWidget {
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
             ElevatedButton(
               onPressed: selectedType == null ? null : () async {
+                final vehicles = ref.read(vehiclesProvider).value ?? [];
+                final matchedVehicle = vehicles.where((v) => v.patente == shift.patenteCamion).firstOrNull;
+                final vehicleDocId = matchedVehicle?.id ?? '';
+
                 final incidencia = IncidenciaModel(
                   id: const Uuid().v4(),
                   idEmpresa: shift.idEmpresa,
-                  vehicleId: '',
+                  vehicleId: vehicleDocId,
                   vehiclePatente: shift.patenteCamion,
                   idChofer: shift.idChofer,
                   choferNombre: user?.nombre ?? 'Conductor',

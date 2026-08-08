@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:geolocator/geolocator.dart';
@@ -111,6 +112,14 @@ class LocationService {
   @pragma('vm:entry-point')
   static void onStart(ServiceInstance service) async {
     DartPluginRegistrant.ensureInitialized();
+
+    // Inicializar Firebase en el isolate de background
+    try {
+      await Firebase.initializeApp();
+    } catch (_) {
+      // Ya podría estar inicializado
+    }
+
     final prefs = await SharedPreferences.getInstance();
     final Distance distanceCalculator = const Distance();
 
@@ -120,87 +129,118 @@ class LocationService {
 
     final List<Map<String, dynamic>> pointsBuffer = [];
 
+    // Actualizar notificación inmediatamente para confirmar que el servicio arrancó
+    if (service is AndroidServiceInstance) {
+      service.setForegroundNotificationInfo(
+        title: "Bitácora - Viaje en Progreso",
+        content: "GPS activo — esperando señal...",
+      );
+    }
+
     // Escuchar actualizaciones de ubicación
-    Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 30, // Cada 30 metros
-      ),
-    ).listen((Position position) async {
-      await prefs.reload();
-      final isTracking = prefs.getBool(_trackingActiveKey) ?? false;
-      if (!isTracking) return;
+    try {
+      Geolocator.getPositionStream(
+        locationSettings: AndroidSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 30, // Cada 30 metros
+          foregroundNotificationConfig: const ForegroundNotificationConfig(
+            notificationTitle: "Bitácora Telemetría",
+            notificationText: "Rastreando ruta en segundo plano",
+            enableWakeLock: true,
+          ),
+        ),
+      ).listen((Position position) async {
+        await prefs.reload();
+        final isTracking = prefs.getBool(_trackingActiveKey) ?? false;
+        if (!isTracking) return;
 
-      final String? tripId = prefs.getString(_currentTripIdKey);
+        final String? tripId = prefs.getString(_currentTripIdKey);
 
-      double lastLat = prefs.getDouble(_lastLatKey) ?? 0.0;
-      double lastLng = prefs.getDouble(_lastLngKey) ?? 0.0;
-      double currentDistance = prefs.getDouble(_distanceKey) ?? 0.0;
+        double lastLat = prefs.getDouble(_lastLatKey) ?? 0.0;
+        double lastLng = prefs.getDouble(_lastLngKey) ?? 0.0;
+        double currentDistance = prefs.getDouble(_distanceKey) ?? 0.0;
 
-      if (lastLat != 0.0 && lastLng != 0.0) {
-        final double traveled = distanceCalculator.as(
-          LengthUnit.Meter,
-          LatLng(lastLat, lastLng),
-          LatLng(position.latitude, position.longitude),
-        );
+        if (lastLat != 0.0 && lastLng != 0.0) {
+          final double traveled = distanceCalculator.as(
+            LengthUnit.Meter,
+            LatLng(lastLat, lastLng),
+            LatLng(position.latitude, position.longitude),
+          );
 
-        if (traveled > 5 && traveled < 50000) {
-          currentDistance += (traveled / 1000);
-          await prefs.setDouble(_distanceKey, currentDistance);
-        }
-      }
-
-      await prefs.setDouble(_lastLatKey, position.latitude);
-      await prefs.setDouble(_lastLngKey, position.longitude);
-
-      // AGREGAR AL BUFFER LOCAL
-      pointsBuffer.add({
-        'lat': position.latitude,
-        'lng': position.longitude,
-        'timestamp': DateTime.now().toIso8601String(),
-        'speed': position.speed,
-        'accuracy': position.accuracy,
-      });
-
-      // SUBIR A FIRESTORE CADA 5 PUNTOS (Ahorro de datos)
-      if (tripId != null && pointsBuffer.length >= 5) {
-        try {
-          final firestore = FirebaseFirestore.instance;
-          final batch = firestore.batch();
-          
-          for (var point in pointsBuffer) {
-            final docRef = firestore
-                .collection('viajes')
-                .doc(tripId)
-                .collection('puntos')
-                .doc();
-            batch.set(docRef, {
-              ...point,
-              'timestamp': FieldValue.serverTimestamp(),
-            });
+          if (traveled > 5 && traveled < 50000) {
+            currentDistance += (traveled / 1000);
+            await prefs.setDouble(_distanceKey, currentDistance);
           }
-          
-          await batch.commit();
-          pointsBuffer.clear();
-        } catch (e) {
-          debugPrint("Error sincronizando lote GPS: $e");
-          if (pointsBuffer.length > 50) pointsBuffer.removeAt(0);
         }
-      }
 
+        await prefs.setDouble(_lastLatKey, position.latitude);
+        await prefs.setDouble(_lastLngKey, position.longitude);
+
+        // AGREGAR AL BUFFER LOCAL
+        pointsBuffer.add({
+          'lat': position.latitude,
+          'lng': position.longitude,
+          'timestamp': DateTime.now().toIso8601String(),
+          'speed': position.speed,
+          'accuracy': position.accuracy,
+        });
+
+        // SUBIR A FIRESTORE CADA 5 PUNTOS (Ahorro de datos)
+        if (tripId != null && pointsBuffer.length >= 5) {
+          try {
+            final firestore = FirebaseFirestore.instance;
+            final batch = firestore.batch();
+            
+            for (var point in pointsBuffer) {
+              final docRef = firestore
+                  .collection('viajes')
+                  .doc(tripId)
+                  .collection('puntos')
+                  .doc();
+              batch.set(docRef, {
+                ...point,
+                'timestamp': FieldValue.serverTimestamp(),
+              });
+            }
+            
+            await batch.commit();
+            pointsBuffer.clear();
+          } catch (e) {
+            debugPrint("Error sincronizando lote GPS: $e");
+            if (pointsBuffer.length > 50) pointsBuffer.removeAt(0);
+          }
+        }
+
+        if (service is AndroidServiceInstance) {
+          service.setForegroundNotificationInfo(
+            title: "Bitácora - Viaje en Progreso",
+            content: "Distancia: ${currentDistance.toStringAsFixed(2)} KM",
+          );
+        }
+
+        service.invoke('update', {
+          "distance": currentDistance,
+          "latitude": position.latitude,
+          "longitude": position.longitude,
+        });
+      }, onError: (error) {
+        debugPrint("[GPS] Error en position stream: $error");
+        if (service is AndroidServiceInstance) {
+          service.setForegroundNotificationInfo(
+            title: "Bitácora - Error GPS",
+            content: "Error al obtener ubicación: $error",
+          );
+        }
+      });
+    } catch (e) {
+      debugPrint("[GPS] Error crítico al iniciar stream: $e");
       if (service is AndroidServiceInstance) {
         service.setForegroundNotificationInfo(
-          title: "Bitácora - Viaje en Progreso",
-          content: "Distancia: ${currentDistance.toStringAsFixed(2)} KM",
+          title: "Bitácora - Error GPS",
+          content: "No se pudo iniciar el rastreo: $e",
         );
       }
-
-      service.invoke('update', {
-        "distance": currentDistance,
-        "latitude": position.latitude,
-        "longitude": position.longitude,
-      });
-    });
+    }
   }
 
   // Suscripción IPC para recibir actualizaciones del servicio background

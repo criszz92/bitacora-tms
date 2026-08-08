@@ -57,6 +57,11 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
       final amountValue = NumberUtils.tryParseDouble(_amountController.text) ?? 0.0;
       final litrosValue = _isCombustible ? NumberUtils.tryParseDouble(_litrosController.text) : null;
 
+      // Buscar el ID real del vehículo
+      final vehicles = ref.read(vehiclesProvider).value ?? [];
+      final matchedVehicle = vehicles.where((v) => v.patente == shift.patenteCamion).firstOrNull;
+      final vehicleDocId = matchedVehicle?.id ?? '';
+
       final newExpense = ExpenseModel(
         id: 'EXP-${DateTime.now().millisecondsSinceEpoch}',
         idEmpresa: user.idEmpresa,
@@ -69,7 +74,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
         date: DateTime.now(),
         description: _descriptionController.text,
         status: 'Pendiente',
-        vehicleId: shift.patenteCamion,
+        vehicleId: vehicleDocId,
       );
 
       await ref.read(tripRepositoryProvider).addExpense(newExpense);
