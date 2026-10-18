@@ -6,7 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/admin_provider.dart';
 import '../../domain/models/company_config_model.dart';
+import '../../domain/models/recurring_expense_model.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../trips/domain/models/vehicle_model.dart';
 
 class ConfigAdminView extends ConsumerStatefulWidget {
   const ConfigAdminView({super.key});
@@ -41,6 +43,7 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
   bool _isSaving = false;
 
   List<Map<String, dynamic>> _maintenanceRules = [];
+  List<RecurringExpenseModel> _recurringExpenses = [];
 
   @override
   void initState() {
@@ -74,6 +77,7 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
           ? base64Decode(config.emisorLogoBase64)
           : null;
       _maintenanceRules = List<Map<String, dynamic>>.from(config.maintenanceRules.map((e) => Map<String, dynamic>.from(e)));
+      _recurringExpenses = List<RecurringExpenseModel>.from(config.gastosRecurrentes);
     });
   }
 
@@ -158,6 +162,8 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
         diasLaboralesMes: int.tryParse(_diasLaboralesCtrl.text) ?? 22,
         margenObjetivoCotizacion: double.tryParse(_margenObjetivoCtrl.text) ?? 25.0,
         maintenanceRules: _maintenanceRules,
+        gastosRecurrentes: _recurringExpenses,
+        mesesGastosFijosAplicados: currentConfig?.mesesGastosFijosAplicados ?? [],
         utmHistory: currentConfig?.utmHistory ?? {},
         dieselHistory: currentConfig?.dieselHistory ?? {},
         extras: currentConfig?.extras ?? {},
@@ -235,9 +241,111 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
     );
   }
 
+  void _addRecurringExpense(List<VehicleModel> vehicles) {
+    final nameCtrl = TextEditingController();
+    final montoCtrl = TextEditingController();
+    String tipo = 'Seguro';
+    String? selectedVehicle;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          title: const Text('Nuevo Gasto Fijo Mensual', style: TextStyle(color: Colors.white)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildTextField(nameCtrl, 'Nombre descriptivo', 'Ej: GPS ModoGPS, Seguro Carga'),
+              const SizedBox(height: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Tipo de Gasto', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: tipo,
+                        isExpanded: true,
+                        dropdownColor: const Color(0xFF2A2A2A),
+                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                        items: ['Seguro', 'GPS', 'Arriendo', 'Leasing', 'Combustible', 'Peaje', 'Mantención', 'Sueldo', 'Otros']
+                            .map((t) => DropdownMenuItem(value: t, child: Text(t)))
+                            .toList(),
+                        onChanged: (val) => setDialogState(() => tipo = val!),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _buildTextField(montoCtrl, 'Monto Mensual (\$)', 'Ej: 150000'),
+              const SizedBox(height: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Vehículo (opcional)', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String?>(
+                        value: selectedVehicle,
+                        isExpanded: true,
+                        dropdownColor: const Color(0xFF2A2A2A),
+                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                        hint: const Text('General (toda la empresa)', style: TextStyle(color: Colors.white54)),
+                        items: [
+                          const DropdownMenuItem(value: null, child: Text('General (toda la empresa)', style: TextStyle(color: Colors.white70))),
+                          ...vehicles.map((v) => DropdownMenuItem(value: v.id, child: Text(v.patente))),
+                        ],
+                        onChanged: (val) => setDialogState(() => selectedVehicle = val),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.black),
+              onPressed: () {
+                final name = nameCtrl.text.trim();
+                final monto = double.tryParse(montoCtrl.text.replaceAll('.', '')) ?? 0.0;
+                
+                if (name.isNotEmpty && monto > 0) {
+                  setState(() {
+                    _recurringExpenses.add(RecurringExpenseModel(
+                      id: DateTime.now().millisecondsSinceEpoch.toString(),
+                      nombre: name,
+                      tipo: tipo,
+                      monto: monto,
+                      vehicleId: selectedVehicle,
+                      activo: true,
+                    ));
+                  });
+                  Navigator.pop(ctx);
+                }
+              },
+              child: const Text('Agregar', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final configAsync = ref.watch(companyConfigProvider);
+    final vehiclesAsync = ref.watch(adminVehiclesProvider);
+    final vehicles = vehiclesAsync.value ?? [];
 
     return configAsync.when(
       loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
@@ -417,6 +525,144 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
                       ],
                     ),
                   )
+                ],
+              ),
+              
+              const SizedBox(height: 24),
+              // ─── SECCIÓN GASTOS FIJOS MENSUALES ────────────────────
+              _buildSectionCard(
+                title: 'Gastos Fijos Mensuales',
+                icon: Icons.repeat_outlined,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Expanded(
+                        child: Text('Define gastos recurrentes que se aplican cada mes (GPS, Seguros, Arriendos, etc.). Estos se pueden aplicar al mes con un solo click desde el Dashboard.', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                      ),
+                      const SizedBox(width: 16),
+                      ElevatedButton.icon(
+                        onPressed: () => _addRecurringExpense(vehicles),
+                        icon: const Icon(Icons.add, size: 16),
+                        label: const Text('Agregar Gasto Fijo'),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.black),
+                      )
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  if (_recurringExpenses.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(8)),
+                      child: const Center(child: Text('No hay gastos fijos definidos. Agrega GPS, Seguros, Arriendos, etc.', style: TextStyle(color: Colors.white54, fontSize: 13))),
+                    )
+                  else
+                    Column(
+                      children: _recurringExpenses.asMap().entries.map((entry) {
+                        final idx = entry.key;
+                        final gasto = entry.value;
+                        final vehicleName = gasto.vehicleId != null
+                            ? vehicles.where((v) => v.id == gasto.vehicleId).firstOrNull?.patente ?? 'Vehículo'
+                            : 'General';
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: gasto.activo ? Colors.black26 : Colors.black12,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: gasto.activo ? Colors.orange.withValues(alpha: 0.3) : Colors.white12),
+                          ),
+                          child: Row(
+                            children: [
+                              // Toggle activo/inactivo
+                              GestureDetector(
+                                onTap: () => setState(() {
+                                  _recurringExpenses[idx] = gasto.copyWith(activo: !gasto.activo);
+                                }),
+                                child: Container(
+                                  width: 36, height: 36,
+                                  decoration: BoxDecoration(
+                                    color: gasto.activo ? Colors.orange.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Icon(
+                                    gasto.activo ? Icons.check_circle : Icons.pause_circle_outline,
+                                    color: gasto.activo ? Colors.orange : Colors.white38,
+                                    size: 20,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      gasto.nombre,
+                                      style: TextStyle(
+                                        color: gasto.activo ? Colors.white : Colors.white38,
+                                        fontWeight: FontWeight.bold,
+                                        decoration: gasto.activo ? null : TextDecoration.lineThrough,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(4)),
+                                          child: Text(gasto.tipo, style: const TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold)),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Icon(gasto.vehicleId != null ? Icons.local_shipping : Icons.business, size: 12, color: Colors.white38),
+                                        const SizedBox(width: 4),
+                                        Text(vehicleName, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Text(
+                                '\$${gasto.monto.toStringAsFixed(0)}',
+                                style: TextStyle(
+                                  color: gasto.activo ? Colors.white : Colors.white38,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                                onPressed: () => setState(() => _recurringExpenses.removeAt(idx)),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  if (_recurringExpenses.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.orange.withValues(alpha: 0.3))),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Total Gastos Fijos Mensuales', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+                              Text('${_recurringExpenses.where((g) => g.activo).length} gastos activos de ${_recurringExpenses.length} definidos', style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                            ],
+                          ),
+                          Text(
+                            '\$${_recurringExpenses.where((g) => g.activo).fold<double>(0, (sum, g) => sum + g.monto).toStringAsFixed(0)} / mes',
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
               

@@ -129,90 +129,99 @@ class _ViaticosRequestScreenState extends ConsumerState<ViaticosRequestScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'Selecciona los días trabajados. El sistema cruzará automáticamente con tus viajes completados en esas fechas.',
-              style: TextStyle(color: Colors.grey, fontSize: 14, height: 1.5),
-            ),
-            const SizedBox(height: 24),
-
-            // ── Leyenda de colores ──────────────────────────────────────
-            viaticosAsync.when(
-              loading: () => const SizedBox.shrink(),
-              error: (e, s) => const SizedBox.shrink(),
-              data: (viaticos) => viaticos.isEmpty
-                  ? const SizedBox.shrink()
-                  : _buildLeyenda(),
-            ),
-
-            const SizedBox(height: 16),
-
-            // ── Selector de fechas con indicadores visuales ──────────────
-            GestureDetector(
-              onTap: _selectDateRange,
-              child: Container(
-                padding: const EdgeInsets.all(28),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E1E1E),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: _selectedRange != null
-                        ? const Color(0xFFE0E0E0)
-                        : const Color(0xFFE0E0E0).withValues(alpha: 0.3),
-                    width: _selectedRange != null ? 1.5 : 1,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ── Contenido scrollable ──────────────────────────────────────
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Selecciona los días trabajados. El sistema cruzará automáticamente con tus viajes completados en esas fechas.',
+                    style: TextStyle(color: Colors.grey, fontSize: 14, height: 1.5),
                   ),
-                ),
-                child: Column(
-                  children: [
-                    const Icon(Icons.date_range,
-                        size: 56, color: Color(0xFFE0E0E0)),
-                    const SizedBox(height: 16),
-                    Text(
-                      _selectedRange == null
-                          ? 'Toca para seleccionar fechas'
-                          : '${_fmtDate(_selectedRange!.start)}  →  ${_fmtDate(_selectedRange!.end)}',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                        color: _selectedRange != null
-                            ? Colors.white
-                            : Colors.grey,
+                  const SizedBox(height: 24),
+
+                  // ── Leyenda de colores ──────────────────────────────────
+                  viaticosAsync.when(
+                    loading: () => const SizedBox.shrink(),
+                    error: (e, s) => const SizedBox.shrink(),
+                    data: (viaticos) => viaticos.isEmpty
+                        ? const SizedBox.shrink()
+                        : _buildLeyenda(),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // ── Selector de fechas ──────────────────────────────────
+                  GestureDetector(
+                    onTap: _selectDateRange,
+                    child: Container(
+                      padding: const EdgeInsets.all(28),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E1E1E),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: _selectedRange != null
+                              ? const Color(0xFFE0E0E0)
+                              : const Color(0xFFE0E0E0).withValues(alpha: 0.3),
+                          width: _selectedRange != null ? 1.5 : 1,
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          const Icon(Icons.date_range,
+                              size: 56, color: Color(0xFFE0E0E0)),
+                          const SizedBox(height: 16),
+                          Text(
+                            _selectedRange == null
+                                ? 'Toca para seleccionar fechas'
+                                : '${_fmtDate(_selectedRange!.start)}  →  ${_fmtDate(_selectedRange!.end)}',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
+                              color: _selectedRange != null
+                                  ? Colors.white
+                                  : Colors.grey,
+                            ),
+                          ),
+                          if (_selectedRange != null) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              '${_selectedRange!.duration.inDays + 1} día(s) seleccionado(s)',
+                              style: const TextStyle(color: Colors.grey, fontSize: 13),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
-                    if (_selectedRange != null) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        '${_selectedRange!.duration.inDays + 1} día(s) seleccionado(s)',
-                        style: const TextStyle(color: Colors.grey, fontSize: 13),
-                      ),
-                    ],
-                  ],
-                ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // ── Historial de rendiciones (scrollable) ───────────────
+                  viaticosAsync.when(
+                    loading: () => const Center(
+                      child: CircularProgressIndicator(color: Color(0xFFE0E0E0)),
+                    ),
+                    error: (e, s) => Text('Error: $e',
+                        style: const TextStyle(color: Colors.red)),
+                    data: (viaticos) => viaticos.isEmpty
+                        ? const SizedBox.shrink()
+                        : _buildHistorial(viaticos),
+                  ),
+                ],
               ),
             ),
+          ),
 
-            const SizedBox(height: 24),
-
-            // ── Historial de rendiciones con marcado visual ───────────────
-            viaticosAsync.when(
-              loading: () => const Center(
-                child: CircularProgressIndicator(color: Color(0xFFE0E0E0)),
-              ),
-              error: (e, s) => Text('Error: $e',
-                  style: const TextStyle(color: Colors.red)),
-              data: (viaticos) => viaticos.isEmpty
-                  ? const SizedBox.shrink()
-                  : _buildHistorial(viaticos),
-            ),
-
-            const Spacer(),
-
-            // ── Botón Compartir ──────────────────────────────────────────
-            SizedBox(
+          // ── Botón Compartir (fijo abajo) ────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+            child: SizedBox(
               height: 60,
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
@@ -240,9 +249,8 @@ class _ViaticosRequestScreenState extends ConsumerState<ViaticosRequestScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -300,7 +308,7 @@ class _ViaticosRequestScreenState extends ConsumerState<ViaticosRequestScreen> {
                 fontWeight: FontWeight.bold,
                 letterSpacing: 1)),
         const SizedBox(height: 8),
-        ...viaticos.take(4).map((v) => _buildViaticoBadge(v)),
+        ...viaticos.map((v) => _buildViaticoBadge(v)),
       ],
     );
   }

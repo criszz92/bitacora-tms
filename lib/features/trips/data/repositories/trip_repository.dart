@@ -103,6 +103,18 @@ class TripRepository {
     });
   }
 
+  // Escucha en TIEMPO REAL todos los viajes de una jornada específica
+  Stream<List<TripModel>> watchShiftTrips(String shiftId) {
+    return _firestore
+        .collection('viajes')
+        .where('idEmpresa', isEqualTo: currentEmpresaId)
+        .where('idJornada', isEqualTo: shiftId)
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs.map((doc) => TripModel.fromMap(doc.data(), doc.id)).toList();
+    });
+  }
+
   // Obtiene los viajes de un chofer en un rango de fechas para rendición de viáticos
   Future<List<TripModel>> getTripsByDateRange(DateTime start, DateTime end) async {
     final snapshot = await _firestore
@@ -178,6 +190,24 @@ class TripRepository {
         'guideNumber': sanitizedGuide,
         'totalKm': totalKm,
       },
+    );
+  }
+
+  // Permite al conductor o administrador actualizar guía y kilómetros estimados de un viaje
+  Future<void> updateTripDetails(String tripId, {double? totalKm, String? guideNumber}) async {
+    final sanitizedGuide = guideNumber != null ? SecurityUtils.sanitizeText(guideNumber) : null;
+    final updates = <String, dynamic>{};
+    if (sanitizedGuide != null) updates['guideNumber'] = sanitizedGuide;
+    if (totalKm != null) updates['totalKm'] = totalKm;
+    if (updates.isEmpty) return;
+
+    await _firestore.collection('viajes').doc(tripId).update(updates);
+
+    await _logAction(
+      accion: 'EDICION_VIAJE_KM_GUIA',
+      coleccion: 'viajes',
+      documentoId: tripId,
+      detalles: updates,
     );
   }
 

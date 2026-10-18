@@ -5,7 +5,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'core/theme/app_theme.dart';
 import 'core/router/app_router.dart';
-import 'core/services/location_service.dart';
 import 'firebase_options.dart';
 import 'features/trips/domain/services/fuzzy_search_service.dart';
 import 'core/services/push_notification_service.dart';
@@ -18,9 +17,8 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // Inicializar servicio de telemetría (GPS en segundo plano) y Notificaciones Push solo en móvil
+  // Inicializar Notificaciones Push solo en móvil
   if (!kIsWeb) {
-    await LocationService.initializeService();
     await PushNotificationService.initialize();
   }
 

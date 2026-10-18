@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/admin_provider.dart';
 import '../../../trips/domain/models/viatico_model.dart';
 import '../../../trips/domain/models/trip_model.dart';
+import '../../../trips/presentation/providers/trip_provider.dart';
 import '../../../auth/domain/models/user_model.dart';
 
 /// Vista del Admin para gestionar rendiciones de viáticos.
@@ -166,100 +167,108 @@ class ViaticosAdminView extends ConsumerWidget {
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: Text('Rendición: $choferName', style: const TextStyle(color: Colors.white, fontSize: 18)),
-        content: SizedBox(
-          width: 500, // Fijar un ancho para evitar el gris de layout
-          child: FutureBuilder<List<TripModel>>(
-            future: ref.read(adminRepositoryProvider).getTripsForViatico(v.idEmpresa, v.idChofer, v.fechaInicio, v.fechaFin),
-            builder: (c, snap) {
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const SizedBox(height: 100, child: Center(child: CircularProgressIndicator(color: Color(0xFFFFFFFF))));
-              }
-              if (snap.hasError) {
-                return Text('Error: ${snap.error}', style: const TextStyle(color: Colors.red));
-              }
-              final trips = snap.data ?? [];
-              if (trips.isEmpty) {
-                return const Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Text('No se encontraron viajes en este periodo.', style: TextStyle(color: Colors.grey)),
-                );
-              }
-
-              // Calcular totales y lógica de viáticos
-
-              double totalViatico = 0;
-              final Map<String, bool> dayHasPaid = {};
-
-              // Pre-calcular montos para usarlos en la UI y totales
-              final List<Map<String, dynamic>> processedTrips = [];
-              
-              for (final t in trips) {
-                double viaticoCalc = 0;
-                String viaticoLabel = '';
-                
-                if (config != null) {
-                  final isLongTrip = (t.totalKm ?? 0) >= config.umbralKilometrosViatico;
-                  final dayKey = '${t.startDate.year}-${t.startDate.month}-${t.startDate.day}';
-                  
-                  if (config.tipoViatico == 'POR_JORNADA') {
-                    if (dayHasPaid.containsKey(dayKey)) {
-                      viaticoLabel = 'Incluido';
-                      viaticoCalc = 0;
-                    } else {
-                      final dayTrips = trips.where((tri) => 
-                        '${tri.startDate.year}-${tri.startDate.month}-${tri.startDate.day}' == dayKey).toList();
-                      final hasLong = dayTrips.any((tri) => (tri.totalKm ?? 0) >= config.umbralKilometrosViatico);
-                      viaticoCalc = hasLong ? (chofer.montoViaticoLargo ?? 10000) : (chofer.montoViaticoLocal ?? 6500);
-                      viaticoLabel = '\$${viaticoCalc.toStringAsFixed(0)}';
-                      dayHasPaid[dayKey] = true;
-                    }
-                  } else {
-                    viaticoCalc = isLongTrip ? (chofer.montoViaticoLargo ?? 10000) : (chofer.montoViaticoLocal ?? 6500);
-                    viaticoLabel = '\$${viaticoCalc.toStringAsFixed(0)}';
-                  }
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          title: Text('Rendición: $choferName', style: const TextStyle(color: Colors.white, fontSize: 18)),
+          content: SizedBox(
+            width: 500, // Fijar un ancho para evitar el gris de layout
+            child: FutureBuilder<List<TripModel>>(
+              future: ref.read(adminRepositoryProvider).getTripsForViatico(v.idEmpresa, v.idChofer, v.fechaInicio, v.fechaFin),
+              builder: (c, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const SizedBox(height: 100, child: Center(child: CircularProgressIndicator(color: Color(0xFFFFFFFF))));
+                }
+                if (snap.hasError) {
+                  return Text('Error: ${snap.error}', style: const TextStyle(color: Colors.red));
+                }
+                final trips = snap.data ?? [];
+                if (trips.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Text('No se encontraron viajes en este periodo.', style: TextStyle(color: Colors.grey)),
+                  );
                 }
 
+                // Calcular totales y lógica de viáticos
 
-                totalViatico += viaticoCalc;
+                double totalViatico = 0;
+                final Map<String, bool> dayHasPaid = {};
+
+                // Pre-calcular montos para usarlos en la UI y totales
+                final List<Map<String, dynamic>> processedTrips = [];
                 
-                processedTrips.add({
-                  'trip': t,
-                  'viaticoCalc': viaticoCalc,
-                  'viaticoLabel': viaticoLabel,
-                });
-              }
+                for (final t in trips) {
+                  double viaticoCalc = 0;
+                  String viaticoLabel = '';
+                  
+                  if (config != null) {
+                    final isLongTrip = (t.totalKm ?? 0) >= config.umbralKilometrosViatico;
+                    final dayKey = '${t.startDate.year}-${t.startDate.month}-${t.startDate.day}';
+                    
+                    if (config.tipoViatico == 'POR_JORNADA') {
+                      if (dayHasPaid.containsKey(dayKey)) {
+                        viaticoLabel = 'Incluido';
+                        viaticoCalc = 0;
+                      } else {
+                        final dayTrips = trips.where((tri) => 
+                          '${tri.startDate.year}-${tri.startDate.month}-${tri.startDate.day}' == dayKey).toList();
+                        final hasLong = dayTrips.any((tri) => (tri.totalKm ?? 0) >= config.umbralKilometrosViatico);
+                        viaticoCalc = hasLong ? (chofer.montoViaticoLargo ?? 10000) : (chofer.montoViaticoLocal ?? 6500);
+                        viaticoLabel = '\$${viaticoCalc.toStringAsFixed(0)}';
+                        dayHasPaid[dayKey] = true;
+                      }
+                    } else {
+                      viaticoCalc = isLongTrip ? (chofer.montoViaticoLargo ?? 10000) : (chofer.montoViaticoLocal ?? 6500);
+                      viaticoLabel = '\$${viaticoCalc.toStringAsFixed(0)}';
+                    }
+                  }
 
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Expanded(
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: processedTrips.length,
-                      itemBuilder: (context, i) {
-                        final data = processedTrips[i];
-                        final TripModel t = data['trip'];
-                        final String viaticoLabel = data['viaticoLabel'];
 
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.local_shipping, color: Color(0xFFE0E0E0)),
-                          title: Text('${t.origin} → ${t.destination}', style: const TextStyle(color: Colors.white, fontSize: 13)),
-                          subtitle: Text('${_fmtDate(t.startDate)} · ${t.client.isEmpty ? 'Sin cliente' : t.client}', style: const TextStyle(color: Colors.grey, fontSize: 11)),
-                          trailing: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text('Viático: $viaticoLabel', style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                        );
-                      },
+                  totalViatico += viaticoCalc;
+                  
+                  processedTrips.add({
+                    'trip': t,
+                    'viaticoCalc': viaticoCalc,
+                    'viaticoLabel': viaticoLabel,
+                  });
+                }
+
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Expanded(
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: processedTrips.length,
+                        itemBuilder: (context, i) {
+                          final data = processedTrips[i];
+                          final TripModel t = data['trip'];
+                          final String viaticoLabel = data['viaticoLabel'];
+
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.local_shipping, color: Color(0xFFE0E0E0)),
+                            title: Text('${t.origin} → ${t.destination}', style: const TextStyle(color: Colors.white, fontSize: 13)),
+                            subtitle: Text('${_fmtDate(t.startDate)} · ${(t.totalKm ?? 0).toStringAsFixed(1)} KM · ${t.client.isEmpty ? 'Sin cliente' : t.client}', style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text('Viático: $viaticoLabel', style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                                const SizedBox(width: 4),
+                                IconButton(
+                                  icon: const Icon(Icons.edit, size: 16, color: Colors.white54),
+                                  tooltip: 'Editar KM y Guía',
+                                  onPressed: () => _showEditKmAdminDialog(context, ref, t, () {
+                                    setDialogState(() {});
+                                  }),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
                     ),
-                  ),
                   const Divider(color: Colors.grey),
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -302,8 +311,9 @@ class ViaticosAdminView extends ConsumerWidget {
             ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Future<void> _eliminarRendicion(BuildContext context, WidgetRef ref, ViaticoModel v) async {
     final confirm = await showDialog<bool>(
@@ -416,6 +426,86 @@ class ViaticosAdminView extends ConsumerWidget {
           const SizedBox(height: 8),
           const Text('Las rendiciones aparecerán aquí cuando los conductores las envíen.',
               style: TextStyle(color: Colors.grey, fontSize: 13)),
+        ],
+      ),
+    );
+  }
+
+  void _showEditKmAdminDialog(BuildContext context, WidgetRef ref, TripModel t, VoidCallback onUpdated) {
+    final kmCtrl = TextEditingController(text: (t.totalKm ?? 0).toStringAsFixed(1));
+    final guideCtrl = TextEditingController(text: t.guideNumber ?? '');
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('Editar Kilometraje / Guía', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('${t.origin} → ${t.destination}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: guideCtrl,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Nº Guía',
+                  filled: true,
+                  fillColor: Colors.black26,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: kmCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Kilómetros aprox.',
+                  suffixText: 'KM',
+                  filled: true,
+                  fillColor: Colors.black26,
+                ),
+                validator: (v) {
+                  if (v == null || double.tryParse(v.replaceAll(',', '.').trim()) == null) {
+                    return 'Ingresa un valor numérico válido';
+                  }
+                  return null;
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black),
+            onPressed: () async {
+              if (!formKey.currentState!.validate()) return;
+              final km = double.tryParse(kmCtrl.text.replaceAll(',', '.').trim()) ?? 0.0;
+              await ref.read(tripRepositoryProvider).updateTripDetails(
+                t.id,
+                totalKm: km,
+                guideNumber: guideCtrl.text.trim(),
+              );
+              if (ctx.mounted) Navigator.pop(ctx);
+              onUpdated();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('✓ Viaje actualizado: ${km.toStringAsFixed(1)} KM'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              }
+            },
+            child: const Text('Guardar', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
         ],
       ),
     );

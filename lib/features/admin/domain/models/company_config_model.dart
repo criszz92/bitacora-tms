@@ -1,3 +1,5 @@
+import 'recurring_expense_model.dart';
+
 class CompanyConfigModel {
   final String idEmpresa;
   final double sueldoMinimo;
@@ -13,6 +15,8 @@ class CompanyConfigModel {
   final List<Map<String, dynamic>> maintenanceRules; // Reglas dinámicas de mantenimiento
   final int diasLaboralesMes;            // default: 22
   final double margenObjetivoCotizacion; // default: 25.0 (porcentaje)
+  final List<RecurringExpenseModel> gastosRecurrentes; // Gastos fijos mensuales preestablecidos
+  final List<String> mesesGastosFijosAplicados; // Meses donde ya se aplicaron ("2026-09")
   final Map<String, dynamic> extras;
 
   // ─── Datos del Emisor (para PDF de cotizaciones) ─────────────────────────
@@ -39,6 +43,8 @@ class CompanyConfigModel {
     this.maintenanceRules = const [],
     this.diasLaboralesMes = 22,
     this.margenObjetivoCotizacion = 25.0,
+    this.gastosRecurrentes = const [],
+    this.mesesGastosFijosAplicados = const [],
     this.extras = const {},
     this.emisorRazonSocial = '',
     this.emisorRut = '',
@@ -74,6 +80,22 @@ class CompanyConfigModel {
       }
     }
 
+    // Procesamos gastos recurrentes
+    final List<RecurringExpenseModel> gRecurrentes = [];
+    if (map['gastosRecurrentes'] != null) {
+      for (var g in (map['gastosRecurrentes'] as List)) {
+        gRecurrentes.add(RecurringExpenseModel.fromMap(Map<String, dynamic>.from(g as Map)));
+      }
+    }
+
+    // Meses donde se han aplicado los gastos fijos
+    final List<String> mesesAplicados = [];
+    if (map['mesesGastosFijosAplicados'] != null) {
+      for (var m in (map['mesesGastosFijosAplicados'] as List)) {
+        mesesAplicados.add(m.toString());
+      }
+    }
+
     return CompanyConfigModel(
       idEmpresa: id,
       sueldoMinimo: (map['sueldoMinimo'] as num?)?.toDouble() ?? 539000,
@@ -89,6 +111,8 @@ class CompanyConfigModel {
       maintenanceRules: mRules,
       diasLaboralesMes: map['diasLaboralesMes'] as int? ?? 22,
       margenObjetivoCotizacion: (map['margenObjetivoCotizacion'] as num?)?.toDouble() ?? 25.0,
+      gastosRecurrentes: gRecurrentes,
+      mesesGastosFijosAplicados: mesesAplicados,
       extras: map['extras'] ?? {},
       emisorRazonSocial: map['emisorRazonSocial'] ?? '',
       emisorRut: map['emisorRut'] ?? '',
@@ -115,6 +139,8 @@ class CompanyConfigModel {
       'maintenanceRules': maintenanceRules,
       'diasLaboralesMes': diasLaboralesMes,
       'margenObjetivoCotizacion': margenObjetivoCotizacion,
+      'gastosRecurrentes': gastosRecurrentes.map((g) => g.toMap()).toList(),
+      'mesesGastosFijosAplicados': mesesGastosFijosAplicados,
       'extras': extras,
       'emisorRazonSocial': emisorRazonSocial,
       'emisorRut': emisorRut,
@@ -141,6 +167,8 @@ class CompanyConfigModel {
     List<Map<String, dynamic>>? maintenanceRules,
     int? diasLaboralesMes,
     double? margenObjetivoCotizacion,
+    List<RecurringExpenseModel>? gastosRecurrentes,
+    List<String>? mesesGastosFijosAplicados,
     Map<String, dynamic>? extras,
     String? emisorRazonSocial,
     String? emisorRut,
@@ -165,6 +193,8 @@ class CompanyConfigModel {
       maintenanceRules: maintenanceRules ?? this.maintenanceRules,
       diasLaboralesMes: diasLaboralesMes ?? this.diasLaboralesMes,
       margenObjetivoCotizacion: margenObjetivoCotizacion ?? this.margenObjetivoCotizacion,
+      gastosRecurrentes: gastosRecurrentes ?? this.gastosRecurrentes,
+      mesesGastosFijosAplicados: mesesGastosFijosAplicados ?? this.mesesGastosFijosAplicados,
       extras: extras ?? this.extras,
       emisorRazonSocial: emisorRazonSocial ?? this.emisorRazonSocial,
       emisorRut: emisorRut ?? this.emisorRut,

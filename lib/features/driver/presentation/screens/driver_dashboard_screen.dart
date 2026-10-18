@@ -11,7 +11,6 @@ import '../../../trips/domain/models/vehicle_model.dart';
 import '../../../admin/domain/models/incidencia_model.dart';
 import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
-import '../../../../core/services/location_service.dart';
 import '../../../admin/domain/models/service_request_model.dart';
 
 class DriverDashboardScreen extends ConsumerWidget {
@@ -20,7 +19,7 @@ class DriverDashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final activeShiftAsync = ref.watch(activeShiftProvider);
-    final activeTripsAsync = ref.watch(activeTripsProvider);
+    final shiftTripsAsync = ref.watch(currentShiftTripsProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -36,7 +35,7 @@ class DriverDashboardScreen extends ConsumerWidget {
             // Listener para reportes automáticos de documentos
             _setupAutoDocumentReportListener(ref, shift);
             
-            return _buildDashboardContent(context, ref, activeTripsAsync, shift);
+            return _buildDashboardContent(context, ref, shiftTripsAsync, shift);
           },
           loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFFFFFFFF))),
           error: (err, stack) => Center(child: Text('Error al cargar jornada: $err')),
@@ -226,7 +225,7 @@ class DriverDashboardScreen extends ConsumerWidget {
   }
 
   // ================= DASHBOARD REAL MÓVIL =================
-  Widget _buildDashboardContent(BuildContext context, WidgetRef ref, AsyncValue<List<TripModel>> activeTripsAsync, ShiftModel shift) {
+  Widget _buildDashboardContent(BuildContext context, WidgetRef ref, AsyncValue<List<TripModel>> shiftTripsAsync, ShiftModel shift) {
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
@@ -283,34 +282,43 @@ class DriverDashboardScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: activeTripsAsync.when(
-                  data: (trips) => _buildSummaryCard('Viajes Activos', '${trips.length}', Icons.local_shipping),
-                  loading: () => _buildLoadingCard(),
-                  error: (err, stack) => _buildErrorCard(),
-                ),
-              ),
-            ],
+          shiftTripsAsync.when(
+            data: (trips) {
+              final activeCount = trips.where((t) => t.status == 'En Ruta').length;
+              final completedTrips = trips.where((t) => t.status != 'En Ruta').toList();
+              final double totalKmJornada = completedTrips.fold(0.0, (acc, t) => acc + (t.totalKm ?? 0.0));
+              return Row(
+                children: [
+                  Expanded(child: _buildSummaryCard('Viajes Activos', '$activeCount', Icons.local_shipping)),
+                  const SizedBox(width: 12),
+                  Expanded(child: _buildSummaryCard('KM Jornada', totalKmJornada.toStringAsFixed(0), Icons.route)),
+                ],
+              );
+            },
+            loading: () => Row(children: [Expanded(child: _buildLoadingCard())]),
+            error: (err, stack) => Row(children: [Expanded(child: _buildErrorCard())]),
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
           const Text(
-            'Viaje Actual en Ruta',
+            'Viajes de la Jornada',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           Expanded(
-            child: activeTripsAsync.when(
+            child: shiftTripsAsync.when(
               data: (trips) {
-                final inRouteTrips = trips.where((t) => t.status == 'En Ruta').toList();
-                if (inRouteTrips.isEmpty) {
-                  return const Center(child: Text('No hay viajes activos', style: TextStyle(color: Colors.grey)));
+                if (trips.isEmpty) {
+                  return const Center(child: Text('No hay viajes registrados en esta jornada', style: TextStyle(color: Colors.grey)));
                 }
+                final sorted = List<TripModel>.from(trips)..sort((a, b) {
+                  if (a.status == 'En Ruta' && b.status != 'En Ruta') return -1;
+                  if (a.status != 'En Ruta' && b.status == 'En Ruta') return 1;
+                  return b.startDate.compareTo(a.startDate);
+                });
                 return ListView.builder(
-                  itemCount: inRouteTrips.length,
+                  itemCount: sorted.length,
                   itemBuilder: (context, index) {
-                    return _buildTripCard(context, ref, inRouteTrips[index]);
+                    return _buildTripCard(context, ref, sorted[index]);
                   },
                 );
               },
@@ -623,11 +631,12 @@ class DriverDashboardScreen extends ConsumerWidget {
   }
 
   Widget _buildTripCard(BuildContext context, WidgetRef ref, TripModel trip) {
+    final isEnRuta = trip.status == 'En Ruta';
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: Color(0xFFFFFFFF), width: 1),
+        side: BorderSide(color: isEnRuta ? const Color(0xFFFFFFFF) : Colors.white24, width: 1),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -637,11 +646,29 @@ class DriverDashboardScreen extends ConsumerWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('VIAJE ACTIVO', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFFFFFFF))),
+                Text(
+                  isEnRuta ? 'VIAJE ACTIVO' : 'VIAJE COMPLETADO',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: isEnRuta ? const Color(0xFFFFFFFF) : Colors.white70,
+                  ),
+                ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(color: const Color(0xFFFFFFFF).withValues(alpha: 0.2), borderRadius: BorderRadius.circular(12)),
-                  child: Text(trip.status, style: const TextStyle(color: Color(0xFFFFFFFF), fontSize: 12, fontWeight: FontWeight.bold)),
+                  decoration: BoxDecoration(
+                    color: isEnRuta
+                        ? const Color(0xFFFFFFFF).withValues(alpha: 0.2)
+                        : Colors.green.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    trip.status,
+                    style: TextStyle(
+                      color: isEnRuta ? const Color(0xFFFFFFFF) : Colors.greenAccent,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -654,18 +681,54 @@ class DriverDashboardScreen extends ConsumerWidget {
               children: [
                 const Icon(Icons.inventory_2, size: 16, color: Colors.grey),
                 const SizedBox(width: 8),
-                Text(trip.containerNumber ?? trip.guideNumber ?? 'Carga Suelta', style: const TextStyle(color: Colors.grey, fontSize: 14)),
+                Expanded(
+                  child: Text(
+                    trip.containerNumber != null && trip.containerNumber!.isNotEmpty
+                        ? trip.containerNumber!
+                        : (trip.guideNumber != null && trip.guideNumber!.isNotEmpty
+                            ? 'Guía: ${trip.guideNumber}'
+                            : 'Carga Suelta'),
+                    style: const TextStyle(color: Colors.grey, fontSize: 14),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (!isEnRuta && trip.totalKm != null) ...[
+                  const Icon(Icons.route, size: 16, color: Colors.purpleAccent),
+                  const SizedBox(width: 6),
+                  Text(
+                    '${trip.totalKm!.toStringAsFixed(1)} KM',
+                    style: const TextStyle(color: Colors.purpleAccent, fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 16),
-            if (trip.status == 'En Ruta')
+            if (isEnRuta)
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(foregroundColor: const Color(0xFFFFFFFF), side: const BorderSide(color: Color(0xFFFFFFFF)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFFFFFFF),
+                    side: const BorderSide(color: Color(0xFFFFFFFF)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
                   onPressed: () => _showEndTripDialog(context, ref, trip),
                   icon: const Icon(Icons.check_circle),
                   label: const Text('FINALIZAR VIAJE', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              )
+            else
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white70,
+                    side: const BorderSide(color: Colors.white24),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () => _showEditTripDriverDialog(context, ref, trip),
+                  icon: const Icon(Icons.edit, size: 16),
+                  label: const Text('EDITAR KM / GUÍA', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                 ),
               ),
           ],
@@ -676,76 +739,195 @@ class DriverDashboardScreen extends ConsumerWidget {
 
   Future<void> _showEndTripDialog(BuildContext context, WidgetRef ref, TripModel trip) async {
     final guideCtrl = TextEditingController(text: trip.guideNumber ?? '');
-    bool isProcessing = false;
+    final kmCtrl = TextEditingController(
+      text: (trip.totalKm != null && trip.totalKm! > 0) ? trip.totalKm!.toStringAsFixed(0) : '',
+    );
+    final formKey = GlobalKey<FormState>();
 
     await showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
-          backgroundColor: const Color(0xFF1E1E1E),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Finalizar Viaje', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-          content: Column(
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Finalizar Viaje', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        content: Form(
+          key: formKey,
+          child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('${trip.origin} → ${trip.destination}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
               const SizedBox(height: 16),
-              if (!isProcessing)
-                TextField(
-                  controller: guideCtrl,
-                  keyboardType: TextInputType.number,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: 'Nº Guía de Despacho', 
-                    filled: true, 
-                    fillColor: Colors.black26, 
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none)
-                  ),
-                )
-              else
-                const Column(
-                  children: [
-                    CircularProgressIndicator(color: Colors.white),
-                    SizedBox(height: 16),
-                    Text('Calculando recorrido real por GPS...', style: TextStyle(color: Colors.white70, fontSize: 13)),
-                  ],
+              TextFormField(
+                controller: guideCtrl,
+                keyboardType: TextInputType.text,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: 'Nº Guía de Despacho',
+                  hintText: 'Ej: 12345',
+                  hintStyle: const TextStyle(color: Colors.white30),
+                  filled: true,
+                  fillColor: Colors.black26,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
                 ),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: kmCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: 'Kilómetros aprox. recorridos',
+                  hintText: 'Ej: 120',
+                  hintStyle: const TextStyle(color: Colors.white30),
+                  suffixText: 'KM',
+                  suffixStyle: const TextStyle(color: Colors.white70),
+                  filled: true,
+                  fillColor: Colors.black26,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                ),
+                validator: (val) {
+                  if (val == null || val.trim().isEmpty) {
+                    return 'Ingresa los kilómetros aproximados';
+                  }
+                  final parsed = double.tryParse(val.replaceAll(',', '.').trim());
+                  if (parsed == null || parsed < 0) {
+                    return 'Ingresa un valor numérico válido';
+                  }
+                  return null;
+                },
+              ),
             ],
           ),
-          actions: isProcessing ? [] : [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFFFFF), foregroundColor: Colors.black),
-              onPressed: () async {
-                setState(() => isProcessing = true);
-                
-                // DETENER TELEMETRÍA Y OBTENER KM REALES
-                final double realKm = await LocationService.stopTracking();
-                
-                await ref.read(tripRepositoryProvider).endTripWithGuide(
-                  trip.id, 
-                  guideCtrl.text.trim(), 
-                  totalKm: realKm
-                );
-                
-                if (ctx.mounted) Navigator.pop(ctx);
-                
-                // Notificar al chofer
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('✓ Viaje cerrado: ${realKm.toStringAsFixed(1)} KM registrados por GPS'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                }
-              },
-              child: const Text('FINALIZAR', style: TextStyle(fontWeight: FontWeight.bold)),
-            ),
-          ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFFFFF), foregroundColor: Colors.black),
+            onPressed: () async {
+              if (!formKey.currentState!.validate()) return;
+
+              final parsedKm = double.tryParse(kmCtrl.text.replaceAll(',', '.').trim()) ?? 0.0;
+
+              await ref.read(tripRepositoryProvider).endTripWithGuide(
+                trip.id,
+                guideCtrl.text.trim(),
+                totalKm: parsedKm,
+              );
+
+              if (ctx.mounted) Navigator.pop(ctx);
+
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('✓ Viaje cerrado: ${parsedKm.toStringAsFixed(1)} KM registrados'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              }
+            },
+            child: const Text('FINALIZAR', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showEditTripDriverDialog(BuildContext context, WidgetRef ref, TripModel trip) async {
+    final guideCtrl = TextEditingController(text: trip.guideNumber ?? '');
+    final kmCtrl = TextEditingController(
+      text: (trip.totalKm != null && trip.totalKm! > 0) ? trip.totalKm!.toStringAsFixed(1) : '',
+    );
+    final formKey = GlobalKey<FormState>();
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Editar Kilometraje / Guía', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${trip.origin} → ${trip.destination}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: guideCtrl,
+                keyboardType: TextInputType.text,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: 'Nº Guía de Despacho',
+                  filled: true,
+                  fillColor: Colors.black26,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: kmCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: 'Kilómetros aprox. recorridos',
+                  suffixText: 'KM',
+                  suffixStyle: const TextStyle(color: Colors.white70),
+                  filled: true,
+                  fillColor: Colors.black26,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                ),
+                validator: (val) {
+                  if (val == null || val.trim().isEmpty) {
+                    return 'Ingresa los kilómetros aproximados';
+                  }
+                  final parsed = double.tryParse(val.replaceAll(',', '.').trim());
+                  if (parsed == null || parsed < 0) {
+                    return 'Ingresa un valor numérico válido';
+                  }
+                  return null;
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFFFFF), foregroundColor: Colors.black),
+            onPressed: () async {
+              if (!formKey.currentState!.validate()) return;
+
+              final parsedKm = double.tryParse(kmCtrl.text.replaceAll(',', '.').trim()) ?? 0.0;
+
+              await ref.read(tripRepositoryProvider).updateTripDetails(
+                trip.id,
+                guideNumber: guideCtrl.text.trim(),
+                totalKm: parsedKm,
+              );
+
+              if (ctx.mounted) Navigator.pop(ctx);
+
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('✓ Kilometraje actualizado a ${parsedKm.toStringAsFixed(1)} KM'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              }
+            },
+            child: const Text('GUARDAR', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
       ),
     );
   }

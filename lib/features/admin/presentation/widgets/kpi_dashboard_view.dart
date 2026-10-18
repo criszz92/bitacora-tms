@@ -6,6 +6,7 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../trips/domain/models/trip_model.dart';
 import '../../../trips/domain/models/expense_model.dart';
 import '../../../trips/domain/models/vehicle_model.dart';
+import '../../domain/models/recurring_expense_model.dart';
 import '../../../../core/utils/number_utils.dart';
 
 class KpiDashboardView extends ConsumerWidget {
@@ -132,6 +133,31 @@ class KpiDashboardView extends ConsumerWidget {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           ),
+        ),
+        const SizedBox(width: 8),
+        // ─── BOTÓN APLICAR GASTOS FIJOS ───────────────────────────
+        Builder(
+          builder: (context) {
+            final config = ref.watch(companyConfigProvider).value;
+            final gastosFijos = config?.gastosRecurrentes.where((g) => g.activo).toList() ?? [];
+            final yaAplicados = ref.watch(gastosFijosAplicadosProvider);
+            
+            if (gastosFijos.isEmpty) return const SizedBox.shrink();
+            
+            return ElevatedButton.icon(
+              onPressed: yaAplicados ? null : () => _showApplyRecurringExpensesDialog(context, ref, gastosFijos, vehicles),
+              icon: Icon(yaAplicados ? Icons.check_circle_outline : Icons.repeat, size: 18),
+              label: Text(yaAplicados ? 'Gastos Fijos ✓' : 'Aplicar Gastos Fijos'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: yaAplicados ? Colors.green.withValues(alpha: 0.2) : Colors.deepPurple,
+                foregroundColor: yaAplicados ? Colors.green : Colors.white,
+                disabledBackgroundColor: Colors.green.withValues(alpha: 0.15),
+                disabledForegroundColor: Colors.green.withValues(alpha: 0.7),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              ),
+            );
+          },
         ),
         const SizedBox(width: 16),
         _buildVehicleSelector(ref, vehicles),
@@ -711,6 +737,190 @@ class KpiDashboardView extends ConsumerWidget {
         )),
       ),
     ));
+  }
+
+  void _showApplyRecurringExpensesDialog(BuildContext context, WidgetRef ref, List<RecurringExpenseModel> gastosFijos, List<VehicleModel> vehicles) {
+    final months = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    final selectedMonth = ref.read(selectedMonthProvider);
+    final monthName = '${months[selectedMonth.month]} ${selectedMonth.year}';
+    final total = gastosFijos.fold<double>(0, (sum, g) => sum + g.monto);
+    bool isApplying = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => Dialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          child: Container(
+            width: 500,
+            constraints: const BoxConstraints(maxHeight: 600),
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.deepPurple.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.repeat, color: Colors.deepPurple, size: 24),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Aplicar Gastos Fijos', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                          Text(monthName, style: const TextStyle(color: Colors.deepPurple, fontSize: 13, fontWeight: FontWeight.w500)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Los siguientes gastos se crearán como registros del mes seleccionado:',
+                  style: TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+                const SizedBox(height: 20),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: gastosFijos.map((g) {
+                        final vehicleName = g.vehicleId != null
+                            ? vehicles.where((v) => v.id == g.vehicleId).firstOrNull?.patente ?? 'Vehículo'
+                            : 'General';
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(Icons.receipt_long, color: Colors.orange, size: 18),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(g.nombre, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13)),
+                                    const SizedBox(height: 2),
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                          decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(3)),
+                                          child: Text(g.tipo, style: const TextStyle(color: Colors.orange, fontSize: 9, fontWeight: FontWeight.bold)),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Icon(g.vehicleId != null ? Icons.local_shipping : Icons.business, size: 11, color: Colors.white30),
+                                        const SizedBox(width: 4),
+                                        Text(vehicleName, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Text(_fmt(g.monto), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.deepPurple.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.deepPurple.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('${gastosFijos.length} gastos fijos', style: const TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.w500, fontSize: 13)),
+                      Text('Total: ${_fmt(total)}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton.icon(
+                      onPressed: isApplying ? null : () async {
+                        setDialogState(() => isApplying = true);
+                        try {
+                          final profile = ref.read(currentUserProfileProvider).value;
+                          if (profile == null) return;
+                          
+                          final count = await ref.read(adminRepositoryProvider).applyRecurringExpenses(
+                            idEmpresa: profile.idEmpresa,
+                            adminUid: profile.uid,
+                            month: selectedMonth,
+                            gastosRecurrentes: gastosFijos,
+                          );
+                          
+                          if (ctx.mounted) Navigator.pop(ctx);
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('✓ Se aplicaron $count gastos fijos para $monthName'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          setDialogState(() => isApplying = false);
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                            );
+                          }
+                        }
+                      },
+                      icon: isApplying
+                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.check, size: 18),
+                      label: Text(isApplying ? 'Aplicando...' : 'Confirmar y Aplicar'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.deepPurple,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildField(TextEditingController ctrl, String label) {

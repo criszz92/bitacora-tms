@@ -7,6 +7,7 @@ import '../../../auth/domain/models/user_model.dart';
 import '../../domain/models/liquidacion_model.dart';
 import '../../domain/models/company_config_model.dart';
 import '../../domain/models/incidencia_model.dart';
+import '../../domain/models/recurring_expense_model.dart';
 import '../../domain/models/cotizacion_model.dart';
 
 /// Repositorio exclusivo del Admin.
@@ -141,6 +142,53 @@ class AdminRepository {
 
   Future<void> deleteExpense(String expenseId) async {
     await _db.collection('gastos').doc(expenseId).delete();
+  }
+
+  // ─── GASTOS FIJOS RECURRENTES ───────────────────────────────────────────────
+
+  /// Aplica los gastos fijos recurrentes al mes indicado.
+  /// Crea un documento de gasto real por cada gasto recurrente activo.
+  /// Marca el mes como aplicado en la configuración para no duplicar.
+  Future<int> applyRecurringExpenses({
+    required String idEmpresa,
+    required String adminUid,
+    required DateTime month,
+    required List<RecurringExpenseModel> gastosRecurrentes,
+  }) async {
+    final batch = _db.batch();
+    final monthKey = "${month.year}-${month.month.toString().padLeft(2, '0')}";
+    // Fecha: primer día del mes
+    final expenseDate = DateTime(month.year, month.month, 15);
+    int count = 0;
+
+    for (final gasto in gastosRecurrentes) {
+      if (!gasto.activo) continue;
+
+      final docRef = _db.collection('gastos').doc();
+      final expense = ExpenseModel(
+        id: docRef.id,
+        idEmpresa: idEmpresa,
+        idChofer: adminUid,
+        idJornada: 'GASTO_FIJO',
+        amount: gasto.monto,
+        type: gasto.tipo,
+        date: expenseDate,
+        description: '[Gasto Fijo] ${gasto.nombre}',
+        status: 'Pagado',
+        vehicleId: gasto.vehicleId,
+      );
+      batch.set(docRef, expense.toMap());
+      count++;
+    }
+
+    // Marcar mes como aplicado
+    final configRef = _db.collection('configuraciones_empresa').doc(idEmpresa);
+    batch.update(configRef, {
+      'mesesGastosFijosAplicados': FieldValue.arrayUnion([monthKey]),
+    });
+
+    await batch.commit();
+    return count;
   }
 
   // ─── VIÁTICOS (Admin panel) ─────────────────────────────────────────────────

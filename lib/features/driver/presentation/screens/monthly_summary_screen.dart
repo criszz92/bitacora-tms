@@ -7,6 +7,7 @@ import 'package:bitacora/features/admin/presentation/providers/admin_provider.da
 import 'package:bitacora/features/admin/domain/models/company_config_model.dart';
 import 'package:bitacora/features/trips/domain/models/trip_model.dart';
 import 'package:bitacora/features/auth/domain/models/user_model.dart';
+import 'package:bitacora/features/trips/presentation/providers/trip_provider.dart';
 import 'package:bitacora/core/utils/pdf_generator.dart';
 import 'package:printing/printing.dart';
 class MonthlySummaryScreen extends ConsumerStatefulWidget {
@@ -263,38 +264,153 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
     final isLong = km >= config.umbralKilometrosViatico;
     final viatico = isLong ? (driver.montoViaticoLargo ?? 10000) : (driver.montoViaticoLocal ?? 6500);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF161616),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: isPrimary ? Colors.white10 : Colors.white.withValues(alpha: 0.05)),
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => _showEditTripDriverDialog(context, t),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFF161616),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: isPrimary ? Colors.white10 : Colors.white.withValues(alpha: 0.05)),
+        ),
+        child: Row(
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text('${t.startDate.day}/${t.startDate.month}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                    if (t.guideNumber != null && t.guideNumber!.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      Text('Guía: ${t.guideNumber}', style: const TextStyle(color: Colors.white38, fontSize: 10)),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(t.destination, style: TextStyle(
+                  color: isPrimary ? Colors.white : Colors.white38, 
+                  fontWeight: isPrimary ? FontWeight.bold : FontWeight.normal
+                )),
+              ],
+            ),
+            const Spacer(),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('${km.toStringAsFixed(1)} KM', style: TextStyle(color: isLong ? Colors.orangeAccent : Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                    const SizedBox(width: 6),
+                    const Icon(Icons.edit, size: 12, color: Colors.white38),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                if (isPrimary)
+                  Text(_fmt(viatico.toDouble()), style: const TextStyle(color: Colors.greenAccent, fontSize: 13, fontWeight: FontWeight.bold))
+                else
+                  const Text('Incluido en jornada', style: TextStyle(color: Colors.grey, fontSize: 10, fontStyle: FontStyle.italic)),
+              ],
+            ),
+          ],
+        ),
       ),
-      child: Row(
-        children: [
-          Column(
+    );
+  }
+
+  Future<void> _showEditTripDriverDialog(BuildContext context, TripModel trip) async {
+    final guideCtrl = TextEditingController(text: trip.guideNumber ?? '');
+    final kmCtrl = TextEditingController(
+      text: (trip.totalKm != null && trip.totalKm! > 0) ? trip.totalKm!.toStringAsFixed(1) : '',
+    );
+    final formKey = GlobalKey<FormState>();
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Editar Kilometraje / Guía', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('${t.startDate.day}/${t.startDate.month}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
-              const SizedBox(height: 4),
-              Text(t.destination, style: TextStyle(
-                color: isPrimary ? Colors.white : Colors.white38, 
-                fontWeight: isPrimary ? FontWeight.bold : FontWeight.normal
-              )),
+              Text('${trip.origin} → ${trip.destination}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: guideCtrl,
+                keyboardType: TextInputType.text,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: 'Nº Guía de Despacho',
+                  filled: true,
+                  fillColor: Colors.black26,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: kmCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: 'Kilómetros aprox. recorridos',
+                  suffixText: 'KM',
+                  suffixStyle: const TextStyle(color: Colors.white70),
+                  filled: true,
+                  fillColor: Colors.black26,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                ),
+                validator: (val) {
+                  if (val == null || val.trim().isEmpty) {
+                    return 'Ingresa los kilómetros aproximados';
+                  }
+                  final parsed = double.tryParse(val.replaceAll(',', '.').trim());
+                  if (parsed == null || parsed < 0) {
+                    return 'Ingresa un valor numérico válido';
+                  }
+                  return null;
+                },
+              ),
             ],
           ),
-          const Spacer(),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text('${km.toInt()} KM', style: TextStyle(color: isLong ? Colors.orangeAccent : Colors.blueAccent, fontSize: 10, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 4),
-              if (isPrimary)
-                Text(_fmt(viatico.toDouble()), style: const TextStyle(color: Colors.greenAccent, fontSize: 13, fontWeight: FontWeight.bold))
-              else
-                const Text('Incluido en jornada', style: TextStyle(color: Colors.grey, fontSize: 10, fontStyle: FontStyle.italic)),
-            ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFFFFF), foregroundColor: Colors.black),
+            onPressed: () async {
+              if (!formKey.currentState!.validate()) return;
+
+              final parsedKm = double.tryParse(kmCtrl.text.replaceAll(',', '.').trim()) ?? 0.0;
+
+              await ref.read(tripRepositoryProvider).updateTripDetails(
+                trip.id,
+                guideNumber: guideCtrl.text.trim(),
+                totalKm: parsedKm,
+              );
+
+              if (ctx.mounted) Navigator.pop(ctx);
+              setState(() {}); // Refresca el resumen mensual
+
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('✓ Kilometraje actualizado a ${parsedKm.toStringAsFixed(1)} KM'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              }
+            },
+            child: const Text('GUARDAR', style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),

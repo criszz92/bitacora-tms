@@ -26,6 +26,16 @@ final activeTripsProvider = StreamProvider<List<TripModel>>((ref) {
   return repo.watchActiveTrips();
 });
 
+// Escucha en tiempo real (Stream) todos los viajes de la jornada activa (en ruta y finalizados)
+final currentShiftTripsProvider = StreamProvider<List<TripModel>>((ref) {
+  final activeShift = ref.watch(activeShiftProvider).value;
+  if (activeShift == null) {
+    return Stream.value(<TripModel>[]);
+  }
+  final repo = ref.watch(tripRepositoryProvider);
+  return repo.watchShiftTrips(activeShift.id);
+});
+
 // Escucha en tiempo real (Stream) los gastos de Firestore
 final expensesProvider = StreamProvider<List<ExpenseModel>>((ref) {
   final repo = ref.watch(tripRepositoryProvider);

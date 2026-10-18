@@ -179,6 +179,15 @@ final companyConfigProvider = StreamProvider<CompanyConfigModel?>((ref) {
   return ref.read(adminRepositoryProvider).watchCompanyConfig(user.idEmpresa);
 });
 
+/// Indica si los gastos fijos del mes seleccionado ya fueron aplicados.
+final gastosFijosAplicadosProvider = Provider<bool>((ref) {
+  final config = ref.watch(companyConfigProvider).value;
+  final month = ref.watch(selectedMonthProvider);
+  if (config == null) return false;
+  final monthKey = "${month.year}-${month.month.toString().padLeft(2, '0')}";
+  return config.mesesGastosFijosAplicados.contains(monthKey);
+});
+
 // ─── KPIs Y FINANZAS ─────────────────────────────────────────────────────────
 
 class KpiData {
