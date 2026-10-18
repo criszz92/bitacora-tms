@@ -44,6 +44,9 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Firebase cache
+.firebase/
+
 # Secrets
 .env
 *.json
@@ -56,3 +59,6 @@ app.*.map.json
 *.csv
 *.txt
 *.ps1
+
+# App bundled assets (allow files in assets/)
+!assets/*

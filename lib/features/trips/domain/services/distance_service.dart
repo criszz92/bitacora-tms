@@ -42,6 +42,12 @@ class DistanceService {
     }
   }
 
+  /// Permite inyectar datos para testing unitario sin requerir rootBundle.
+  void loadDataForTesting(Map<String, dynamic> data) {
+    _data = data;
+    _loaded = true;
+  }
+
   /// Busca la distancia entre [cliente] y [destino] (puerto).
   /// Devuelve los KM sugeridos o null si no hay datos suficientes.
   ///
