@@ -7,6 +7,7 @@ import 'core/theme/app_theme.dart';
 import 'core/router/app_router.dart';
 import 'firebase_options.dart';
 import 'features/trips/domain/services/fuzzy_search_service.dart';
+import 'features/trips/domain/services/distance_service.dart';
 import 'core/services/push_notification_service.dart';
 
 void main() async {
@@ -28,11 +29,17 @@ void main() async {
   final fuzzyService = FuzzySearchService();
   await fuzzyService.loadClientsFromAsset('assets/clientes_limpio_mayusculas.txt');
 
+  // Pre-carga la tabla de distancias cliente-puerto (1.376 entradas) en RAM.
+  // Permite sugerir KM estimados automáticamente al cerrar un viaje.
+  final distanceService = DistanceService();
+  await distanceService.loadFromAsset('assets/distancias_clientes.json');
+
   runApp(
     ProviderScope(
       overrides: [
-        // Inyectamos la instancia ya inicializada en el árbol de providers.
+        // Inyectamos las instancias ya inicializadas en el árbol de providers.
         fuzzySearchProvider.overrideWithValue(fuzzyService),
+        distanceServiceProvider.overrideWithValue(distanceService),
       ],
       child: const BitacoraApp(),
     ),

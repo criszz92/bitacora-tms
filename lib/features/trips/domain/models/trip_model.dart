@@ -21,6 +21,8 @@ class TripModel {
   final String comments;        // Mantenido en modelo por retrocompatibilidad, no se muestra en UI
   final double? extraCostos;
   final double? sobreEstadia;
+  final String? kmEditadoPor;   // UID del usuario que modificó totalKm por última vez
+  final DateTime? kmEditadoEn;  // Timestamp de la última edición de totalKm
 
   TripModel({
     required this.id,
@@ -45,6 +47,8 @@ class TripModel {
     required this.comments,
     this.extraCostos,
     this.sobreEstadia,
+    this.kmEditadoPor,
+    this.kmEditadoEn,
   });
 
   Map<String, dynamic> toMap() {
@@ -70,6 +74,8 @@ class TripModel {
       'comments': comments,
       'extraCostos': extraCostos,
       'sobreEstadia': sobreEstadia,
+      if (kmEditadoPor != null) 'kmEditadoPor': kmEditadoPor,
+      if (kmEditadoEn != null) 'kmEditadoEn': kmEditadoEn!.toIso8601String(),
     };
   }
 
@@ -97,6 +103,8 @@ class TripModel {
       comments: map['comments'] ?? '',
       extraCostos: map['extraCostos']?.toDouble(),
       sobreEstadia: map['sobreEstadia']?.toDouble(),
+      kmEditadoPor: map['kmEditadoPor'],
+      kmEditadoEn: map['kmEditadoEn'] != null ? DateTime.parse(map['kmEditadoEn']) : null,
     );
   }
 
@@ -123,6 +131,8 @@ class TripModel {
     String? comments,
     double? extraCostos,
     double? sobreEstadia,
+    String? kmEditadoPor,
+    DateTime? kmEditadoEn,
   }) {
     return TripModel(
       id: id ?? this.id,
@@ -147,6 +157,8 @@ class TripModel {
       comments: comments ?? this.comments,
       extraCostos: extraCostos ?? this.extraCostos,
       sobreEstadia: sobreEstadia ?? this.sobreEstadia,
+      kmEditadoPor: kmEditadoPor ?? this.kmEditadoPor,
+      kmEditadoEn: kmEditadoEn ?? this.kmEditadoEn,
     );
   }
 }

@@ -96,9 +96,10 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # Assets bundled inside the app (Fuzzy Search clients list)
+  # Assets bundled inside the app (Fuzzy Search clients list + Distance lookup table)
   assets:
     - assets/clientes_limpio_mayusculas.txt
+    - assets/distancias_clientes.json
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

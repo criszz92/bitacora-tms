@@ -7,7 +7,7 @@ import '../../../trips/domain/models/shift_model.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../admin/presentation/providers/admin_provider.dart';
 import '../../../trips/domain/models/vehicle_model.dart';
-
+import '../../../trips/domain/services/distance_service.dart';
 import '../../../admin/domain/models/incidencia_model.dart';
 import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
@@ -738,11 +738,21 @@ class DriverDashboardScreen extends ConsumerWidget {
   }
 
   Future<void> _showEndTripDialog(BuildContext context, WidgetRef ref, TripModel trip) async {
+    // Intentar sugerir KM desde la tabla de distancias
+    final distSvc = ref.read(distanceServiceProvider);
+    final suggestedKm = (trip.totalKm == null || trip.totalKm! <= 0)
+        ? distSvc.lookupKm(trip.client, trip.destination)
+        : null;
+
     final guideCtrl = TextEditingController(text: trip.guideNumber ?? '');
     final kmCtrl = TextEditingController(
-      text: (trip.totalKm != null && trip.totalKm! > 0) ? trip.totalKm!.toStringAsFixed(0) : '',
+      text: (trip.totalKm != null && trip.totalKm! > 0)
+          ? trip.totalKm!.toStringAsFixed(0)
+          : (suggestedKm != null ? suggestedKm.toStringAsFixed(0) : ''),
     );
     final formKey = GlobalKey<FormState>();
+    // Rastrear si el conductor modificó el valor sugerido
+    bool isUsingSuggestion = suggestedKm != null;
 
     await showDialog(
       context: context,
@@ -758,6 +768,20 @@ class DriverDashboardScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('${trip.origin} → ${trip.destination}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+              // Chip de sugerencia de KM
+              if (isUsingSuggestion) ...[
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    const Icon(Icons.auto_awesome, size: 12, color: Colors.purpleAccent),
+                    const SizedBox(width: 4),
+                    Text(
+                      'KM sugerido desde tabla de distancias',
+                      style: const TextStyle(color: Colors.purpleAccent, fontSize: 10),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 16),
               TextFormField(
                 controller: guideCtrl,
@@ -773,29 +797,55 @@ class DriverDashboardScreen extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              TextFormField(
-                controller: kmCtrl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  labelText: 'Kilómetros aprox. recorridos',
-                  hintText: 'Ej: 120',
-                  hintStyle: const TextStyle(color: Colors.white30),
-                  suffixText: 'KM',
-                  suffixStyle: const TextStyle(color: Colors.white70),
-                  filled: true,
-                  fillColor: Colors.black26,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                ),
-                validator: (val) {
-                  if (val == null || val.trim().isEmpty) {
-                    return 'Ingresa los kilómetros aproximados';
-                  }
-                  final parsed = double.tryParse(val.replaceAll(',', '.').trim());
-                  if (parsed == null || parsed < 0) {
-                    return 'Ingresa un valor numérico válido';
-                  }
-                  return null;
+              StatefulBuilder(
+                builder: (ctx2, setFieldState) {
+                  kmCtrl.addListener(() {
+                    if (isUsingSuggestion) {
+                      final typed = kmCtrl.text.replaceAll(',', '.').trim();
+                      final parsed = double.tryParse(typed);
+                      if (parsed != null && parsed != suggestedKm) {
+                        setFieldState(() => isUsingSuggestion = false);
+                      }
+                    }
+                  });
+                  return TextFormField(
+                    controller: kmCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: 'Kilómetros aprox. recorridos',
+                      hintText: 'Ej: 120',
+                      hintStyle: const TextStyle(color: Colors.white30),
+                      suffixText: 'KM',
+                      suffixStyle: const TextStyle(color: Colors.white70),
+                      filled: true,
+                      fillColor: isUsingSuggestion
+                          ? Colors.purple.withValues(alpha: 0.15)
+                          : Colors.black26,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: isUsingSuggestion
+                            ? const BorderSide(color: Colors.purpleAccent, width: 1)
+                            : BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: isUsingSuggestion
+                            ? const BorderSide(color: Colors.purpleAccent, width: 1)
+                            : BorderSide.none,
+                      ),
+                    ),
+                    validator: (val) {
+                      if (val == null || val.trim().isEmpty) {
+                        return 'Ingresa los kilómetros aproximados';
+                      }
+                      final parsed = double.tryParse(val.replaceAll(',', '.').trim());
+                      if (parsed == null || parsed < 0) {
+                        return 'Ingresa un valor numérico válido';
+                      }
+                      return null;
+                    },
+                  );
                 },
               ),
             ],

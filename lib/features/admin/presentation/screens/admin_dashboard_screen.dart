@@ -33,6 +33,12 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     // Badge de pendientes para el ítem de viáticos
     final viaticosAsync = ref.watch(adminViaticosProvider);
     final pendientesCount = viaticosAsync.value?.where((v) => v.isPendiente).length ?? 0;
+    // Alertas de documentos de flota próximos a vencer (30 días)
+    final vehiclesAsync = ref.watch(adminVehiclesProvider);
+    final vehicles = vehiclesAsync.value ?? [];
+    final expiringAlerts = vehicles
+        .expand((v) => v.getExpiringDocuments(30).map((doc) => (vehicle: v, doc: doc)))
+        .toList();
 
     final isMobile = MediaQuery.of(context).size.width < 900;
     
@@ -100,10 +106,22 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
         backgroundColor: const Color(0xFF161616),
         child: _buildSidebar(pendientesCount, isDrawer: true),
       ) : null,
-      body: Row(
+      body: Column(
         children: [
-          if (!isMobile) _buildSidebar(pendientesCount),
-          Expanded(child: _buildMainContent()),
+          // ── BANNER DE ALERTAS DE DOCUMENTOS ──────────────────────────
+          if (expiringAlerts.isNotEmpty)
+            _FleetDocumentAlertBanner(
+              alerts: expiringAlerts,
+              onTap: () => setState(() => _selectedIndex = 10), // Ir a Mantenimiento
+            ),
+          Expanded(
+            child: Row(
+              children: [
+                if (!isMobile) _buildSidebar(pendientesCount),
+                Expanded(child: _buildMainContent()),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -243,7 +261,79 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   }
 }
 
-// ─── Vista de Conductores (con generador de códigos de invitación) ─────────────
-// (Reimportada desde la versión anterior del admin_dashboard_screen.dart)
+// ─── Banner de alertas de documentos de flota ─────────────────────────────────
 
-// Fin de AdminDashboardScreen
+class _FleetDocumentAlertBanner extends StatelessWidget {
+  final List<({dynamic vehicle, Map<String, dynamic> doc})> alerts;
+  final VoidCallback onTap;
+
+  const _FleetDocumentAlertBanner({required this.alerts, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    // Determinar si hay alguna alerta crítica (vence hoy o ya venció)
+    final hasCritical = alerts.any((a) => (a.doc['diasRestantes'] as int) <= 1);
+    final bgColor = hasCritical
+        ? Colors.red.withValues(alpha: 0.15)
+        : Colors.orange.withValues(alpha: 0.12);
+    final borderColor = hasCritical
+        ? Colors.redAccent.withValues(alpha: 0.6)
+        : Colors.orange.withValues(alpha: 0.5);
+    final iconColor = hasCritical ? Colors.redAccent : Colors.orange;
+
+    // Construir texto de resumen
+    final criticalCount = alerts.where((a) => (a.doc['diasRestantes'] as int) <= 1).length;
+    final warningCount = alerts.length - criticalCount;
+    final parts = <String>[];
+    if (criticalCount > 0) parts.add('$criticalCount documento${criticalCount > 1 ? 's' : ''} VENCIDO${criticalCount > 1 ? 'S' : ''}');
+    if (warningCount > 0) parts.add('$warningCount por vencer pronto');
+    final summaryText = parts.join(' · ');
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        decoration: BoxDecoration(
+          color: bgColor,
+          border: Border(
+            bottom: BorderSide(color: borderColor, width: 1),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              hasCritical ? Icons.error_outline : Icons.warning_amber_outlined,
+              color: iconColor,
+              size: 18,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: RichText(
+                text: TextSpan(
+                  style: const TextStyle(fontSize: 12, color: Colors.white),
+                  children: [
+                    TextSpan(
+                      text: '⚠ DOCUMENTOS DE FLOTA: ',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: iconColor,
+                        fontSize: 12,
+                      ),
+                    ),
+                    TextSpan(text: summaryText),
+                    const TextSpan(
+                      text: '  →  Ver Mantenimiento',
+                      style: TextStyle(color: Colors.white54, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Icon(Icons.chevron_right, color: iconColor, size: 16),
+          ],
+        ),
+      ),
+    );
+  }
+}

@@ -198,7 +198,12 @@ class TripRepository {
     final sanitizedGuide = guideNumber != null ? SecurityUtils.sanitizeText(guideNumber) : null;
     final updates = <String, dynamic>{};
     if (sanitizedGuide != null) updates['guideNumber'] = sanitizedGuide;
-    if (totalKm != null) updates['totalKm'] = totalKm;
+    if (totalKm != null) {
+      updates['totalKm'] = totalKm;
+      // Trazabilidad: registrar quién y cuándo modificó los KM
+      updates['kmEditadoPor'] = currentChoferId;
+      updates['kmEditadoEn'] = DateTime.now().toIso8601String();
+    }
     if (updates.isEmpty) return;
 
     await _firestore.collection('viajes').doc(tripId).update(updates);

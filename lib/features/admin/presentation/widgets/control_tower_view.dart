@@ -43,9 +43,10 @@ class DirectGpsService {
       if (!secretDoc.exists) throw Exception('No se encontraron credenciales de Liot.');
       
       final data = secretDoc.data()!;
-      // Extraemos del campo que mostraste en la captura o usamos placeholders
-      final user = data['user'] ?? 'tte.inostroza@gmail.com'; 
-      final pass = data['pass'] ?? '2025liot';
+      // Credenciales almacenadas en Firestore — nunca hardcodeadas aquí
+      final user = data['user'] as String?;
+      final pass = data['pass'] as String?;
+      if (user == null || pass == null) throw Exception('Credenciales Liot incompletas en Firestore.');
 
       final auth = base64Encode(utf8.encode('$user:$pass'));
       final headers = { 'Authorization': 'Basic $auth', 'Accept': 'application/json' };
@@ -250,7 +251,7 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> {
                   child: Text(unit.plate, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12)),
                 ),
                 const Spacer(),
-                Text(unit.status == 'online' ? '${unit.speed.toStringAsFixed(1)} knots' : 'Desconectado', 
+                Text(unit.status == 'online' ? '${unit.speed.toStringAsFixed(1)} km/h' : 'Desconectado', 
                   style: const TextStyle(color: Colors.white70, fontSize: 12)),
               ],
             ),
