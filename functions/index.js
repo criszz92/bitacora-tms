@@ -31,7 +31,7 @@ exports.analyzeProfitability = functions.https.onCall(async (data, context) => {
     const response = await axios.post(
       `${baseUrl}/chat/completions`,
       {
-        model: "llama-3.3-70b-versatile",
+        model: "llama-3.1-8b-instant",
         messages: [
           { role: "system", content: "Eres un asistente experto en analítica de transporte." },
           { role: "user", content: prompt }

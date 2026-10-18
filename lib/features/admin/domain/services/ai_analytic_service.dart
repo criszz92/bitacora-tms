@@ -3,14 +3,26 @@ import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/analytics_models.dart';
 
+class _AiConfig {
+  final String apiKey;
+  final String? model;
+
+  _AiConfig({required this.apiKey, this.model});
+}
+
 class AIAnalyticService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  Future<String> _getAiApiKey() async {
+  Future<_AiConfig> _getAiConfig() async {
     try {
       final doc = await _firestore.collection('secrets').doc('ai_config').get();
       if (doc.exists && doc.data() != null) {
-        return doc.data()!['apiKey'] as String;
+        final data = doc.data()!;
+        final apiKey = data['apiKey'] as String?;
+        if (apiKey != null && apiKey.isNotEmpty) {
+          final model = data['model'] as String?;
+          return _AiConfig(apiKey: apiKey, model: model);
+        }
       }
       throw Exception("No se encontró la API Key en el cofre seguro.");
     } catch (e) {
@@ -18,13 +30,76 @@ class AIAnalyticService {
     }
   }
 
+  Future<String> _callGroqChat({
+    required String apiKey,
+    required List<Map<String, dynamic>> messages,
+    required double temperature,
+    String? preferredModel,
+  }) async {
+    const baseUrl = 'https://api.groq.com/openai/v1';
+
+    // Modelos candidatos en orden de prioridad.
+    // llama-3.1-8b-instant está disponible en todas las cuentas (incluyendo Free/Developer).
+    final candidateModels = <String>{
+      if (preferredModel != null && preferredModel.trim().isNotEmpty) preferredModel.trim(),
+      'llama-3.1-8b-instant',
+      'llama-3.3-70b-versatile',
+      'openai/gpt-oss-120b',
+    }.toList();
+
+    String lastError = '';
+
+    for (final model in candidateModels) {
+      try {
+        final response = await http.post(
+          Uri.parse('$baseUrl/chat/completions'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $apiKey',
+          },
+          body: jsonEncode({
+            'model': model,
+            'messages': messages,
+            'temperature': temperature,
+          }),
+        );
+
+        if (response.statusCode == 200) {
+          final jsonResponse = jsonDecode(utf8.decode(response.bodyBytes));
+          final content = jsonResponse['choices']?[0]?['message']?['content'];
+          if (content != null && content is String) {
+            return content;
+          }
+        }
+
+        // Si el modelo no existe o la cuenta no tiene acceso (404), intentamos con el siguiente modelo
+        if (response.statusCode == 404) {
+          lastError = "El modelo '$model' no está disponible en la cuenta configurada.";
+          continue;
+        }
+
+        if (response.statusCode == 401) {
+          return "Error de autenticación con la IA: La API Key configurada no es válida.";
+        } else if (response.statusCode == 429) {
+          return "Límite de solicitudes alcanzado en la IA. Por favor, intenta de nuevo en unos momentos.";
+        } else {
+          lastError = "Error en la IA (${response.statusCode}): ${response.body}";
+        }
+      } catch (e) {
+        lastError = "Error de conexión con la IA: $e";
+      }
+    }
+
+    return lastError.isNotEmpty
+        ? lastError
+        : "No fue posible generar la respuesta de la IA.";
+  }
+
   Future<String> analyzeRouteProfitability(List<RouteProfitability> data) async {
     try {
-      // 1. Obtener la llave del cofre de Firestore (Solo ADMIN puede)
-      final apiKey = await _getAiApiKey();
-      const baseUrl = 'https://api.groq.com/openai/v1';
+      final config = await _getAiConfig();
 
-      // 2. Preparar los datos
+      // Preparar los datos
       final summary = data.map((r) => {
         'ruta': r.route,
         'viajes': r.tripCount,
@@ -48,28 +123,15 @@ class AIAnalyticService {
       Responde en español, de forma profesional y concisa. Usa bullet points.
       """;
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/chat/completions'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $apiKey',
-        },
-        body: jsonEncode({
-          'model': 'llama-3.3-70b-versatile',
-          'messages': [
-            {'role': 'system', 'content': 'Eres un asistente experto en analítica de transporte.'},
-            {'role': 'user', 'content': prompt}
-          ],
-          'temperature': 0.7,
-        }),
+      return await _callGroqChat(
+        apiKey: config.apiKey,
+        preferredModel: config.model,
+        messages: [
+          {'role': 'system', 'content': 'Eres un asistente experto en analítica de transporte.'},
+          {'role': 'user', 'content': prompt}
+        ],
+        temperature: 0.7,
       );
-
-      if (response.statusCode == 200) {
-        final jsonResponse = jsonDecode(utf8.decode(response.bodyBytes));
-        return jsonResponse['choices'][0]['message']['content'];
-      } else {
-        return "Error en la IA (${response.statusCode}): ${response.body}";
-      }
     } catch (e) {
       return "Error en el asistente: $e";
     }
@@ -81,8 +143,7 @@ class AIAnalyticService {
     List<Map<String, String>> history = const [],
   }) async {
     try {
-      final apiKey = await _getAiApiKey();
-      const baseUrl = 'https://api.groq.com/openai/v1';
+      final config = await _getAiConfig();
 
       final summary = data.map((r) => {
         'ruta': r.route,
@@ -107,31 +168,18 @@ class AIAnalyticService {
       4. Si te piden cálculos, usa los datos proporcionados arriba.
       """;
 
-      final messages = [
+      final messages = <Map<String, dynamic>>[
         {'role': 'system', 'content': systemPrompt},
         ...history,
         {'role': 'user', 'content': question},
       ];
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/chat/completions'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $apiKey',
-        },
-        body: jsonEncode({
-          'model': 'llama-3.3-70b-versatile',
-          'messages': messages,
-          'temperature': 0.3, // Menos creativo, más preciso
-        }),
+      return await _callGroqChat(
+        apiKey: config.apiKey,
+        preferredModel: config.model,
+        messages: messages,
+        temperature: 0.3, // Menos creativo, más preciso
       );
-
-      if (response.statusCode == 200) {
-        final jsonResponse = jsonDecode(utf8.decode(response.bodyBytes));
-        return jsonResponse['choices'][0]['message']['content'];
-      } else {
-        return "Error en la consulta: ${response.statusCode}";
-      }
     } catch (e) {
       return "Error de conexión: $e";
     }
