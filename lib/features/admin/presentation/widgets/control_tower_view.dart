@@ -42,6 +42,7 @@ class ControlTowerView extends ConsumerStatefulWidget {
 class _ControlTowerViewState extends ConsumerState<ControlTowerView> {
   final MapController _mapController = MapController();
   bool _hasCenteredInitial = false;
+  bool _useSatellite = false;
 
   @override
   Widget build(BuildContext context) {
@@ -81,64 +82,110 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> {
                   });
                 }
 
-                return FlutterMap(
-                  mapController: _mapController,
-                  options: MapOptions(
-                    initialCenter: units.isNotEmpty ? units.first.position : const LatLng(-36.9840, -73.1774),
-                    initialZoom: 13,
-                  ),
+                return Stack(
                   children: [
-                    TileLayer(
-                      urlTemplate: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-                      subdomains: const ['a', 'b', 'c', 'd'],
-                    ),
-                    MarkerLayer(
-                      markers: units.map((unit) {
-                        final isMoving = unit.speed > 0;
-                        final color = isMoving 
-                            ? Colors.greenAccent 
-                            : (unit.status == 'offline' ? Colors.redAccent : Colors.orangeAccent);
-
-                        return Marker(
-                          point: unit.position,
-                          width: 70,
-                          height: 60,
-                          child: GestureDetector(
-                            onTap: () => _mapController.move(unit.position, 15),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black87,
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(color: color.withValues(alpha: 0.6), width: 1),
-                                  ),
-                                  child: Text(
-                                    unit.plate,
-                                    style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color: color.withValues(alpha: 0.2),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: color, width: 1.5),
-                                  ),
-                                  child: Icon(
-                                    Icons.local_shipping,
-                                    color: color,
-                                    size: 18,
-                                  ),
-                                ),
-                              ],
-                            ),
+                    FlutterMap(
+                      mapController: _mapController,
+                      options: MapOptions(
+                        initialCenter: units.isNotEmpty ? units.first.position : const LatLng(-36.9840, -73.1774),
+                        initialZoom: 13,
+                      ),
+                      children: [
+                        if (_useSatellite)
+                          TileLayer(
+                            urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                          )
+                        else
+                          TileLayer(
+                            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            userAgentPackageName: 'com.heirlog.tms',
+                            tileBuilder: (context, tileWidget, tile) {
+                              return ColorFiltered(
+                                colorFilter: const ColorFilter.matrix(<double>[
+                                  -0.85, 0, 0, 0, 230,
+                                  0, -0.85, 0, 0, 230,
+                                  0, 0, -0.85, 0, 240,
+                                  0, 0, 0, 1, 0,
+                                ]),
+                                child: tileWidget,
+                              );
+                            },
                           ),
-                        );
-                      }).toList(),
+                        MarkerLayer(
+                          markers: units.map((unit) {
+                            final isMoving = unit.speed > 0;
+                            final color = isMoving 
+                                ? Colors.greenAccent 
+                                : (unit.status == 'offline' ? Colors.redAccent : Colors.orangeAccent);
+
+                            return Marker(
+                              point: unit.position,
+                              width: 70,
+                              height: 60,
+                              child: GestureDetector(
+                                onTap: () => _mapController.move(unit.position, 15),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black87,
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: color.withValues(alpha: 0.6), width: 1),
+                                      ),
+                                      child: Text(
+                                        unit.plate,
+                                        style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Container(
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: BoxDecoration(
+                                        color: color.withValues(alpha: 0.2),
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: color, width: 1.5),
+                                      ),
+                                      child: Icon(
+                                        Icons.local_shipping,
+                                        color: color,
+                                        size: 18,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ),
+
+                    // Botón para alternar Mapa Oscuro / Satélite
+                    Positioned(
+                      top: 16,
+                      right: 16,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E1E1E),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.white24),
+                        ),
+                        child: IconButton(
+                          tooltip: _useSatellite ? 'Cambiar a Mapa Oscuro' : 'Cambiar a Vista Satélite',
+                          icon: Icon(
+                            _useSatellite ? Icons.map_outlined : Icons.satellite_alt_outlined,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _useSatellite = !_useSatellite;
+                            });
+                          },
+                        ),
+                      ),
                     ),
                   ],
                 );
