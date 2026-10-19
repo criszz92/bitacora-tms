@@ -239,24 +239,23 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   }
 
   Widget _buildMainContent() {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 200),
-      child: switch (_selectedIndex) {
-        0 => const KpiDashboardView(key: ValueKey(0)),
-        1 => const ControlTowerView(key: ValueKey(1)),
-        2 => const ServiceRequestsInboxView(key: ValueKey(2)),
-        3 => const AnalyticsView(key: ValueKey(3)),
-        4 => const ZiyuConciliationView(key: ValueKey(4)),
-        5 => const CotizadorScreen(key: ValueKey(5)),
-        6 => const LiquidacionesAdminView(key: ValueKey(6)),
-        7 => const RemuneracionesView(key: ValueKey(7)),
-        8 => const ViaticosAdminView(key: ValueKey(8)),
-        9 => const FlotaAdminView(key: ValueKey(9)),
-        10 => const MantenimientoAdminView(key: ValueKey(10)),
-        11 => const ConductoresView(key: ValueKey(11)),
-        12 => const ConfigAdminView(key: ValueKey(12)),
-        _ => const KpiDashboardView(key: ValueKey(0)),
-      },
+    return IndexedStack(
+      index: _selectedIndex.clamp(0, 12),
+      children: const [
+        KpiDashboardView(),
+        ControlTowerView(),
+        ServiceRequestsInboxView(),
+        AnalyticsView(),
+        ZiyuConciliationView(),
+        CotizadorScreen(),
+        LiquidacionesAdminView(),
+        RemuneracionesView(),
+        ViaticosAdminView(),
+        FlotaAdminView(),
+        MantenimientoAdminView(),
+        ConductoresView(),
+        ConfigAdminView(),
+      ],
     );
   }
 }

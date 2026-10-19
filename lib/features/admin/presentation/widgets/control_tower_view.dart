@@ -62,6 +62,7 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
   final Map<String, List<LatLng>> _recentTrails = {};
   final Map<String, _UnitMotionState> _motionStates = {};
   List<GpsUnit>? _lastUnits;
+  String? _selectedPlate;
   late AnimationController _animController;
   late Animation<double> _animCurve;
   bool _hasCenteredInitial = false;
@@ -272,6 +273,12 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
     if (identical(_lastUnits, units)) return;
     _lastUnits = units;
 
+    if (_selectedPlate == null && units.isNotEmpty) {
+      _selectedPlate = units.first.plate;
+    } else if (_selectedPlate != null && !units.any((u) => u.plate == _selectedPlate)) {
+      _selectedPlate = units.isNotEmpty ? units.first.plate : null;
+    }
+
     _recordTrails(units);
     _updateMotion(units);
   }
@@ -389,47 +396,41 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                         initialZoom: 14,
                       ),
                       children: [
-                        // Capa Base: Satélite Esri u OpenStreetMap Oscuro
+                        // Capa Base: Satélite Esri u OpenStreetMap Limpio (Colores naturales, sin filtro oscuro)
                         if (_useSatellite)
                           TileLayer(
                             urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                            maxZoom: 19,
                           )
                         else
                           TileLayer(
                             urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                             userAgentPackageName: 'com.heirlog.tms',
-                            tileBuilder: (context, tileWidget, tile) {
-                              return ColorFiltered(
-                                colorFilter: const ColorFilter.matrix(<double>[
-                                  -0.85, 0, 0, 0, 230,
-                                  0, -0.85, 0, 0, 230,
-                                  0, 0, -0.85, 0, 240,
-                                  0, 0, 0, 1, 0,
-                                ]),
-                                child: tileWidget,
-                              );
-                            },
+                            maxZoom: 19,
                           ),
 
-                        // Estela / Migas de pan animadas de los últimos puntos transitados
+                        // Estela / Migas de pan de la unidad seleccionada (se limpia al cambiar de camión)
                         AnimatedBuilder(
                           animation: _animController,
                           builder: (context, _) {
+                            if (_selectedPlate == null) return const SizedBox();
+                            final points = List<LatLng>.from(_recentTrails[_selectedPlate] ?? []);
+                            if (points.isEmpty) return const SizedBox();
+
+                            if (_motionStates.containsKey(_selectedPlate)) {
+                              points.add(_getCurrentPos(_selectedPlate!));
+                            }
+
                             return PolylineLayer(
-                              polylines: _recentTrails.entries.map((entry) {
-                                final plate = entry.key;
-                                final points = List<LatLng>.from(entry.value);
-                                if (_motionStates.containsKey(plate)) {
-                                  points.add(_getCurrentPos(plate));
-                                }
-                                return Polyline(
+                              polylines: [
+                                Polyline(
                                   points: points,
-                                  color: Colors.cyanAccent.withValues(alpha: 0.65),
-                                  strokeWidth: 4.0,
+                                  color: Colors.blueAccent.withValues(alpha: 0.85),
+                                  strokeWidth: 4.5,
                                   borderColor: Colors.black87,
-                                  borderStrokeWidth: 1.2,
-                                );
-                              }).toList(),
+                                  borderStrokeWidth: 1.5,
+                                ),
+                              ],
                             );
                           },
                         ),
@@ -442,6 +443,7 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                               markers: units.map((unit) {
                                 final currentPos = _getCurrentPos(unit.plate);
                                 final currentHeading = _getCurrentHeading(unit.plate);
+                                final isSelected = unit.plate == _selectedPlate;
                                 final isMoving = unit.speed > 0;
                                 final color = isMoving 
                                     ? Colors.greenAccent 
@@ -451,10 +453,15 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
 
                                 return Marker(
                                   point: currentPos,
-                                  width: 80,
-                                  height: 70,
+                                  width: 85,
+                                  height: 75,
                                   child: GestureDetector(
-                                    onTap: () => _mapController.move(currentPos, 16),
+                                    onTap: () {
+                                      setState(() {
+                                        _selectedPlate = unit.plate;
+                                      });
+                                      _mapController.move(currentPos, 16);
+                                    },
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
@@ -463,9 +470,15 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                                           decoration: BoxDecoration(
                                             color: Colors.black.withValues(alpha: 0.85),
                                             borderRadius: BorderRadius.circular(4),
-                                            border: Border.all(color: color.withValues(alpha: 0.8), width: 1.2),
+                                            border: Border.all(
+                                              color: isSelected ? Colors.blueAccent : color.withValues(alpha: 0.8),
+                                              width: isSelected ? 2.2 : 1.2,
+                                            ),
                                             boxShadow: [
-                                              BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 4),
+                                              BoxShadow(
+                                                color: isSelected ? Colors.blueAccent.withValues(alpha: 0.5) : color.withValues(alpha: 0.3),
+                                                blurRadius: isSelected ? 8 : 4,
+                                              ),
                                             ],
                                           ),
                                           child: Row(
@@ -473,7 +486,11 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                                             children: [
                                               Text(
                                                 unit.plate,
-                                                style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
+                                                style: TextStyle(
+                                                  color: isSelected ? Colors.white : color,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
                                               ),
                                               if (isMoving) ...[
                                                 const SizedBox(width: 4),
@@ -491,9 +508,15 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                                           decoration: BoxDecoration(
                                             color: Colors.black87,
                                             shape: BoxShape.circle,
-                                            border: Border.all(color: color, width: 2),
+                                            border: Border.all(
+                                              color: isSelected ? Colors.blueAccent : color,
+                                              width: isSelected ? 2.5 : 2.0,
+                                            ),
                                             boxShadow: [
-                                              BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 6),
+                                              BoxShadow(
+                                                color: isSelected ? Colors.blueAccent.withValues(alpha: 0.6) : color.withValues(alpha: 0.4),
+                                                blurRadius: isSelected ? 8 : 6,
+                                              ),
                                             ],
                                           ),
                                           child: isMoving
@@ -501,13 +524,13 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                                                   angle: headingRadians,
                                                   child: Icon(
                                                     Icons.navigation_rounded,
-                                                    color: color,
+                                                    color: isSelected ? Colors.blueAccent : color,
                                                     size: 18,
                                                   ),
                                                 )
                                               : Icon(
                                                   Icons.local_shipping,
-                                                  color: color,
+                                                  color: isSelected ? Colors.blueAccent : color,
                                                   size: 16,
                                                 ),
                                         ),
@@ -522,28 +545,63 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                       ],
                     ),
 
-                    // Botón para alternar Mapa Oscuro / Satélite
+                    // Selector de tipo de mapa (Calles Limpio vs. Satélite)
                     Positioned(
                       top: 16,
                       right: 16,
                       child: Container(
+                        padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
                           color: const Color(0xFF1E1E1E),
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: Colors.white24),
+                          boxShadow: [
+                            BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 6),
+                          ],
                         ),
-                        child: IconButton(
-                          tooltip: _useSatellite ? 'Cambiar a Mapa Oscuro' : 'Cambiar a Vista Satélite',
-                          icon: Icon(
-                            _useSatellite ? Icons.map_outlined : Icons.satellite_alt_outlined,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                          onPressed: () {
-                            setState(() {
-                              _useSatellite = !_useSatellite;
-                            });
-                          },
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            InkWell(
+                              onTap: () => setState(() => _useSatellite = false),
+                              borderRadius: BorderRadius.circular(6),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: !_useSatellite ? Colors.blueAccent : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.map, size: 14, color: !_useSatellite ? Colors.white : Colors.white60),
+                                    const SizedBox(width: 4),
+                                    Text('Calles', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: !_useSatellite ? Colors.white : Colors.white60)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            InkWell(
+                              onTap: () => setState(() => _useSatellite = true),
+                              borderRadius: BorderRadius.circular(6),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: _useSatellite ? Colors.blueAccent : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.satellite_alt, size: 14, color: _useSatellite ? Colors.white : Colors.white60),
+                                    const SizedBox(width: 4),
+                                    Text('Satélite', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _useSatellite ? Colors.white : Colors.white60)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -652,6 +710,25 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                   ),
                 ),
 
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _showGpsConfigDialog(context),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueAccent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        elevation: 2,
+                      ),
+                      icon: const Icon(Icons.key_rounded, size: 16),
+                      label: const Text('Vincular Cuenta ModoGPS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ),
+
                 const Divider(color: Colors.white10, height: 1),
 
                 // Lista de camiones
@@ -684,6 +761,7 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
   }
 
   Widget _buildUnitCard(GpsUnit unit) {
+    final isSelected = unit.plate == _selectedPlate;
     final isMoving = unit.speed > 0;
     final color = isMoving 
         ? Colors.greenAccent 
@@ -697,12 +775,21 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
+        color: isSelected ? Colors.blueAccent.withValues(alpha: 0.12) : Colors.white.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(
+          color: isSelected ? Colors.blueAccent : Colors.white.withValues(alpha: 0.05),
+          width: isSelected ? 1.8 : 1.0,
+        ),
       ),
       child: InkWell(
-        onTap: () => _mapController.move(unit.position, 15),
+        onTap: () {
+          setState(() {
+            _selectedPlate = unit.plate;
+          });
+          final pos = _getCurrentPos(unit.plate);
+          _mapController.move(pos.latitude != 0 ? pos : unit.position, 15);
+        },
         borderRadius: BorderRadius.circular(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -712,14 +799,29 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
+                    color: isSelected ? Colors.blueAccent : color.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
                     unit.plate,
-                    style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13),
+                    style: TextStyle(color: isSelected ? Colors.white : color, fontWeight: FontWeight.bold, fontSize: 13),
                   ),
                 ),
+                if (isSelected) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.blueAccent.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.5)),
+                    ),
+                    child: const Text(
+                      'EN SEGUIMIENTO',
+                      style: TextStyle(color: Colors.blueAccent, fontSize: 8, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
                 const Spacer(),
                 Text(
                   statusText,
