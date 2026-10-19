@@ -6,10 +6,12 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/services/modogps_service.dart';
+import '../../domain/services/gps_harvest_service.dart';
 
 export '../../domain/services/modogps_service.dart' show GpsUnit;
 
 final modoGpsServiceProvider = Provider((ref) => ModoGpsService());
+final gpsHarvestServiceProvider = Provider((ref) => GpsHarvestService());
 
 class RefreshTriggerNotifier extends Notifier<int> {
   @override
@@ -22,17 +24,20 @@ final refreshTriggerProvider = NotifierProvider<RefreshTriggerNotifier, int>(() 
 
 final fleetStreamProvider = StreamProvider<List<GpsUnit>>((ref) async* {
   final service = ref.read(modoGpsServiceProvider);
+  final harvest = ref.read(gpsHarvestServiceProvider);
   final userProfile = ref.watch(currentUserProfileProvider).value;
   ref.watch(refreshTriggerProvider);
 
   while (true) {
     try {
       final units = await service.fetchFleetData(idEmpresa: userProfile?.idEmpresa);
+      // Cosecha automática: posiciones, eventos y viajes se guardan en Firestore
+      harvest.ingest(units, idEmpresa: userProfile?.idEmpresa).ignore();
       yield units;
     } catch (e) {
       debugPrint("Error obteniendo flota ModoGPS: $e");
     }
-    await Future.delayed(const Duration(seconds: 5)); // Actualización en tiempo real cada 5 segundos
+    await Future.delayed(const Duration(seconds: 5));
   }
 });
 
@@ -118,6 +123,8 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
     final messenger = ScaffoldMessenger.of(parentContext);
     final nav = Navigator.of(parentContext, rootNavigator: true);
     bool isSaving = false;
+    // 0 = Wialon/ModoGPS, 1 = Proveedor Genérico
+    int selectedProvider = 0;
 
     showDialog(
       context: parentContext,
@@ -125,104 +132,224 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              backgroundColor: const Color(0xFF1E1E1E),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              backgroundColor: const Color(0xFF161B22),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              contentPadding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+              titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
               title: Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(9),
                     decoration: BoxDecoration(
-                      color: Colors.blueAccent.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(8),
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF1565C0), Color(0xFF42A5F5)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.satellite_alt, color: Colors.blueAccent, size: 22),
+                    child: const Icon(Icons.satellite_alt, color: Colors.white, size: 20),
                   ),
                   const SizedBox(width: 12),
-                  const Text(
-                    'Vincular ModoGPS / Wialon',
-                    style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Vincular Proveedor GPS',
+                          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          'Conecta tu flota en tiempo real',
+                          style: TextStyle(color: Colors.white38, fontSize: 11),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
               content: SizedBox(
-                width: 480,
+                width: 500,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Conecta tu cuenta satelital para monitorear tu propia flota en vivo en Torre de Control.',
-                      style: TextStyle(color: Colors.white70, fontSize: 13),
-                    ),
-                    const SizedBox(height: 16),
+                    // ── Selector de Proveedor ──────────────────────────────
                     Container(
-                      padding: const EdgeInsets.all(14),
+                      padding: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.04),
+                        color: Colors.white.withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: Colors.white12),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Row(
                         children: [
-                          const Text(
-                            'Paso 1: Iniciar Sesión en tu proveedor GPS',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                          ),
-                          const SizedBox(height: 6),
-                          const Text(
-                            'Abre el portal de ModoGPS, inicia sesión con tu usuario y autoriza la integración:',
-                            style: TextStyle(color: Colors.white54, fontSize: 11),
-                          ),
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton.icon(
-                              onPressed: () async {
-                                const url = 'https://monitoreo.modogps.cl/login.html?client_id=BitacoraTMS&access_type=-1&duration=0&response_type=token';
-                                if (await canLaunchUrl(Uri.parse(url))) {
-                                  await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-                                }
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blueAccent,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => setDialogState(() => selectedProvider = 0),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                padding: const EdgeInsets.symmetric(vertical: 9),
+                                decoration: BoxDecoration(
+                                  color: selectedProvider == 0 ? Colors.blueAccent : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.verified_rounded, size: 13, color: selectedProvider == 0 ? Colors.white : Colors.white38),
+                                    const SizedBox(width: 5),
+                                    Text(
+                                      'ModoGPS / Wialon',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: selectedProvider == 0 ? Colors.white : Colors.white38,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                              icon: const Icon(Icons.open_in_new, size: 16),
-                              label: const Text('Abrir ModoGPS para Autorizar', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => setDialogState(() => selectedProvider = 1),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                padding: const EdgeInsets.symmetric(vertical: 9),
+                                decoration: BoxDecoration(
+                                  color: selectedProvider == 1 ? Colors.purpleAccent.shade100.withValues(alpha: 0.8) : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.settings_input_antenna, size: 13,
+                                        color: selectedProvider == 1 ? Colors.white : Colors.white38),
+                                    const SizedBox(width: 5),
+                                    Text(
+                                      'Proveedor Genérico',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: selectedProvider == 1 ? Colors.white : Colors.white38,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
                     const SizedBox(height: 16),
-                    const Text(
-                      'Paso 2: Pega el enlace de respuesta o tu Token',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                    ),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: textController,
-                      style: const TextStyle(color: Colors.white, fontSize: 12),
-                      maxLines: 2,
-                      decoration: InputDecoration(
-                        hintText: 'Pega la URL devuelta (https://monitoreo.modogps.cl/login.html?access_token=...) o solo el token',
-                        hintStyle: const TextStyle(color: Colors.white30, fontSize: 11),
-                        filled: true,
-                        fillColor: Colors.black45,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.white24)),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.blueAccent)),
+
+                    // ── Contenido según proveedor ──────────────────────────
+                    if (selectedProvider == 0) ...[
+                      // ── Wialon / ModoGPS ──
+                      _buildStep(
+                        number: '1',
+                        title: 'Abre el portal y autoriza',
+                        description: 'Haz clic en el botón de abajo. Se abrirá tu navegador con el portal de ModoGPS. Inicia sesión con tu usuario y acepta la autorización.',
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () async {
+                              const url = 'https://monitoreo.modogps.cl/login.html?client_id=BitacoraTMS&access_type=-1&duration=0&response_type=token';
+                              if (await canLaunchUrl(Uri.parse(url))) {
+                                await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF1565C0),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 11),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            icon: const Icon(Icons.open_in_new, size: 15),
+                            label: const Text('Abrir ModoGPS › Autorizar', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 12),
+                      _buildStep(
+                        number: '2',
+                        title: 'Copia y pega el enlace de retorno',
+                        description: 'Tras autorizar, el navegador te redirigirá a una URL. Copia esa URL completa (o solo el token) y pégala aquí:',
+                        child: TextField(
+                          controller: textController,
+                          style: const TextStyle(color: Colors.white, fontSize: 12),
+                          maxLines: 2,
+                          decoration: InputDecoration(
+                            hintText: 'https://monitoreo.modogps.cl/login.html?access_token=... (o solo el token)',
+                            hintStyle: const TextStyle(color: Colors.white24, fontSize: 10),
+                            filled: true,
+                            fillColor: Colors.black38,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.white12)),
+                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.blueAccent)),
+                          ),
+                        ),
+                      ),
+                    ] else ...[
+                      // ── Proveedor Genérico ──
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.purple.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.purple.withValues(alpha: 0.25)),
+                        ),
+                        child: const Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.info_outline, color: Colors.purpleAccent, size: 16),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Compatible con cualquier plataforma basada en Wialon SDK u OAuth token. Ejemplos: Gurtam, NimBus, Flespi, TrackerMate y otros.',
+                                style: TextStyle(color: Colors.white60, fontSize: 11),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildStep(
+                        number: '1',
+                        title: 'Obtén tu Token de API',
+                        description: 'Accede al portal de tu proveedor GPS → Perfil / Configuración → Tokens de API o Llaves de acceso. Genera un nuevo token con permisos de lectura de unidades.',
+                      ),
+                      const SizedBox(height: 12),
+                      _buildStep(
+                        number: '2',
+                        title: 'Pega el token aquí',
+                        description: 'Copia el token generado y pégalo en el campo. Si tu proveedor es compatible con Wialon SDK, también puedes pegar la URL de autorización completa.',
+                        child: TextField(
+                          controller: textController,
+                          style: const TextStyle(color: Colors.white, fontSize: 12),
+                          maxLines: 2,
+                          decoration: InputDecoration(
+                            hintText: 'Token de API o URL de autorización de tu proveedor GPS',
+                            hintStyle: const TextStyle(color: Colors.white24, fontSize: 10),
+                            filled: true,
+                            fillColor: Colors.black38,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.white12)),
+                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.purpleAccent)),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
               actions: [
                 TextButton(
                   onPressed: isSaving ? null : () => nav.pop(),
-                  child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
+                  child: const Text('Cancelar', style: TextStyle(color: Colors.white38)),
                 ),
                 ElevatedButton(
                   onPressed: isSaving ? null : () async {
@@ -237,8 +364,10 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                       if (!mounted) return;
                       nav.pop();
                       messenger.showSnackBar(
-                        const SnackBar(
-                          content: Text('✅ ModoGPS vinculado exitosamente. Sincronizando flota...'),
+                        SnackBar(
+                          content: Text(selectedProvider == 0
+                              ? '✅ ModoGPS vinculado exitosamente. Sincronizando flota...'
+                              : '✅ Proveedor GPS vinculado. Sincronizando flota...'),
                           backgroundColor: Colors.green,
                         ),
                       );
@@ -254,18 +383,53 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                     }
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.greenAccent.shade700,
+                    backgroundColor: selectedProvider == 0 ? Colors.blueAccent : Colors.purpleAccent,
                     foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
                   child: isSaving
                       ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : const Text('Guardar y Conectar'),
+                      : const Text('Guardar y Conectar', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ],
             );
           },
         );
       },
+    );
+  }
+
+  Widget _buildStep({required String number, required String title, required String description, Widget? child}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 22,
+          height: 22,
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(
+            color: Color(0xFF1565C0),
+            shape: BoxShape.circle,
+          ),
+          child: Text(number, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+              const SizedBox(height: 3),
+              Text(description, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+              if (child != null) ...[
+                const SizedBox(height: 10),
+                child,
+              ],
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -694,11 +858,7 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                           ],
                         ),
                       ),
-                      IconButton(
-                        tooltip: 'Vincular o Cambiar Cuenta ModoGPS',
-                        icon: const Icon(Icons.key_rounded, color: Colors.blueAccent, size: 20),
-                        onPressed: () => _showGpsConfigDialog(context),
-                      ),
+
                       IconButton(
                         tooltip: 'Actualizar ahora',
                         icon: const Icon(Icons.refresh, color: Colors.white70, size: 20),

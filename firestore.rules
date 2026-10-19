@@ -74,6 +74,11 @@ service cloud.firestore {
       allow write: if isAuthenticated() && getUserEmpresa() == empresaId && isCompanyAdmin();
     }
 
+    match /config_empresas/{empresaId} {
+      allow read: if isAuthenticated() && getUserEmpresa() == empresaId;
+      allow write: if isAuthenticated() && getUserEmpresa() == empresaId && isCompanyAdmin();
+    }
+
     // 5. Colecciones Multi-Tenant Rigurosas
     // Aplica a: jornadas, viajes, gastos, vehiculos, viaticos, liquidaciones
     
@@ -136,6 +141,29 @@ service cloud.firestore {
     // 7. Solicitudes de Servicio (IA)
     match /service_requests/{docId} {
       allow read, write: if isAuthenticated();
+    }
+
+    // 8. Telemetría GPS (raw_positions, events, trip_summaries)
+    // El documento padre es el idEmpresa; las subcolecciones contienen los datos.
+    match /telemetry/{empresaId} {
+      allow read, write: if isAuthenticated() && getUserEmpresa() == empresaId;
+
+      match /raw_positions/{docId} {
+        allow read: if isAuthenticated() && getUserEmpresa() == empresaId;
+        allow create, update: if isAuthenticated() && getUserEmpresa() == empresaId;
+      }
+
+      match /events/{docId} {
+        allow read: if isAuthenticated() && getUserEmpresa() == empresaId;
+        allow create, update: if isAuthenticated() && getUserEmpresa() == empresaId;
+      }
+
+      match /trip_summaries/{docId} {
+        allow read: if isAuthenticated() && getUserEmpresa() == empresaId;
+        allow create, update: if isAuthenticated() && getUserEmpresa() == empresaId;
+        // Solo admin puede borrar resúmenes históricos
+        allow delete: if isAuthenticated() && getUserEmpresa() == empresaId && isCompanyAdmin();
+      }
     }
   }
 }

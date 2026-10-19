@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/analytics_models.dart';
+import 'gps_harvest_service.dart';
 
 class _AiConfig {
   final String apiKey;
@@ -182,6 +183,90 @@ class AIAnalyticService {
       );
     } catch (e) {
       return "Error de conexión: $e";
+    }
+  }
+
+  /// Consulta libre sobre la flota usando datos reales de Firestore.
+  /// La IA recibe RESÚMENES compactos, no coordenadas brutas.
+  /// Solo se llama cuando el usuario lo pide explícitamente.
+  Future<String> askFleetOperations({
+    required String question,
+    required String idEmpresa,
+    String? plate,
+    List<Map<String, String>> history = const [],
+  }) async {
+    try {
+      final config = await _getAiConfig();
+      final harvest = GpsHarvestService();
+
+      // Cargar contexto desde Firestore (resúmenes compactos, ~100 tokens cada uno)
+      final tripSummaries = await harvest.getRecentTripSummariesForAi(
+        empresa: idEmpresa,
+        plate: plate,
+        limit: 15, // últimos 15 viajes
+      );
+      final recentEvents = await harvest.getRecentEventsForAi(
+        empresa: idEmpresa,
+        plate: plate,
+        limit: 20,
+      );
+      final stats = await harvest.getFleetStats(empresa: idEmpresa);
+
+      // Construir bloque de contexto compacto
+      final contextBlock = StringBuffer();
+      contextBlock.writeln('=== ESTADÍSTICAS GLOBALES ===');
+      if (stats.isNotEmpty) {
+        stats.forEach((k, v) => contextBlock.writeln('$k: $v'));
+      } else {
+        contextBlock.writeln('(aún no hay suficientes datos recopilados)');
+      }
+
+      contextBlock.writeln('\n=== ÚLTIMOS VIAJES (resumidos) ===');
+      if (tripSummaries.isEmpty) {
+        contextBlock.writeln('(no hay viajes registrados aún)');
+      } else {
+        for (final s in tripSummaries) {
+          contextBlock.writeln('• $s');
+        }
+      }
+
+      contextBlock.writeln('\n=== EVENTOS RECIENTES ===');
+      if (recentEvents.isEmpty) {
+        contextBlock.writeln('(no hay eventos registrados aún)');
+      } else {
+        for (final e in recentEvents) {
+          contextBlock.writeln('• $e');
+        }
+      }
+
+      final systemPrompt = '''
+Eres "Bitácora AI", Asistente Operacional de flota de transporte.
+
+CONTEXTO REAL DE LA OPERACIÓN (datos de telemetría GPS de Firestore):
+${contextBlock.toString()}
+
+REGLAS:
+1. Basa tus respuestas ÚNICAMENTE en los datos de contexto anteriores.
+2. Si los datos son insuficientes, indícalo claramente.
+3. Solo responde temas de logística, transporte, flota y operaciones.
+4. Sé conciso, profesional y usa bullets cuando sea útil.
+5. Nunca inventes datos que no estén en el contexto.
+''';
+
+      final messages = <Map<String, dynamic>>[
+        {'role': 'system', 'content': systemPrompt},
+        ...history,
+        {'role': 'user', 'content': question},
+      ];
+
+      return await _callGroqChat(
+        apiKey: config.apiKey,
+        preferredModel: config.model,
+        messages: messages,
+        temperature: 0.2, // Muy determinístico — datos reales
+      );
+    } catch (e) {
+      return 'Error al consultar datos de flota: $e';
     }
   }
 }
