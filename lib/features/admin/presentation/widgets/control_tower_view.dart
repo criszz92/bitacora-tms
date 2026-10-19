@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/services/modogps_service.dart';
 
 export '../../domain/services/modogps_service.dart' show GpsUnit;
@@ -20,11 +22,12 @@ final refreshTriggerProvider = NotifierProvider<RefreshTriggerNotifier, int>(() 
 
 final fleetStreamProvider = StreamProvider<List<GpsUnit>>((ref) async* {
   final service = ref.read(modoGpsServiceProvider);
+  final userProfile = ref.watch(currentUserProfileProvider).value;
   ref.watch(refreshTriggerProvider);
 
   while (true) {
     try {
-      final units = await service.fetchFleetData();
+      final units = await service.fetchFleetData(idEmpresa: userProfile?.idEmpresa);
       yield units;
     } catch (e) {
       debugPrint("Error obteniendo flota ModoGPS: $e");
@@ -72,12 +75,197 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
       duration: const Duration(milliseconds: 3800),
     );
     _animCurve = CurvedAnimation(parent: _animController, curve: Curves.easeInOutCubic);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkUrlForToken();
+    });
   }
 
   @override
   void dispose() {
     _animController.dispose();
     super.dispose();
+  }
+
+  void _checkUrlForToken() {
+    try {
+      final uri = Uri.base;
+      String? token = uri.queryParameters['access_token'];
+      if (token == null && uri.fragment.contains('access_token=')) {
+        final match = RegExp(r'access_token=([a-fA-F0-9]+)').firstMatch(uri.fragment);
+        token = match?.group(1);
+      }
+      if (token != null && token.isNotEmpty) {
+        final service = ref.read(modoGpsServiceProvider);
+        final userProfile = ref.read(currentUserProfileProvider).value;
+        service.saveToken(token, idEmpresa: userProfile?.idEmpresa).then((_) {
+          ref.read(refreshTriggerProvider.notifier).trigger();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('✅ ModoGPS vinculado automáticamente desde el enlace.'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
+  void _showGpsConfigDialog(BuildContext parentContext) {
+    final textController = TextEditingController();
+    final messenger = ScaffoldMessenger.of(parentContext);
+    final nav = Navigator.of(parentContext, rootNavigator: true);
+    bool isSaving = false;
+
+    showDialog(
+      context: parentContext,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E1E1E),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.blueAccent.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.satellite_alt, color: Colors.blueAccent, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Vincular ModoGPS / Wialon',
+                    style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 480,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Conecta tu cuenta satelital para monitorear tu propia flota en vivo en Torre de Control.',
+                      style: TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.04),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.white12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Paso 1: Iniciar Sesión en tu proveedor GPS',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            'Abre el portal de ModoGPS, inicia sesión con tu usuario y autoriza la integración:',
+                            style: TextStyle(color: Colors.white54, fontSize: 11),
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: () async {
+                                const url = 'https://monitoreo.modogps.cl/login.html?client_id=BitacoraTMS&access_type=-1&duration=0&response_type=token';
+                                if (await canLaunchUrl(Uri.parse(url))) {
+                                  await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                                }
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blueAccent,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                              icon: const Icon(Icons.open_in_new, size: 16),
+                              label: const Text('Abrir ModoGPS para Autorizar', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Paso 2: Pega el enlace de respuesta o tu Token',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: textController,
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                      maxLines: 2,
+                      decoration: InputDecoration(
+                        hintText: 'Pega la URL devuelta (https://monitoreo.modogps.cl/login.html?access_token=...) o solo el token',
+                        hintStyle: const TextStyle(color: Colors.white30, fontSize: 11),
+                        filled: true,
+                        fillColor: Colors.black45,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.white24)),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.blueAccent)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSaving ? null : () => nav.pop(),
+                  child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
+                ),
+                ElevatedButton(
+                  onPressed: isSaving ? null : () async {
+                    final raw = textController.text.trim();
+                    if (raw.isEmpty) return;
+                    setDialogState(() => isSaving = true);
+                    try {
+                      final service = ref.read(modoGpsServiceProvider);
+                      final userProfile = ref.read(currentUserProfileProvider).value;
+                      await service.saveToken(raw, idEmpresa: userProfile?.idEmpresa);
+                      ref.read(refreshTriggerProvider.notifier).trigger();
+                      if (!mounted) return;
+                      nav.pop();
+                      messenger.showSnackBar(
+                        const SnackBar(
+                          content: Text('✅ ModoGPS vinculado exitosamente. Sincronizando flota...'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    } catch (e) {
+                      setDialogState(() => isSaving = false);
+                      if (!mounted) return;
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Text('Error al guardar token: $e'),
+                          backgroundColor: Colors.redAccent,
+                        ),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.greenAccent.shade700,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: isSaving
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('Guardar y Conectar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   void _syncUnits(List<GpsUnit> units) {
@@ -394,6 +582,16 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                       icon: const Icon(Icons.refresh, size: 16),
                       label: const Text('Reintentar conexión'),
                     ),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: () => _showGpsConfigDialog(context),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white70,
+                        side: const BorderSide(color: Colors.white24),
+                      ),
+                      icon: const Icon(Icons.key, size: 16),
+                      label: const Text('Vincular o Cambiar Cuenta ModoGPS'),
+                    ),
                   ],
                 ),
               ),
@@ -437,6 +635,11 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                             ),
                           ],
                         ),
+                      ),
+                      IconButton(
+                        tooltip: 'Vincular o Cambiar Cuenta ModoGPS',
+                        icon: const Icon(Icons.key_rounded, color: Colors.blueAccent, size: 20),
+                        onPressed: () => _showGpsConfigDialog(context),
                       ),
                       IconButton(
                         tooltip: 'Actualizar ahora',
