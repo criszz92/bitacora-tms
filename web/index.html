@@ -33,6 +33,38 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <script>
+    window.wialonJsonp = function(url) {
+      return new Promise(function(resolve, reject) {
+        var callbackName = '__wialon_cb_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
+        var script = document.createElement('script');
+        var timer = setTimeout(function() {
+          cleanup();
+          reject(new Error('Tiempo de espera agotado al conectar con ModoGPS'));
+        }, 15000);
+
+        function cleanup() {
+          clearTimeout(timer);
+          delete window[callbackName];
+          if (script.parentNode) script.parentNode.removeChild(script);
+        }
+
+        window[callbackName] = function(data) {
+          cleanup();
+          resolve(JSON.stringify(data));
+        };
+
+        script.onerror = function(err) {
+          cleanup();
+          reject(new Error('Error de red al consultar ModoGPS'));
+        };
+
+        var sep = url.indexOf('?') >= 0 ? '&' : '?';
+        script.src = url + sep + 'callback=' + callbackName;
+        document.body.appendChild(script);
+      });
+    };
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

@@ -59,6 +59,7 @@ app.*.map.json
 *.csv
 *.txt
 *.ps1
+*.wlp
 
 # App bundled assets (allow files in assets/)
 !assets/*
