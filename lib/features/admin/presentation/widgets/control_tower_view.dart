@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -28,9 +29,23 @@ final fleetStreamProvider = StreamProvider<List<GpsUnit>>((ref) async* {
     } catch (e) {
       debugPrint("Error obteniendo flota ModoGPS: $e");
     }
-    await Future.delayed(const Duration(seconds: 45));
+    await Future.delayed(const Duration(seconds: 5)); // Actualización en tiempo real cada 5 segundos
   }
 });
+
+class _UnitMotionState {
+  final LatLng startPosition;
+  final LatLng targetPosition;
+  final double startHeading;
+  final double targetHeading;
+
+  _UnitMotionState({
+    required this.startPosition,
+    required this.targetPosition,
+    required this.startHeading,
+    required this.targetHeading,
+  });
+}
 
 class ControlTowerView extends ConsumerStatefulWidget {
   const ControlTowerView({super.key});
@@ -39,10 +54,102 @@ class ControlTowerView extends ConsumerStatefulWidget {
   ConsumerState<ControlTowerView> createState() => _ControlTowerViewState();
 }
 
-class _ControlTowerViewState extends ConsumerState<ControlTowerView> {
+class _ControlTowerViewState extends ConsumerState<ControlTowerView> with SingleTickerProviderStateMixin {
   final MapController _mapController = MapController();
+  final Map<String, List<LatLng>> _recentTrails = {};
+  final Map<String, _UnitMotionState> _motionStates = {};
+  List<GpsUnit>? _lastUnits;
+  late AnimationController _animController;
+  late Animation<double> _animCurve;
   bool _hasCenteredInitial = false;
   bool _useSatellite = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 3800),
+    );
+    _animCurve = CurvedAnimation(parent: _animController, curve: Curves.easeInOutCubic);
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    super.dispose();
+  }
+
+  void _syncUnits(List<GpsUnit> units) {
+    if (identical(_lastUnits, units)) return;
+    _lastUnits = units;
+
+    _recordTrails(units);
+    _updateMotion(units);
+  }
+
+  void _recordTrails(List<GpsUnit> units) {
+    for (final unit in units) {
+      final trail = _recentTrails.putIfAbsent(unit.plate, () => []);
+      if (trail.isEmpty ||
+          (trail.last.latitude != unit.position.latitude ||
+              trail.last.longitude != unit.position.longitude)) {
+        trail.add(unit.position);
+        if (trail.length > 10) {
+          trail.removeAt(0); // Mantenemos los últimos 10 puntos de estela reciente
+        }
+      }
+    }
+  }
+
+  void _updateMotion(List<GpsUnit> units) {
+    bool hasChanges = false;
+    for (final unit in units) {
+      final existing = _motionStates[unit.plate];
+      final currentPos = existing != null ? _getCurrentPos(unit.plate) : unit.position;
+      final currentHeading = existing != null ? _getCurrentHeading(unit.plate) : (unit.course ?? 0.0);
+      final targetPos = unit.position;
+      final targetHeading = unit.course ?? 0.0;
+
+      final dist = math.sqrt(
+        math.pow(currentPos.latitude - targetPos.latitude, 2) +
+        math.pow(currentPos.longitude - targetPos.longitude, 2),
+      );
+
+      if (dist > 0.00001 || (currentHeading - targetHeading).abs() > 0.5) {
+        hasChanges = true;
+      }
+
+      _motionStates[unit.plate] = _UnitMotionState(
+        startPosition: currentPos,
+        targetPosition: targetPos,
+        startHeading: currentHeading,
+        targetHeading: targetHeading,
+      );
+    }
+
+    if (hasChanges) {
+      _animController.forward(from: 0.0);
+    }
+  }
+
+  LatLng _getCurrentPos(String plate) {
+    final state = _motionStates[plate];
+    if (state == null) return const LatLng(0, 0);
+    final t = _animCurve.value;
+    final lat = state.startPosition.latitude + (state.targetPosition.latitude - state.startPosition.latitude) * t;
+    final lng = state.startPosition.longitude + (state.targetPosition.longitude - state.startPosition.longitude) * t;
+    return LatLng(lat, lng);
+  }
+
+  double _getCurrentHeading(String plate) {
+    final state = _motionStates[plate];
+    if (state == null) return 0.0;
+    final t = _animCurve.value;
+    // Cálculo del menor ángulo de giro (-180 a 180) para interpolación suave
+    final diff = ((state.targetHeading - state.startHeading + 540) % 360) - 180;
+    return (state.startHeading + diff * t) % 360;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -72,11 +179,14 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> {
                   );
                 }
 
+                // Sincronizar estados de movimiento y estela
+                _syncUnits(units);
+
                 // Centrar automáticamente en la primera unidad una sola vez al cargar
                 if (!_hasCenteredInitial && units.isNotEmpty) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (mounted) {
-                      _mapController.move(units.first.position, 13);
+                      _mapController.move(units.first.position, 14);
                       _hasCenteredInitial = true;
                     }
                   });
@@ -88,9 +198,10 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> {
                       mapController: _mapController,
                       options: MapOptions(
                         initialCenter: units.isNotEmpty ? units.first.position : const LatLng(-36.9840, -73.1774),
-                        initialZoom: 13,
+                        initialZoom: 14,
                       ),
                       children: [
+                        // Capa Base: Satélite Esri u OpenStreetMap Oscuro
                         if (_useSatellite)
                           TileLayer(
                             urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
@@ -111,53 +222,114 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> {
                               );
                             },
                           ),
-                        MarkerLayer(
-                          markers: units.map((unit) {
-                            final isMoving = unit.speed > 0;
-                            final color = isMoving 
-                                ? Colors.greenAccent 
-                                : (unit.status == 'offline' ? Colors.redAccent : Colors.orangeAccent);
 
-                            return Marker(
-                              point: unit.position,
-                              width: 70,
-                              height: 60,
-                              child: GestureDetector(
-                                onTap: () => _mapController.move(unit.position, 15),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.black87,
-                                        borderRadius: BorderRadius.circular(4),
-                                        border: Border.all(color: color.withValues(alpha: 0.6), width: 1),
-                                      ),
-                                      child: Text(
-                                        unit.plate,
-                                        style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Container(
-                                      padding: const EdgeInsets.all(4),
-                                      decoration: BoxDecoration(
-                                        color: color.withValues(alpha: 0.2),
-                                        shape: BoxShape.circle,
-                                        border: Border.all(color: color, width: 1.5),
-                                      ),
-                                      child: Icon(
-                                        Icons.local_shipping,
-                                        color: color,
-                                        size: 18,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
+                        // Estela / Migas de pan animadas de los últimos puntos transitados
+                        AnimatedBuilder(
+                          animation: _animController,
+                          builder: (context, _) {
+                            return PolylineLayer(
+                              polylines: _recentTrails.entries.map((entry) {
+                                final plate = entry.key;
+                                final points = List<LatLng>.from(entry.value);
+                                if (_motionStates.containsKey(plate)) {
+                                  points.add(_getCurrentPos(plate));
+                                }
+                                return Polyline(
+                                  points: points,
+                                  color: Colors.cyanAccent.withValues(alpha: 0.65),
+                                  strokeWidth: 4.0,
+                                  borderColor: Colors.black87,
+                                  borderStrokeWidth: 1.2,
+                                );
+                              }).toList(),
                             );
-                          }).toList(),
+                          },
+                        ),
+
+                        // Marcadores con posición animada (lerp) y rumbo suave
+                        AnimatedBuilder(
+                          animation: _animController,
+                          builder: (context, _) {
+                            return MarkerLayer(
+                              markers: units.map((unit) {
+                                final currentPos = _getCurrentPos(unit.plate);
+                                final currentHeading = _getCurrentHeading(unit.plate);
+                                final isMoving = unit.speed > 0;
+                                final color = isMoving 
+                                    ? Colors.greenAccent 
+                                    : (unit.status == 'offline' ? Colors.redAccent : Colors.orangeAccent);
+
+                                final headingRadians = (currentHeading % 360) * (math.pi / 180.0);
+
+                                return Marker(
+                                  point: currentPos,
+                                  width: 80,
+                                  height: 70,
+                                  child: GestureDetector(
+                                    onTap: () => _mapController.move(currentPos, 16),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.black.withValues(alpha: 0.85),
+                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(color: color.withValues(alpha: 0.8), width: 1.2),
+                                            boxShadow: [
+                                              BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 4),
+                                            ],
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(
+                                                unit.plate,
+                                                style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
+                                              ),
+                                              if (isMoving) ...[
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  '${unit.speed.toStringAsFixed(0)}k',
+                                                  style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w600),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Container(
+                                          padding: const EdgeInsets.all(5),
+                                          decoration: BoxDecoration(
+                                            color: Colors.black87,
+                                            shape: BoxShape.circle,
+                                            border: Border.all(color: color, width: 2),
+                                            boxShadow: [
+                                              BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 6),
+                                            ],
+                                          ),
+                                          child: isMoving
+                                              ? Transform.rotate(
+                                                  angle: headingRadians,
+                                                  child: Icon(
+                                                    Icons.navigation_rounded,
+                                                    color: color,
+                                                    size: 18,
+                                                  ),
+                                                )
+                                              : Icon(
+                                                  Icons.local_shipping,
+                                                  color: color,
+                                                  size: 16,
+                                                ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            );
+                          },
                         ),
                       ],
                     ),
