@@ -71,10 +71,21 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
   late Animation<double> _animCurve;
   bool _hasCenteredInitial = false;
   bool _useSatellite = false;
+  bool _showGeofences = true;
+
+  // Modo de vista: 0 = En Vivo, 1 = Historial de Recorridos
+  int _viewMode = 0;
+  DateTime _selectedDate = DateTime.now();
+  TimeOfDay _startTime = const TimeOfDay(hour: 0, minute: 0);
+  TimeOfDay _endTime = const TimeOfDay(hour: 23, minute: 59);
+  bool _isLoadingHistory = false;
+  GpsHistoricalTrip? _historicalTrip;
+  List<GpsGeofence> _cachedGeofencesList = [];
 
   @override
   void initState() {
     super.initState();
+    _loadGeofences();
     _animController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 3800),
@@ -115,6 +126,85 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
         });
       }
     } catch (_) {}
+  }
+
+  Future<void> _loadGeofences() async {
+    try {
+      final userProfile = ref.read(currentUserProfileProvider).value;
+      final service = ref.read(modoGpsServiceProvider);
+      final geofences = await service.fetchGeofences(idEmpresa: userProfile?.idEmpresa);
+      if (mounted) {
+        setState(() {
+          _cachedGeofencesList = geofences;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _fetchHistoricalRoute(String plate) async {
+    setState(() {
+      _isLoadingHistory = true;
+      _historicalTrip = null;
+    });
+
+    try {
+      final userProfile = ref.read(currentUserProfileProvider).value;
+      final service = ref.read(modoGpsServiceProvider);
+
+      final startDateTime = DateTime(
+        _selectedDate.year,
+        _selectedDate.month,
+        _selectedDate.day,
+        _startTime.hour,
+        _startTime.minute,
+      );
+      final endDateTime = DateTime(
+        _selectedDate.year,
+        _selectedDate.month,
+        _selectedDate.day,
+        _endTime.hour,
+        _endTime.minute,
+      );
+
+      final trip = await service.fetchTripInterval(
+        plate: plate,
+        startTime: startDateTime,
+        endTime: endDateTime,
+        idEmpresa: userProfile?.idEmpresa,
+      );
+
+      if (mounted) {
+        setState(() {
+          _historicalTrip = trip;
+          _isLoadingHistory = false;
+        });
+
+        if (trip != null && trip.points.isNotEmpty) {
+          // Centrar mapa en el punto medio del recorrido
+          final midPoint = trip.points[trip.points.length ~/ 2].position;
+          _mapController.move(midPoint, 13);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No se encontraron registros de movimiento para este horario.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingHistory = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al consultar historial: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
   }
 
   void _showGpsConfigDialog(BuildContext parentContext) {
@@ -572,31 +662,138 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                             maxZoom: 19,
                           ),
 
-                        // Estela / Migas de pan de la unidad seleccionada (se limpia al cambiar de camión)
-                        AnimatedBuilder(
-                          animation: _animController,
-                          builder: (context, _) {
-                            if (_selectedPlate == null) return const SizedBox();
-                            final points = List<LatLng>.from(_recentTrails[_selectedPlate] ?? []);
-                            if (points.isEmpty) return const SizedBox();
+                        // Capa de Geocercas ModoGPS (Polígonos y Áreas)
+                        if (_showGeofences && _cachedGeofencesList.isNotEmpty)
+                          PolygonLayer(
+                            polygons: _cachedGeofencesList.map((g) {
+                              final isBase = g.name.toUpperCase().contains('BASE') || g.name.toUpperCase().contains('CASA');
+                              final isPuerto = g.name.toUpperCase().contains('PUERTO') || g.name.toUpperCase().contains('SVTI');
+                              final color = isBase 
+                                  ? Colors.greenAccent 
+                                  : (isPuerto ? Colors.cyanAccent : Colors.amberAccent);
 
-                            if (_motionStates.containsKey(_selectedPlate)) {
-                              points.add(_getCurrentPos(_selectedPlate!));
-                            }
+                              // Convertir bounding box en polígono cuadrangular
+                              final polyPoints = [
+                                LatLng(g.minLat, g.minLng),
+                                LatLng(g.minLat, g.maxLng),
+                                LatLng(g.maxLat, g.maxLng),
+                                LatLng(g.maxLat, g.minLng),
+                              ];
 
-                            return PolylineLayer(
-                              polylines: [
-                                Polyline(
-                                  points: points,
-                                  color: Colors.blueAccent.withValues(alpha: 0.85),
-                                  strokeWidth: 4.5,
-                                  borderColor: Colors.black87,
-                                  borderStrokeWidth: 1.5,
+                              return Polygon(
+                                points: polyPoints,
+                                color: color.withValues(alpha: 0.15),
+                                borderColor: color.withValues(alpha: 0.8),
+                                borderStrokeWidth: 1.8,
+                              );
+                            }).toList(),
+                          ),
+
+                        // Capa de Etiquetas de Geocercas en el mapa
+                        if (_showGeofences && _cachedGeofencesList.isNotEmpty)
+                          MarkerLayer(
+                            markers: _cachedGeofencesList.map((g) {
+                              return Marker(
+                                point: g.center,
+                                width: 120,
+                                height: 26,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.75),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: Colors.white24, width: 0.8),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      g.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
                                 ),
-                              ],
-                            );
-                          },
-                        ),
+                              );
+                            }).toList(),
+                          ),
+
+                        // Capa de Trazado Histórico (Ruta del intervalo seleccionado)
+                        if (_viewMode == 1 && _historicalTrip != null && _historicalTrip!.points.isNotEmpty) ...[
+                          PolylineLayer(
+                            polylines: [
+                              Polyline(
+                                points: _historicalTrip!.points.map((p) => p.position).toList(),
+                                color: const Color(0xFF00E676),
+                                strokeWidth: 5.0,
+                                borderColor: Colors.black,
+                                borderStrokeWidth: 1.5,
+                              ),
+                            ],
+                          ),
+
+                          // Marcadores de Inicio, Fin y Paradas del Historial
+                          MarkerLayer(
+                            markers: [
+                              // Marcador Inicio
+                              Marker(
+                                point: _historicalTrip!.points.first.position,
+                                width: 40,
+                                height: 40,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.green,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 2),
+                                    boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 6)],
+                                  ),
+                                  child: const Icon(Icons.play_arrow, color: Colors.white, size: 22),
+                                ),
+                              ),
+                              // Marcador Fin
+                              Marker(
+                                point: _historicalTrip!.points.last.position,
+                                width: 40,
+                                height: 40,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.redAccent,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 2),
+                                    boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 6)],
+                                  ),
+                                  child: const Icon(Icons.flag, color: Colors.white, size: 20),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+
+                        // Estela / Migas de pan de la unidad seleccionada (se limpia al cambiar de camión)
+                        if (_viewMode == 0)
+                          AnimatedBuilder(
+                            animation: _animController,
+                            builder: (context, _) {
+                              if (_selectedPlate == null) return const SizedBox();
+                              final points = List<LatLng>.from(_recentTrails[_selectedPlate] ?? []);
+                              if (points.isEmpty) return const SizedBox();
+
+                              if (_motionStates.containsKey(_selectedPlate)) {
+                                points.add(_getCurrentPos(_selectedPlate!));
+                              }
+
+                              return PolylineLayer(
+                                polylines: [
+                                  Polyline(
+                                    points: points,
+                                    color: Colors.blueAccent.withValues(alpha: 0.85),
+                                    strokeWidth: 4.5,
+                                    borderColor: Colors.black87,
+                                    borderStrokeWidth: 1.5,
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
 
                         // Marcadores con posición animada (lerp) y rumbo suave
                         AnimatedBuilder(
@@ -764,6 +961,34 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                                 ),
                               ),
                             ),
+                            const SizedBox(width: 4),
+                            // Botón Mostrar/Ocultar Geocercas
+                            InkWell(
+                              onTap: () => setState(() => _showGeofences = !_showGeofences),
+                              borderRadius: BorderRadius.circular(6),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: _showGeofences ? Colors.amber.withValues(alpha: 0.25) : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: _showGeofences ? Colors.amber : Colors.transparent,
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.polyline, size: 14, color: _showGeofences ? Colors.amber : Colors.white60),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Geocercas (${_cachedGeofencesList.length})',
+                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _showGeofences ? Colors.amber : Colors.white60),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -888,28 +1113,104 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                   ),
                 ),
 
+                // ── SELECTOR DE MODO: EN VIVO vs HISTORIAL ──────────────
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF161B22),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white12),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: () => setState(() => _viewMode = 0),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(
+                                color: _viewMode == 0 ? Colors.blueAccent : Colors.transparent,
+                                borderRadius: BorderRadius.circular(7),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.sensors, size: 14, color: _viewMode == 0 ? Colors.white : Colors.white60),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'En Vivo',
+                                    style: TextStyle(
+                                      color: _viewMode == 0 ? Colors.white : Colors.white60,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: InkWell(
+                            onTap: () => setState(() => _viewMode = 1),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(
+                                color: _viewMode == 1 ? Colors.blueAccent : Colors.transparent,
+                                borderRadius: BorderRadius.circular(7),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.history, size: 14, color: _viewMode == 1 ? Colors.white : Colors.white60),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Historial',
+                                    style: TextStyle(
+                                      color: _viewMode == 1 ? Colors.white : Colors.white60,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
                 const Divider(color: Colors.white10, height: 1),
 
-                // Lista de camiones
+                // ── CONTENIDO SEGÚN MODO SELECCIONADO ─────────────
                 Expanded(
-                  child: fleetAsync.when(
-                    data: (units) {
-                      if (units.isEmpty) {
-                        return const Center(
-                          child: Text('Sin unidades conectadas', style: TextStyle(color: Colors.white38, fontSize: 13)),
-                        );
-                      }
-                      return ListView.builder(
-                        itemCount: units.length,
-                        itemBuilder: (context, index) {
-                          final unit = units[index];
-                          return _buildUnitCard(unit);
-                        },
-                      );
-                    },
-                    loading: () => const Center(child: CircularProgressIndicator(color: Colors.blueAccent)),
-                    error: (e, s) => const SizedBox(),
-                  ),
+                  child: _viewMode == 0
+                      // MODO 0: EN VIVO
+                      ? fleetAsync.when(
+                          data: (units) {
+                            if (units.isEmpty) {
+                              return const Center(
+                                child: Text('Sin unidades conectadas', style: TextStyle(color: Colors.white38, fontSize: 13)),
+                              );
+                            }
+                            return ListView.builder(
+                              itemCount: units.length,
+                              itemBuilder: (context, index) {
+                                final unit = units[index];
+                                return _buildUnitCard(unit);
+                              },
+                            );
+                          },
+                          loading: () => const Center(child: CircularProgressIndicator(color: Colors.blueAccent)),
+                          error: (e, s) => const SizedBox(),
+                        )
+                      // MODO 1: HISTORIAL DE RECORRIDOS
+                      : _buildHistoryPanel(fleetAsync.value ?? []),
                 ),
               ],
             ),
@@ -1026,6 +1327,381 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildHistoryPanel(List<GpsUnit> units) {
+    // Si no hay camión seleccionado pero hay unidades, preseleccionar la primera
+    final availablePlates = units.map((u) => u.plate).toList();
+    if (availablePlates.isNotEmpty && (_selectedPlate == null || !availablePlates.contains(_selectedPlate))) {
+      _selectedPlate = availablePlates.first;
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Selector de Camión
+          const Text('UNIDAD / CAMIÓN', style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF161B22),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.white12),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _selectedPlate,
+                isExpanded: true,
+                dropdownColor: const Color(0xFF161B22),
+                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                items: availablePlates.map((plate) {
+                  return DropdownMenuItem(
+                    value: plate,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.local_shipping, size: 16, color: Colors.blueAccent),
+                        const SizedBox(width: 8),
+                        Text(plate),
+                      ],
+                    ),
+                  );
+                }).toList(),
+                onChanged: (val) {
+                  if (val != null) {
+                    setState(() {
+                      _selectedPlate = val;
+                      _historicalTrip = null;
+                    });
+                  }
+                },
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Selector de Fecha
+          const Text('FECHA DE RECORRIDO', style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+          const SizedBox(height: 6),
+          InkWell(
+            onTap: () async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: _selectedDate,
+                firstDate: DateTime(2024, 1),
+                lastDate: DateTime.now(),
+                builder: (context, child) {
+                  return Theme(
+                    data: ThemeData.dark().copyWith(
+                      colorScheme: const ColorScheme.dark(primary: Colors.blueAccent),
+                    ),
+                    child: child!,
+                  );
+                },
+              );
+              if (picked != null) {
+                setState(() {
+                  _selectedDate = picked;
+                  _historicalTrip = null;
+                });
+              }
+            },
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF161B22),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.white12),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.calendar_month, color: Colors.blueAccent, size: 16),
+                  const SizedBox(width: 10),
+                  Text(
+                    '${_selectedDate.day.toString().padLeft(2, '0')}/${_selectedDate.month.toString().padLeft(2, '0')}/${_selectedDate.year}',
+                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                  ),
+                  const Spacer(),
+                  const Icon(Icons.arrow_drop_down, color: Colors.white54, size: 18),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Selector de Horas (Desde - Hasta)
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('DESDE', style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 6),
+                    InkWell(
+                      onTap: () async {
+                        final picked = await showTimePicker(
+                          context: context,
+                          initialTime: _startTime,
+                        );
+                        if (picked != null) {
+                          setState(() {
+                            _startTime = picked;
+                            _historicalTrip = null;
+                          });
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF161B22),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.white12),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.access_time, color: Colors.white54, size: 14),
+                            const SizedBox(width: 6),
+                            Text(
+                              '${_startTime.hour.toString().padLeft(2, '0')}:${_startTime.minute.toString().padLeft(2, '0')}',
+                              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('HASTA', style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 6),
+                    InkWell(
+                      onTap: () async {
+                        final picked = await showTimePicker(
+                          context: context,
+                          initialTime: _endTime,
+                        );
+                        if (picked != null) {
+                          setState(() {
+                            _endTime = picked;
+                            _historicalTrip = null;
+                          });
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF161B22),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.white12),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.access_time, color: Colors.white54, size: 14),
+                            const SizedBox(width: 6),
+                            Text(
+                              '${_endTime.hour.toString().padLeft(2, '0')}:${_endTime.minute.toString().padLeft(2, '0')}',
+                              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 20),
+
+          // Botón Cargar Recorrido
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _isLoadingHistory || _selectedPlate == null
+                  ? null
+                  : () => _fetchHistoricalRoute(_selectedPlate!),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00E676),
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              icon: _isLoadingHistory
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
+                  : const Icon(Icons.route, size: 18),
+              label: Text(
+                _isLoadingHistory ? 'Descargando Telemetría...' : 'Trazar Recorrido en Mapa',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+            ),
+          ),
+
+          // ── RESUMEN TELEMÁTICO DEL RECORRIDO CARGADO ──────────────
+          if (_historicalTrip != null) ...[
+            const SizedBox(height: 24),
+            const Divider(color: Colors.white10),
+            const SizedBox(height: 12),
+
+            Row(
+              children: [
+                const Icon(Icons.analytics_outlined, color: Colors.blueAccent, size: 16),
+                const SizedBox(width: 8),
+                const Text(
+                  'RESUMEN DEL RECORRIDO',
+                  style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                ),
+                const Spacer(),
+                Text(
+                  '${_historicalTrip!.points.length} puntos',
+                  style: const TextStyle(color: Colors.white38, fontSize: 10),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 14),
+
+            // Métricas: Km y Diésel
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF161B22),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Distancia Real', style: TextStyle(color: Colors.white54, fontSize: 10)),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${_historicalTrip!.totalDistanceKm.toStringAsFixed(1)} km',
+                          style: const TextStyle(color: Colors.blueAccent, fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF161B22),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orangeAccent.withValues(alpha: 0.3)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Combustible Est.', style: TextStyle(color: Colors.white54, fontSize: 10)),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${(_historicalTrip!.totalDistanceKm / 2.5).toStringAsFixed(1)} Lts',
+                          style: const TextStyle(color: Colors.orangeAccent, fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 10),
+
+            // Velocidades
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF161B22),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.white10),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.speed, size: 14, color: Colors.white54),
+                      const SizedBox(width: 6),
+                      Text('Vel. Máx: ${_historicalTrip!.maxSpeed.toStringAsFixed(0)} km/h', style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                    ],
+                  ),
+                  Text('Prom: ${_historicalTrip!.avgSpeed.toStringAsFixed(0)} km/h', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Geocercas Visitadas y Tiempos de Espera
+            if (_historicalTrip!.stays.isNotEmpty) ...[
+              const Text('GEOCERCAS Y TIEMPOS DE ESTADÍA', style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              ...List.generate(_historicalTrip!.stays.length, (idx) {
+                final s = _historicalTrip!.stays[idx];
+                final durMin = s.durationMinutes;
+                final durStr = durMin >= 60 ? '${durMin ~/ 60}h ${durMin % 60}m' : '${durMin}m';
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF161B22),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(color: Colors.cyanAccent, shape: BoxShape.circle),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          s.geofenceName,
+                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.cyanAccent.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          durStr,
+                          style: const TextStyle(color: Colors.cyanAccent, fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
+          ],
+        ],
       ),
     );
   }
