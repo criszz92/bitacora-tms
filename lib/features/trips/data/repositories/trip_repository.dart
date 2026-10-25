@@ -221,8 +221,10 @@ class TripRepository {
     final nuevoHito = <String, dynamic>{
       'nombre': nombreHito,
       'timestamp': DateTime.now().toIso8601String(),
-      ?'geocerca': geocerca,
     };
+    if (geocerca != null) {
+      nuevoHito['geocerca'] = geocerca;
+    }
 
     await _firestore.collection('viajes').doc(tripId).update({
       'hitoActual': nombreHito,
