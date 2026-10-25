@@ -216,6 +216,20 @@ class TripRepository {
     );
   }
 
+  // Registra un cambio de hito operativo en el viaje (ej: "En Antepuerto", "En Cliente", etc.)
+  Future<void> registrarHito(String tripId, String nombreHito, {String? geocerca}) async {
+    final nuevoHito = <String, dynamic>{
+      'nombre': nombreHito,
+      'timestamp': DateTime.now().toIso8601String(),
+      ?'geocerca': geocerca,
+    };
+
+    await _firestore.collection('viajes').doc(tripId).update({
+      'hitoActual': nombreHito,
+      'hitos': FieldValue.arrayUnion([nuevoHito]),
+    });
+  }
+
   // ================= VEHÍCULOS =================
 
   /// Escucha en tiempo real la lista de camiones registrados para esta empresa.

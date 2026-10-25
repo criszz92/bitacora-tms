@@ -23,6 +23,8 @@ class TripModel {
   final double? sobreEstadia;
   final String? kmEditadoPor;   // UID del usuario que modificó totalKm por última vez
   final DateTime? kmEditadoEn;  // Timestamp de la última edición de totalKm
+  final String? hitoActual;     // Hito operativo actual (ej: "En Antepuerto", "En Cliente", etc.)
+  final List<Map<String, dynamic>>? hitos; // Historial de hitos registrados con timestamp
 
   TripModel({
     required this.id,
@@ -49,6 +51,8 @@ class TripModel {
     this.sobreEstadia,
     this.kmEditadoPor,
     this.kmEditadoEn,
+    this.hitoActual,
+    this.hitos,
   });
 
   Map<String, dynamic> toMap() {
@@ -76,6 +80,8 @@ class TripModel {
       'sobreEstadia': sobreEstadia,
       if (kmEditadoPor != null) 'kmEditadoPor': kmEditadoPor,
       if (kmEditadoEn != null) 'kmEditadoEn': kmEditadoEn!.toIso8601String(),
+      if (hitoActual != null) 'hitoActual': hitoActual,
+      if (hitos != null) 'hitos': hitos,
     };
   }
 
@@ -105,6 +111,8 @@ class TripModel {
       sobreEstadia: map['sobreEstadia']?.toDouble(),
       kmEditadoPor: map['kmEditadoPor'],
       kmEditadoEn: map['kmEditadoEn'] != null ? DateTime.parse(map['kmEditadoEn']) : null,
+      hitoActual: map['hitoActual'],
+      hitos: map['hitos'] != null ? List<Map<String, dynamic>>.from(map['hitos']) : null,
     );
   }
 
@@ -133,6 +141,8 @@ class TripModel {
     double? sobreEstadia,
     String? kmEditadoPor,
     DateTime? kmEditadoEn,
+    String? hitoActual,
+    List<Map<String, dynamic>>? hitos,
   }) {
     return TripModel(
       id: id ?? this.id,
@@ -159,6 +169,8 @@ class TripModel {
       sobreEstadia: sobreEstadia ?? this.sobreEstadia,
       kmEditadoPor: kmEditadoPor ?? this.kmEditadoPor,
       kmEditadoEn: kmEditadoEn ?? this.kmEditadoEn,
+      hitoActual: hitoActual ?? this.hitoActual,
+      hitos: hitos ?? this.hitos,
     );
   }
 }

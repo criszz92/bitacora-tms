@@ -826,6 +826,76 @@ class DriverDashboardScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 12),
 
+            // ─── HITOS OPERATIVOS DEL TRAMO ───
+            if (isEnRuta) ...[
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 8),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.04),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'HITO OPERATIVO ACTUAL',
+                          style: TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                        ),
+                        InkWell(
+                          onTap: () => _showChangeHitoModal(context, ref, trip),
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            child: Row(
+                              children: [
+                                Icon(Icons.edit_location_alt, size: 14, color: Colors.blueAccent),
+                                SizedBox(width: 4),
+                                Text('Cambiar', style: TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.flag_rounded, size: 16, color: Colors.amber),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                trip.hitoActual ?? 'En Tránsito Inicial',
+                                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                              ),
+                              if (trip.hitos != null && trip.hitos!.isNotEmpty)
+                                Text(
+                                  '${trip.hitos!.length} hito(s) registrado(s) en este viaje',
+                                  style: const TextStyle(color: Colors.white38, fontSize: 10),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
             // Botón sutil para comparar tramo con GPS
             SizedBox(
               width: double.infinity,
@@ -874,6 +944,92 @@ class DriverDashboardScreen extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Future<void> _showChangeHitoModal(BuildContext context, WidgetRef ref, TripModel trip) async {
+    final opcionesHitos = [
+      {'nombre': 'En Base (Preparación)', 'icon': Icons.home_work_outlined, 'desc': 'Camión en base, iniciando jornada o alistando tracto'},
+      {'nombre': 'En Tránsito a Puerto / Depósito', 'icon': Icons.directions_bus_outlined, 'desc': 'Traslado hacia terminal de retiro de vacío'},
+      {'nombre': 'En Antepuerto (Espera de Turno / Stacking)', 'icon': Icons.hourglass_top_rounded, 'desc': 'Fila de espera o gestión documental en antepuerto'},
+      {'nombre': 'En Puerto / Depósito (Retiro de Vacío)', 'icon': Icons.archive_outlined, 'desc': 'Ingreso al terminal, inspección y carga de contenedor'},
+      {'nombre': 'En Tránsito a Cliente', 'icon': Icons.route_outlined, 'desc': 'Viaje por carretera con contenedor montado'},
+      {'nombre': 'En Cliente 1 (Carga / Descarga)', 'icon': Icons.storefront_outlined, 'desc': 'Llegada a planta principal, pesaje o faena'},
+      {'nombre': 'En Cliente 2 (Consolidación / Punto Adicional)', 'icon': Icons.add_business_outlined, 'desc': 'Segundo punto de carga para completar viaje'},
+      {'nombre': 'En Tránsito a Puerto / Devolución', 'icon': Icons.alt_route_outlined, 'desc': 'Retorno hacia terminal marítimo o depósito'},
+      {'nombre': 'En Puerto / Depósito (Entrega de Contenedor)', 'icon': Icons.unarchive_outlined, 'desc': 'Descarga en muelle o devolución de vacío con EIR'},
+      {'nombre': 'Retorno a Base / Cierre de Ciclo', 'icon': Icons.home_rounded, 'desc': 'Traslado final de vuelta a la base'},
+    ];
+
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E222B),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'Seleccionar Hito Operativo Actual',
+                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Registra la etapa exacta en la que se encuentra el camión para control de tiempos y sobreestadías.',
+                  style: TextStyle(color: Colors.white54, fontSize: 11),
+                ),
+                const SizedBox(height: 12),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: opcionesHitos.length,
+                    separatorBuilder: (_, _) => const Divider(color: Colors.white10, height: 1),
+                    itemBuilder: (context, idx) {
+                      final item = opcionesHitos[idx];
+                      final isSelected = trip.hitoActual == item['nombre'];
+                      return ListTile(
+                        dense: true,
+                        leading: Icon(item['icon'] as IconData, color: isSelected ? Colors.amber : Colors.white70),
+                        title: Text(
+                          item['nombre'] as String,
+                          style: TextStyle(
+                            color: isSelected ? Colors.amber : Colors.white,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                            fontSize: 13,
+                          ),
+                        ),
+                        subtitle: Text(
+                          item['desc'] as String,
+                          style: const TextStyle(color: Colors.white38, fontSize: 10),
+                        ),
+                        trailing: isSelected ? const Icon(Icons.check_circle, color: Colors.amber, size: 18) : null,
+                        onTap: () async {
+                          Navigator.pop(ctx);
+                          await ref.read(tripRepositoryProvider).registrarHito(trip.id, item['nombre'] as String);
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

@@ -8,6 +8,7 @@ import '../../../trips/domain/models/expense_model.dart';
 import '../../../trips/domain/models/vehicle_model.dart';
 import '../../domain/models/recurring_expense_model.dart';
 import '../../../../core/utils/number_utils.dart';
+import '../../domain/services/modogps_service.dart';
 
 class KpiDashboardView extends ConsumerWidget {
   const KpiDashboardView({super.key});
@@ -580,56 +581,302 @@ class KpiDashboardView extends ConsumerWidget {
     final matchedVehicle = vehicles.where((v) => v.id == t.vehicleId || v.patente == t.vehicleId).firstOrNull;
     String? selectedVehicle = matchedVehicle?.id;
 
+    final targetPlate = matchedVehicle?.patente ?? t.vehicleId ?? '';
+    final modoGps = ref.read(modoGpsServiceProvider);
+    final startTime = t.startDate;
+    final endTime = t.endDate ?? DateTime.now();
+    final timeFmt = DateFormat('HH:mm');
+
     showDialog(context: context, builder: (ctx) => Dialog(
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: const Color(0xFF161B22),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       child: Container(
-        width: 450,
-        constraints: const BoxConstraints(maxHeight: 750),
+        width: 950,
+        constraints: const BoxConstraints(maxHeight: 780),
         padding: const EdgeInsets.all(24),
         child: StatefulBuilder(builder: (context, setDialogState) => Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              const Text('Editar Viaje', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.blueAccent.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.edit_note, color: Colors.blueAccent, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text('Editar Viaje', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                ],
+              ),
               TextButton(onPressed: () async {
                 final confirm = await _showDeleteConfirm(context, 'viaje');
                 if (confirm) { await ref.read(adminRepositoryProvider).deleteTrip(t.id); if (ctx.mounted) Navigator.pop(ctx); }
               }, child: const Text('Eliminar', style: TextStyle(color: Colors.redAccent))),
             ]),
-            const SizedBox(height: 24),
-            Flexible(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    _buildField(originCtrl, 'Origen'),
-                    const SizedBox(height: 16),
-                    _buildField(destCtrl, 'Destino'),
-                    const SizedBox(height: 16),
-                    _buildField(clientCtrl, 'Cliente'),
-                    const SizedBox(height: 16),
-                    _buildNumericField(valueCtrl, 'Valor Base (\$)'),
-                    const SizedBox(height: 16),
-                    _buildNumericField(extraCtrl, 'Extra Costos (\$)'),
-                    const SizedBox(height: 16),
-                    _buildNumericField(sobreEstadiaCtrl, 'Sobre Estadía (\$)'),
-                    const SizedBox(height: 16),
-                    Row(children: [
-                      const Icon(Icons.local_shipping, color: Colors.white, size: 20),
-                      const SizedBox(width: 12),
-                      Expanded(child: DropdownButtonFormField<String>(initialValue: selectedVehicle, dropdownColor: const Color(0xFF1A1A1A), style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'Vehículo', labelStyle: TextStyle(color: Colors.grey, fontSize: 12), border: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24))), items: [const DropdownMenuItem(value: null, child: Text('No asignado')), ...vehicles.map((v) => DropdownMenuItem(value: v.id, child: Text(v.patente)))], onChanged: (val) => setDialogState(() => selectedVehicle = val))),
-                    ]),
-                    const SizedBox(height: 16),
-                    _buildField(containerCtrl, 'Nº Contenedor'),
-                    const SizedBox(height: 16),
-                    _buildField(guideCtrl, 'Nº Guía'),
-                    const SizedBox(height: 16),
-                    _buildNumericField(kmCtrl, 'Kilómetros Recorridos'),
-                  ],
-                ),
+            const SizedBox(height: 20),
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ── COLUMNA IZQUIERDA: FORMULARIO COMERCIAL ──
+                  Expanded(
+                    flex: 5,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.only(right: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('DATOS DEL VIAJE', style: TextStyle(color: Colors.white60, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                          const SizedBox(height: 12),
+                          _buildField(originCtrl, 'Origen'),
+                          const SizedBox(height: 14),
+                          _buildField(destCtrl, 'Destino'),
+                          const SizedBox(height: 14),
+                          _buildField(clientCtrl, 'Cliente'),
+                          const SizedBox(height: 14),
+                          _buildNumericField(valueCtrl, 'Valor Base (\$)'),
+                          const SizedBox(height: 14),
+                          _buildNumericField(extraCtrl, 'Extra Costos (\$)'),
+                          const SizedBox(height: 14),
+                          _buildNumericField(sobreEstadiaCtrl, 'Sobre Estadía (\$)'),
+                          const SizedBox(height: 14),
+                          Row(children: [
+                            const Icon(Icons.local_shipping, color: Colors.white, size: 20),
+                            const SizedBox(width: 12),
+                            Expanded(child: DropdownButtonFormField<String>(initialValue: selectedVehicle, dropdownColor: const Color(0xFF161B22), style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'Vehículo', labelStyle: TextStyle(color: Colors.grey, fontSize: 12), border: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24))), items: [const DropdownMenuItem(value: null, child: Text('No asignado')), ...vehicles.map((v) => DropdownMenuItem(value: v.id, child: Text(v.patente)))], onChanged: (val) => setDialogState(() => selectedVehicle = val))),
+                          ]),
+                          const SizedBox(height: 14),
+                          _buildField(containerCtrl, 'Nº Contenedor'),
+                          const SizedBox(height: 14),
+                          _buildField(guideCtrl, 'Nº Guía'),
+                          const SizedBox(height: 14),
+                          _buildNumericField(kmCtrl, 'Kilómetros Recorridos'),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // ── SEPARADOR VERTICAL ──
+                  const VerticalDivider(color: Colors.white12, width: 24),
+
+                  // ── COLUMNA DERECHA: RESUMEN GPS, HITOS Y ESTIMACIÓN DE COMBUSTIBLE ──
+                  Expanded(
+                    flex: 6,
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.03),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white10),
+                      ),
+                      child: FutureBuilder<GpsHistoricalTrip?>(
+                        future: targetPlate.isEmpty
+                            ? Future.value(null)
+                            : modoGps.fetchTripInterval(
+                                plate: targetPlate,
+                                startTime: startTime,
+                                endTime: endTime,
+                              ),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  CircularProgressIndicator(color: Colors.blueAccent),
+                                  SizedBox(height: 14),
+                                  Text('Cargando telemetría e hitos de ModoGPS...', style: TextStyle(color: Colors.white60, fontSize: 12)),
+                                ],
+                              ),
+                            );
+                          }
+
+                          final hTrip = snapshot.data;
+                          final double kmCalculados = hTrip?.totalDistanceKm ?? t.totalKm ?? 0.0;
+                          // Estimación: Camión cargado rinde aprox 2.4 a 2.6 km/l
+                          final double litrosEstimados = kmCalculados > 0 ? (kmCalculados / 2.5) : 0.0;
+                          final double costoCombustibleEstimado = litrosEstimados * 850.0; // Precio aprox CLP neto
+
+                          return SingleChildScrollView(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.satellite_alt, color: Colors.blueAccent, size: 18),
+                                    const SizedBox(width: 8),
+                                    const Text('TELEMETRÍA E HITOS DE RUTA', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.8)),
+                                    const Spacer(),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blue.withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        '${timeFmt.format(startTime)} - ${timeFmt.format(endTime)}',
+                                        style: const TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+
+                                // Métricas rápidas
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Container(
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white10)),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            const Text('Distancia GPS', style: TextStyle(color: Colors.white54, fontSize: 10)),
+                                            const SizedBox(height: 4),
+                                            Text('${kmCalculados.toStringAsFixed(1)} KM', style: const TextStyle(color: Colors.greenAccent, fontSize: 14, fontWeight: FontWeight.bold)),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Container(
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white10)),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            const Text('Diesel Estimado', style: TextStyle(color: Colors.white54, fontSize: 10)),
+                                            const SizedBox(height: 4),
+                                            Text('${litrosEstimados.toStringAsFixed(1)} Lts', style: const TextStyle(color: Colors.amberAccent, fontSize: 14, fontWeight: FontWeight.bold)),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Container(
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white10)),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            const Text('Costo Combustible', style: TextStyle(color: Colors.white54, fontSize: 10)),
+                                            const SizedBox(height: 4),
+                                            Text('\$${costoCombustibleEstimado.toStringAsFixed(0)}', style: const TextStyle(color: Colors.orangeAccent, fontSize: 14, fontWeight: FontWeight.bold)),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+
+                                if (hTrip != null && (hTrip.totalDistanceKm > 0) && (t.totalKm == null || t.totalKm! <= 0)) ...[
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: ElevatedButton.icon(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.greenAccent.withValues(alpha: 0.15),
+                                        foregroundColor: Colors.greenAccent,
+                                        side: const BorderSide(color: Colors.greenAccent, width: 0.8),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                      ),
+                                      onPressed: () {
+                                        setDialogState(() {
+                                          kmCtrl.text = hTrip.totalDistanceKm.toStringAsFixed(1);
+                                        });
+                                      },
+                                      icon: const Icon(Icons.auto_fix_high, size: 16),
+                                      label: const Text('Aplicar KM Calculados por GPS al Viaje', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                ],
+
+                                // Lista de Hitos Operativos Registrados
+                                const Text('Hitos Registrados por Conductor:', style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 8),
+                                if (t.hitos == null || t.hitos!.isEmpty)
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(8)),
+                                    child: Text(
+                                      t.hitoActual != null ? 'Hito actual: ${t.hitoActual}' : 'Sin hitos registrados manualmente aún.',
+                                      style: const TextStyle(color: Colors.white38, fontSize: 11),
+                                    ),
+                                  )
+                                else
+                                  ...t.hitos!.map((h) => Container(
+                                    margin: const EdgeInsets.only(bottom: 6),
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black26,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: Colors.white10),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.flag, size: 14, color: Colors.amber),
+                                        const SizedBox(width: 8),
+                                        Expanded(child: Text(h['nombre']?.toString() ?? '', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))),
+                                        Text(
+                                          h['timestamp'] != null ? DateFormat('HH:mm').format(DateTime.parse(h['timestamp'])) : '',
+                                          style: const TextStyle(color: Colors.white54, fontSize: 11),
+                                        ),
+                                      ],
+                                    ),
+                                  )),
+                                const SizedBox(height: 16),
+
+                                // Detenciones en Geocercas de ModoGPS
+                                const Text('Permanencia en Geocercas GPS (Espera / Faena):', style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 8),
+                                if (hTrip == null || hTrip.stays.isEmpty)
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(8)),
+                                    child: const Text('No se detectaron detenciones en geocercas registradas para este tramo.', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                                  )
+                                else
+                                  ...hTrip.stays.map((stay) => Container(
+                                    margin: const EdgeInsets.only(bottom: 6),
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.withValues(alpha: 0.08),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.2)),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.location_on, size: 14, color: Colors.blueAccent),
+                                        const SizedBox(width: 8),
+                                        Expanded(child: Text(stay.geofenceName, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))),
+                                        Text(
+                                          '${timeFmt.format(stay.entryTime)} - ${timeFmt.format(stay.exitTime)} (${stay.durationMinutes} min)',
+                                          style: const TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                                        ),
+                                      ],
+                                    ),
+                                  )),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
             Row(mainAxisAlignment: MainAxisAlignment.end, children: [
               TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
               const SizedBox(width: 12),
