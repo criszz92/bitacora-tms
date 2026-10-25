@@ -12,6 +12,7 @@ import '../../../admin/domain/models/incidencia_model.dart';
 import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
 import '../../../admin/domain/models/service_request_model.dart';
+import '../../../admin/domain/services/modogps_service.dart';
 
 class DriverDashboardScreen extends ConsumerWidget {
   const DriverDashboardScreen({super.key});
@@ -318,7 +319,7 @@ class DriverDashboardScreen extends ConsumerWidget {
                 return ListView.builder(
                   itemCount: sorted.length,
                   itemBuilder: (context, index) {
-                    return _buildTripCard(context, ref, sorted[index]);
+                    return _buildTripCard(context, ref, sorted[index], shift.patenteCamion);
                   },
                 );
               },
@@ -630,8 +631,11 @@ class DriverDashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildTripCard(BuildContext context, WidgetRef ref, TripModel trip) {
+  Widget _buildTripCard(BuildContext context, WidgetRef ref, TripModel trip, String defaultPlate) {
     final isEnRuta = trip.status == 'En Ruta';
+    final targetPlate = trip.vehicleId ?? defaultPlate;
+    final gpsUnitAsync = ref.watch(singleVehicleGpsProvider(targetPlate));
+
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       shape: RoundedRectangleBorder(
@@ -672,6 +676,124 @@ class DriverDashboardScreen extends ConsumerWidget {
                 ),
               ],
             ),
+
+            // Indicador sutil de Geocerca / GPS en vivo
+            if (isEnRuta) ...[
+              const SizedBox(height: 8),
+              gpsUnitAsync.when(
+                data: (unit) {
+                  if (unit == null) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white10,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.white24, width: 0.5),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.satellite_alt, size: 13, color: Colors.white54),
+                          SizedBox(width: 6),
+                          Text(
+                            'GPS: Conectando con unidad...',
+                            style: TextStyle(color: Colors.white60, fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  final inGeofence = unit.currentGeofence != null && unit.currentGeofence!.isNotEmpty;
+
+                  if (inGeofence) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0F5132).withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.5), width: 1),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: const BoxDecoration(
+                              color: Colors.greenAccent,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 7),
+                          Flexible(
+                            child: Text(
+                              'En Geocerca: ${unit.currentGeofence}',
+                              style: const TextStyle(
+                                color: Colors.greenAccent,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  } else {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E3A8A).withValues(alpha: 0.25),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.4), width: 0.8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.satellite_alt, size: 13, color: Colors.blueAccent),
+                          const SizedBox(width: 7),
+                          Flexible(
+                            child: Text(
+                              unit.status == 'online'
+                                  ? 'GPS Conectado • En Ruta (${unit.speed.toStringAsFixed(0)} km/h)'
+                                  : 'GPS Conectado • Detenido',
+                              style: const TextStyle(
+                                color: Color(0xFF93C5FD),
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                },
+                loading: () => Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white10,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 10,
+                        height: 10,
+                        child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white54),
+                      ),
+                      SizedBox(width: 8),
+                      Text('Sincronizando GPS...', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                    ],
+                  ),
+                ),
+                error: (e, s) => const SizedBox.shrink(),
+              ),
+            ],
+
             const Divider(height: 24, color: Colors.white24),
             _buildRouteRow(Icons.my_location, 'Origen', trip.origin),
             const SizedBox(height: 12),
@@ -702,7 +824,25 @@ class DriverDashboardScreen extends ConsumerWidget {
                 ],
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
+
+            // Botón sutil para comparar tramo con GPS
+            SizedBox(
+              width: double.infinity,
+              child: TextButton.icon(
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.lightBlueAccent,
+                  backgroundColor: Colors.blue.withValues(alpha: 0.08),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                onPressed: () => _showTripGpsComparisonDialog(context, ref, trip, targetPlate),
+                icon: const Icon(Icons.satellite_alt_outlined, size: 15),
+                label: const Text('Comparativa Tramo GPS (Fecha/Hora)', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600)),
+              ),
+            ),
+            const SizedBox(height: 12),
+
             if (isEnRuta)
               SizedBox(
                 width: double.infinity,
@@ -733,6 +873,234 @@ class DriverDashboardScreen extends ConsumerWidget {
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _showTripGpsComparisonDialog(
+    BuildContext context,
+    WidgetRef ref,
+    TripModel trip,
+    String plate,
+  ) async {
+    final modoGps = ref.read(modoGpsServiceProvider);
+    final startTime = trip.startDate;
+    final endTime = trip.endDate ?? DateTime.now();
+    final timeFmt = DateFormat('HH:mm');
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF161B22),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.blueAccent.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.satellite_alt, color: Colors.blueAccent, size: 20),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Comparativa GPS de Tramo', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                  Text('Cruce exacto fecha y hora con ModoGPS', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        content: FutureBuilder<GpsHistoricalTrip?>(
+          future: modoGps.fetchTripInterval(
+            plate: plate,
+            startTime: startTime,
+            endTime: endTime,
+          ),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const SizedBox(
+                height: 180,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(color: Colors.blueAccent),
+                      SizedBox(height: 16),
+                      Text('Consultando recorrido exacto en ModoGPS...', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
+              return SizedBox(
+                height: 140,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.info_outline, color: Colors.orangeAccent, size: 36),
+                      const SizedBox(height: 10),
+                      Text(
+                        'No se encontraron puntos GPS para este rango horario (${timeFmt.format(startTime)} - ${timeFmt.format(endTime)}).',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            final hTrip = snapshot.data!;
+
+            return SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.black38,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.white12),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.access_time, size: 16, color: Colors.blueAccent),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${timeFmt.format(startTime)} ➔ ${timeFmt.format(endTime)}',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        const Spacer(),
+                        Text('Placa: ${hTrip.plate}', style: const TextStyle(color: Colors.white60, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildMetricTile(
+                          'KM GPS',
+                          '${hTrip.totalDistanceKm.toStringAsFixed(1)} KM',
+                          Icons.straighten,
+                          Colors.greenAccent,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildMetricTile(
+                          'KM Registrados',
+                          trip.totalKm != null ? '${trip.totalKm!.toStringAsFixed(1)} KM' : 'Sin reg.',
+                          Icons.route,
+                          Colors.purpleAccent,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildMetricTile(
+                          'Vel. Promedio',
+                          '${hTrip.avgSpeed.toStringAsFixed(0)} km/h',
+                          Icons.speed,
+                          Colors.blueAccent,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildMetricTile(
+                          'Vel. Máxima',
+                          '${hTrip.maxSpeed.toStringAsFixed(0)} km/h',
+                          Icons.trending_up,
+                          Colors.orangeAccent,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  const Text(
+                    'Hitos y Geocercas Detectadas:',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                  ),
+                  const SizedBox(height: 8),
+                  if (hTrip.stays.isEmpty)
+                    const Text('No se registraron paradas dentro de geocercas en este intervalo.', style: TextStyle(color: Colors.white38, fontSize: 11))
+                  else
+                    ...hTrip.stays.map((stay) => Padding(
+                      padding: const EdgeInsets.only(bottom: 6.0),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.white12),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.location_on, size: 14, color: Colors.greenAccent),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(stay.geofenceName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                            ),
+                            Text(
+                              '${timeFmt.format(stay.entryTime)} - ${timeFmt.format(stay.exitTime)} (${stay.durationMinutes}m)',
+                              style: const TextStyle(color: Colors.white60, fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )),
+                ],
+              ),
+            );
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cerrar', style: TextStyle(color: Colors.white70)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricTile(String label, String value, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(color: Colors.white60, fontSize: 10)),
+                Text(value, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -1,8 +1,90 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:latlong2/latlong.dart';
 import 'wialon_caller.dart';
+
+final modoGpsServiceProvider = Provider<ModoGpsService>((ref) => ModoGpsService());
+
+/// Proveedor para observar en vivo un vehículo por patente (ej: "JH-BZ-64")
+final singleVehicleGpsProvider = StreamProvider.family<GpsUnit?, String>((ref, plate) async* {
+  final service = ref.read(modoGpsServiceProvider);
+  final cleanTarget = plate.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase();
+
+  while (true) {
+    try {
+      final units = await service.fetchFleetData();
+      final match = units.cast<GpsUnit?>().firstWhere(
+        (u) => u != null && u.plate.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase() == cleanTarget,
+        orElse: () => null,
+      );
+      yield match;
+    } catch (_) {}
+    await Future.delayed(const Duration(seconds: 8));
+  }
+});
+
+class GpsGeofence {
+  final int id;
+  final String name;
+  final String description;
+  final int type; // 1: line, 2: polygon, 3: circle
+  final double radiusMeters;
+  final LatLng center;
+  final double minLat;
+  final double maxLat;
+  final double minLng;
+  final double maxLng;
+
+  GpsGeofence({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.type,
+    required this.radiusMeters,
+    required this.center,
+    required this.minLat,
+    required this.maxLat,
+    required this.minLng,
+    required this.maxLng,
+  });
+
+  bool contains(LatLng point) {
+    // Tolerancia espacial para bordes o caleteras (~38m)
+    const latMargin = 0.00035;
+    const lngMargin = 0.00045;
+    final inBox = point.latitude >= (minLat - latMargin) &&
+        point.latitude <= (maxLat + latMargin) &&
+        point.longitude >= (minLng - lngMargin) &&
+        point.longitude <= (maxLng + lngMargin);
+
+    if (!inBox) return false;
+
+    // Si es círculo (3) o tiene radio/ancho definido
+    if (type == 3 || radiusMeters > 0) {
+      final distMeters = _haversineMeters(point.latitude, point.longitude, center.latitude, center.longitude);
+      final maxAllowedDist = radiusMeters < 80 ? 80.0 : radiusMeters * 1.25;
+      if (distMeters <= maxAllowedDist) {
+        return true;
+      }
+    }
+
+    return inBox;
+  }
+
+  static double _haversineMeters(double lat1, double lon1, double lat2, double lon2) {
+    const r = 6371000.0;
+    const toRad = 0.017453292519943295;
+    final dLat = (lat2 - lat1) * toRad;
+    final dLon = (lon2 - lon1) * toRad;
+    final a = (math.sin(dLat / 2) * math.sin(dLat / 2)) +
+        math.cos(lat1 * toRad) * math.cos(lat2 * toRad) * (math.sin(dLon / 2) * math.sin(dLon / 2));
+    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return r * c;
+  }
+}
 
 class GpsUnit {
   final String id;
@@ -16,6 +98,7 @@ class GpsUnit {
   final bool? isIgnitionOn;
   final double? externalPower;
   final int? satellites;
+  final String? currentGeofence; // Nombre de la geocerca actual (ej: "CASA-Base", "PUERTO_CORONEL")
 
   GpsUnit({
     required this.id,
@@ -29,6 +112,62 @@ class GpsUnit {
     this.isIgnitionOn,
     this.externalPower,
     this.satellites,
+    this.currentGeofence,
+  });
+}
+
+class GpsGeofenceStay {
+  final String geofenceName;
+  final DateTime entryTime;
+  final DateTime exitTime;
+
+  Duration get duration => exitTime.difference(entryTime);
+  int get durationMinutes => duration.inMinutes;
+
+  GpsGeofenceStay({
+    required this.geofenceName,
+    required this.entryTime,
+    required this.exitTime,
+  });
+}
+
+class GpsHistoricalPoint {
+  final LatLng position;
+  final double speed;
+  final DateTime timestamp;
+  final String? geofence;
+
+  GpsHistoricalPoint({
+    required this.position,
+    required this.speed,
+    required this.timestamp,
+    this.geofence,
+  });
+}
+
+class GpsHistoricalTrip {
+  final String plate;
+  final DateTime startTime;
+  final DateTime endTime;
+  final double totalDistanceKm;
+  final double maxSpeed;
+  final double avgSpeed;
+  final int totalPoints;
+  final List<GpsGeofenceStay> stays;
+  final List<String> routePattern;
+  final List<GpsHistoricalPoint> points;
+
+  GpsHistoricalTrip({
+    required this.plate,
+    required this.startTime,
+    required this.endTime,
+    required this.totalDistanceKm,
+    required this.maxSpeed,
+    required this.avgSpeed,
+    required this.totalPoints,
+    required this.stays,
+    required this.routePattern,
+    required this.points,
   });
 }
 
@@ -153,7 +292,92 @@ class ModoGpsService {
     return eid;
   }
 
+  List<GpsGeofence>? _cachedGeofences;
+  DateTime? _lastGeofencesFetch;
+  List<GpsUnit>? _cachedFleet;
+  DateTime? _lastFleetFetch;
+
+  /// Obtiene las geocercas configuradas en ModoGPS (avl_resource)
+  Future<List<GpsGeofence>> fetchGeofences({String? idEmpresa, bool forceRefresh = false}) async {
+    if (!forceRefresh && _cachedGeofences != null && _lastGeofencesFetch != null) {
+      if (DateTime.now().difference(_lastGeofencesFetch!) < const Duration(minutes: 15)) {
+        return _cachedGeofences!;
+      }
+    }
+
+    try {
+      final host = await _getHost();
+      final eid = await _ensureSession(idEmpresa: idEmpresa);
+
+      final spec = {
+        'spec': {
+          'itemsType': 'avl_resource',
+          'propName': 'sys_name',
+          'propValueMask': '*',
+          'sortType': 'sys_name',
+        },
+        'force': 1,
+        'flags': 4096 + 1, // 4096 = zonas (geocercas)
+        'from': 0,
+        'to': 0,
+      };
+
+      final url = '$host/wialon/ajax.html?svc=core/search_items&params=${Uri.encodeComponent(jsonEncode(spec))}&sid=$eid';
+      final res = await callWialon(url);
+
+      if (res['items'] is! List) return _cachedGeofences ?? [];
+
+      final geofences = <GpsGeofence>[];
+      for (final item in (res['items'] as List)) {
+        if (item is! Map || item['zl'] is! Map) continue;
+        final zonesMap = item['zl'] as Map;
+        for (final entry in zonesMap.entries) {
+          final z = entry.value;
+          if (z is! Map) continue;
+          final b = z['b'] as Map?;
+          if (b == null) continue;
+
+          final cenY = (b['cen_y'] as num?)?.toDouble() ?? 0.0;
+          final cenX = (b['cen_x'] as num?)?.toDouble() ?? 0.0;
+          final minY = (b['min_y'] as num?)?.toDouble() ?? cenY;
+          final maxY = (b['max_y'] as num?)?.toDouble() ?? cenY;
+          final minX = (b['min_x'] as num?)?.toDouble() ?? cenX;
+          final maxX = (b['max_x'] as num?)?.toDouble() ?? cenX;
+          final w = (z['w'] as num?)?.toDouble() ?? 100.0;
+
+          geofences.add(GpsGeofence(
+            id: (z['id'] as num?)?.toInt() ?? 0,
+            name: z['n']?.toString() ?? 'Zona',
+            description: z['d']?.toString() ?? '',
+            type: (z['t'] as num?)?.toInt() ?? 3,
+            radiusMeters: w,
+            center: LatLng(cenY, cenX),
+            minLat: minY,
+            maxLat: maxY,
+            minLng: minX,
+            maxLng: maxX,
+          ));
+        }
+      }
+
+      _cachedGeofences = geofences;
+      _lastGeofencesFetch = DateTime.now();
+      debugPrint('[ModoGPS] Geocercas cargadas: ${geofences.length}');
+      return geofences;
+    } catch (e) {
+      debugPrint('[ModoGPS] Error cargando geocercas: $e');
+      return _cachedGeofences ?? [];
+    }
+  }
+
   Future<List<GpsUnit>> fetchFleetData({String? idEmpresa}) async {
+    // Si se consultó hace menos de 3 segundos, retornar la caché para no saturar API
+    if (_cachedFleet != null && _lastFleetFetch != null) {
+      if (DateTime.now().difference(_lastFleetFetch!) < const Duration(seconds: 3)) {
+        return _cachedFleet!;
+      }
+    }
+
     try {
       final host = await _getHost();
       String eid = await _ensureSession(idEmpresa: idEmpresa);
@@ -189,6 +413,8 @@ class ModoGpsService {
       final items = res['items'] as List?;
       if (items == null) return [];
 
+      // Cargar geocercas en memoria para etiquetar cada unidad en vivo
+      final geofences = await fetchGeofences(idEmpresa: idEmpresa);
       final units = <GpsUnit>[];
 
       for (final item in items) {
@@ -217,11 +443,20 @@ class ModoGpsService {
             status = 'offline';
           }
 
+          final point = LatLng(lat, lng);
+          String? currentZoneName;
+          for (final zone in geofences) {
+            if (zone.contains(point)) {
+              currentZoneName = zone.name;
+              break;
+            }
+          }
+
           units.add(GpsUnit(
             id: id,
             plate: name,
             driverName: 'Conductor Asignado',
-            position: LatLng(lat, lng),
+            position: point,
             speed: speed,
             status: status,
             lastUpdate: timestamp,
@@ -229,14 +464,176 @@ class ModoGpsService {
             isIgnitionOn: pwrExt != null && pwrExt > 0,
             externalPower: pwrExt?.toDouble(),
             satellites: satCount,
+            currentGeofence: currentZoneName,
           ));
         }
       }
 
+      _cachedFleet = units;
+      _lastFleetFetch = DateTime.now();
       return units;
     } catch (e) {
       debugPrint("ModoGPS fetchFleetData error: $e");
       rethrow;
+    }
+  }
+
+  /// Descarga el recorrido exacto entre startTime y endTime para una patente
+  /// y detecta automáticamente las geocercas visitadas, paradas y km reales
+  Future<GpsHistoricalTrip?> fetchTripInterval({
+    required String plate,
+    required DateTime startTime,
+    required DateTime endTime,
+    String? idEmpresa,
+  }) async {
+    try {
+      final host = await _getHost();
+      final eid = await _ensureSession(idEmpresa: idEmpresa);
+      final cleanTarget = plate.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase();
+
+      // 1. Buscar la unidad para obtener su ID numérico en Wialon
+      final specUnit = {
+        'spec': {
+          'itemsType': 'avl_unit',
+          'propName': 'sys_name',
+          'propValueMask': '*',
+          'sortType': 'sys_name',
+        },
+        'force': 1,
+        'flags': 1,
+        'from': 0,
+        'to': 0,
+      };
+
+      final uUrl = '$host/wialon/ajax.html?svc=core/search_items&params=${Uri.encodeComponent(jsonEncode(specUnit))}&sid=$eid';
+      final uRes = await callWialon(uUrl);
+      final items = uRes['items'] as List?;
+      if (items == null || items.isEmpty) return null;
+
+      dynamic matchedItem;
+      for (final it in items) {
+        final nm = it['nm']?.toString().replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase() ?? '';
+        if (nm == cleanTarget) {
+          matchedItem = it;
+          break;
+        }
+      }
+      matchedItem ??= items.first;
+
+      final unitId = matchedItem['id'];
+      if (unitId == null) return null;
+
+      // 2. Cargar mensajes del intervalo de fechas/horas
+      final timeFrom = startTime.millisecondsSinceEpoch ~/ 1000;
+      final timeTo = endTime.millisecondsSinceEpoch ~/ 1000;
+
+      final loadParams = {
+        'itemId': unitId,
+        'timeFrom': timeFrom,
+        'timeTo': timeTo,
+        'flags': 1,
+        'flagsMask': 1,
+        'loadCount': 2000,
+      };
+
+      final mUrl = '$host/wialon/ajax.html?svc=messages/load_interval&params=${Uri.encodeComponent(jsonEncode(loadParams))}&sid=$eid';
+      final mRes = await callWialon(mUrl);
+      final rawMsgs = mRes['messages'] as List?;
+      if (rawMsgs == null || rawMsgs.isEmpty) return null;
+
+      final geofences = await fetchGeofences(idEmpresa: idEmpresa);
+      final points = <GpsHistoricalPoint>[];
+
+      double totalDistMeters = 0.0;
+      double maxSpeed = 0.0;
+      double speedSum = 0.0;
+      int speedCount = 0;
+      LatLng? prevPos;
+
+      String? currentZone;
+      DateTime? currentZoneEntry;
+      final stays = <GpsGeofenceStay>[];
+      final routePattern = <String>[];
+
+      for (final m in rawMsgs) {
+        if (m is! Map || m['pos'] == null) continue;
+        final pos = m['pos'] as Map;
+        final lat = (pos['y'] as num?)?.toDouble() ?? 0.0;
+        final lng = (pos['x'] as num?)?.toDouble() ?? 0.0;
+        final speed = (pos['s'] as num?)?.toDouble() ?? 0.0;
+        final tsSec = (m['t'] as num?)?.toInt() ?? 0;
+        final timestamp = DateTime.fromMillisecondsSinceEpoch(tsSec * 1000);
+
+        final point = LatLng(lat, lng);
+
+        if (prevPos != null) {
+          totalDistMeters += GpsGeofence._haversineMeters(prevPos.latitude, prevPos.longitude, lat, lng);
+        }
+        prevPos = point;
+
+        if (speed > maxSpeed) maxSpeed = speed;
+        speedSum += speed;
+        speedCount++;
+
+        String? foundZone;
+        for (final z in geofences) {
+          if (z.contains(point)) {
+            foundZone = z.name;
+            break;
+          }
+        }
+
+        points.add(GpsHistoricalPoint(
+          position: point,
+          speed: speed,
+          timestamp: timestamp,
+          geofence: foundZone,
+        ));
+
+        // Detectar transiciones de geocerca
+        if (foundZone != currentZone) {
+          if (currentZone != null && currentZoneEntry != null) {
+            stays.add(GpsGeofenceStay(
+              geofenceName: currentZone,
+              entryTime: currentZoneEntry,
+              exitTime: timestamp,
+            ));
+          }
+          if (foundZone != null) {
+            currentZoneEntry = timestamp;
+            if (routePattern.isEmpty || routePattern.last != foundZone) {
+              routePattern.add(foundZone);
+            }
+          }
+          currentZone = foundZone;
+        }
+      }
+
+      if (currentZone != null && currentZoneEntry != null && points.isNotEmpty) {
+        stays.add(GpsGeofenceStay(
+          geofenceName: currentZone,
+          entryTime: currentZoneEntry,
+          exitTime: points.last.timestamp,
+        ));
+      }
+
+      final avgSpeed = speedCount > 0 ? (speedSum / speedCount) : 0.0;
+
+      return GpsHistoricalTrip(
+        plate: plate,
+        startTime: startTime,
+        endTime: endTime,
+        totalDistanceKm: totalDistMeters / 1000.0,
+        maxSpeed: maxSpeed,
+        avgSpeed: avgSpeed,
+        totalPoints: points.length,
+        stays: stays,
+        routePattern: routePattern,
+        points: points,
+      );
+    } catch (e) {
+      debugPrint('[ModoGPS] Error fetchTripInterval: $e');
+      return null;
     }
   }
 }

@@ -8,9 +8,8 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/services/modogps_service.dart';
 import '../../domain/services/gps_harvest_service.dart';
 
-export '../../domain/services/modogps_service.dart' show GpsUnit;
+export '../../domain/services/modogps_service.dart' show GpsUnit, modoGpsServiceProvider, singleVehicleGpsProvider, GpsGeofence;
 
-final modoGpsServiceProvider = Provider((ref) => ModoGpsService());
 final gpsHarvestServiceProvider = Provider((ref) => GpsHarvestService());
 
 class RefreshTriggerNotifier extends Notifier<int> {
