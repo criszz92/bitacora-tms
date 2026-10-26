@@ -161,6 +161,72 @@ class GpsStop {
   });
 }
 
+/// Detección inteligente del inicio de jornada/viaje.
+/// Cruza: primer GPS del día + primer movimiento real + encendido del motor.
+class GpsJourneyStart {
+  /// Timestamp del primer punto GPS recibido en el intervalo
+  final DateTime firstGpsTime;
+
+  /// Timestamp del primer movimiento real (speed > 3 km/h)
+  final DateTime? firstMotionTime;
+
+  /// Posición GPS donde se detectó el primer movimiento real
+  final LatLng? firstMotionPosition;
+
+  /// Si el primer mensaje del intervalo ya mostraba motor encendido (pwr_ext > 0)
+  final bool engineOnAtStart;
+
+  /// Nombre de la geocerca en el punto de inicio (si aplica)
+  final String? startGeofenceName;
+
+  /// Determinación final inteligente: el inicio "real" de la jornada
+  /// Prioridad: firstMotionTime > firstGpsTime
+  DateTime get determinedStartTime => firstMotionTime ?? firstGpsTime;
+  LatLng? get determinedStartPosition => firstMotionPosition;
+
+  GpsJourneyStart({
+    required this.firstGpsTime,
+    this.firstMotionTime,
+    this.firstMotionPosition,
+    required this.engineOnAtStart,
+    this.startGeofenceName,
+  });
+}
+
+/// Detección inteligente del término de jornada/viaje.
+/// Cruza: último punto GPS reportado + última geocerca + estado final del motor/vehículo + duración total.
+class GpsJourneyEnd {
+  /// Timestamp del último punto GPS recibido en el intervalo
+  final DateTime lastGpsTime;
+
+  /// Posición GPS del último punto reportado
+  final LatLng lastPosition;
+
+  /// Velocidad en el último punto reportado (km/h)
+  final double lastSpeed;
+
+  /// Nombre de la geocerca donde terminó el viaje (si aplica)
+  final String? endGeofenceName;
+
+  /// Si el camión quedó detenido (speed < 3 km/h) al término
+  final bool isStopped;
+
+  /// Duración total estimada de la jornada desde el inicio determinado
+  final Duration totalDuration;
+
+  /// Determinación final de término de jornada
+  DateTime get determinedEndTime => lastGpsTime;
+
+  GpsJourneyEnd({
+    required this.lastGpsTime,
+    required this.lastPosition,
+    required this.lastSpeed,
+    this.endGeofenceName,
+    required this.isStopped,
+    required this.totalDuration,
+  });
+}
+
 class GpsTripLeg {
   final int index;
   final String name; // ej: "Tramo 1 (Ida)", "Tramo 2 (Retorno)"
@@ -198,6 +264,8 @@ class GpsHistoricalTrip {
   final List<GpsHistoricalPoint> points;
   final List<GpsTripLeg> legs;
   final List<GpsStop> stops;
+  final GpsJourneyStart? journeyStart;
+  final GpsJourneyEnd? journeyEnd;
 
   GpsHistoricalTrip({
     required this.plate,
@@ -212,6 +280,8 @@ class GpsHistoricalTrip {
     required this.points,
     this.legs = const [],
     this.stops = const [],
+    this.journeyStart,
+    this.journeyEnd,
   });
 }
 
@@ -568,6 +638,7 @@ class ModoGpsService {
       if (unitId == null) return null;
 
       // 2. Cargar mensajes del intervalo de fechas/horas
+      // Cargamos con flags=1 (posición) + flags=256 (parámetros de sensor/motor)
       final timeFrom = startTime.millisecondsSinceEpoch ~/ 1000;
       final timeTo = endTime.millisecondsSinceEpoch ~/ 1000;
 
@@ -599,6 +670,13 @@ class ModoGpsService {
       final stays = <GpsGeofenceStay>[];
       final routePattern = <String>[];
 
+      // ── Variables para detección inteligente de inicio de jornada ──
+      DateTime? firstGpsTime;
+      LatLng? firstMotionPosition;
+      DateTime? firstMotionTime;
+      bool engineOnAtStart = false;
+      String? startGeofenceName;
+
       for (final m in rawMsgs) {
         if (m is! Map || m['pos'] == null) continue;
         final pos = m['pos'] as Map;
@@ -608,7 +686,40 @@ class ModoGpsService {
         final tsSec = (m['t'] as num?)?.toInt() ?? 0;
         final timestamp = DateTime.fromMillisecondsSinceEpoch(tsSec * 1000);
 
+        // Ignorar puntos con coordenadas nulas o inválidas
+        if (lat == 0.0 && lng == 0.0) continue;
+
         final point = LatLng(lat, lng);
+
+        // ── Detección inteligente de inicio de jornada ────────────────
+        if (firstGpsTime == null) {
+          // Primer punto GPS del día → hora real en que el dispositivo arrancó
+          firstGpsTime = timestamp;
+
+          // Leer sensor de motor del primer mensaje:
+          // Wialon puede reportar pwr_ext (energía externa) o acc en m['p']
+          final msgParams = m['p'] as Map?;
+          final pwrExt = (msgParams?['pwr_ext'] as num?) ?? 0;
+          final acc = (msgParams?['acc'] as num?) ??  // sensor ACC
+                      (msgParams?['ACC'] as num?) ??  // algunas configs mayúsculas
+                      (msgParams?['din1'] as num?) ?? 0;  // entrada digital 1 (ignition)
+          engineOnAtStart = pwrExt > 0 || acc > 0;
+
+          // Geocerca del punto de partida
+          for (final z in geofences) {
+            if (z.contains(point)) {
+              startGeofenceName = z.name;
+              break;
+            }
+          }
+        }
+
+        // Primer movimiento real: velocidad supera umbral de ruido (> 3 km/h)
+        if (firstMotionTime == null && speed > 3.0) {
+          firstMotionTime = timestamp;
+          firstMotionPosition = point;
+        }
+        // ─────────────────────────────────────────────────────────────
 
         if (prevPos != null) {
           totalDistMeters += GpsGeofence._haversineMeters(prevPos.latitude, prevPos.longitude, lat, lng);
@@ -809,6 +920,52 @@ class ModoGpsService {
 
       final avgSpeed = speedCount > 0 ? (speedSum / speedCount) : 0.0;
 
+      // Construir el objeto de inicio de jornada si se detectó al menos el primer GPS
+      GpsJourneyStart? journeyStart;
+      if (firstGpsTime != null) {
+        journeyStart = GpsJourneyStart(
+          firstGpsTime: firstGpsTime,
+          firstMotionTime: firstMotionTime,
+          firstMotionPosition: firstMotionPosition,
+          engineOnAtStart: engineOnAtStart,
+          startGeofenceName: startGeofenceName,
+        );
+        debugPrint('[ModoGPS] Inicio de jornada detectado: '
+            'primer GPS=${firstGpsTime.toIso8601String()}, '
+            'primer movimiento=${firstMotionTime?.toIso8601String() ?? "N/A"}, '
+            'motor=${engineOnAtStart ? "ENCENDIDO" : "APAGADO"}, '
+            'geocerca=${startGeofenceName ?? "Fuera de zona"}}');
+      }
+
+      // Construir el objeto de término de jornada si hay puntos telemétricos
+      GpsJourneyEnd? journeyEnd;
+      if (points.isNotEmpty) {
+        final lastPoint = points.last;
+        final startTimeActual = journeyStart?.determinedStartTime ?? points.first.timestamp;
+        final duration = lastPoint.timestamp.isAfter(startTimeActual)
+            ? lastPoint.timestamp.difference(startTimeActual)
+            : Duration.zero;
+
+        String? endZone = lastPoint.geofence;
+        if (endZone == null && stops.isNotEmpty) {
+          endZone = stops.last.geofenceName;
+        }
+
+        journeyEnd = GpsJourneyEnd(
+          lastGpsTime: lastPoint.timestamp,
+          lastPosition: lastPoint.position,
+          lastSpeed: lastPoint.speed,
+          endGeofenceName: endZone,
+          isStopped: lastPoint.speed < 3.0,
+          totalDuration: duration,
+        );
+        debugPrint('[ModoGPS] Término de jornada detectado: '
+            'último GPS=${lastPoint.timestamp.toIso8601String()}, '
+            'geocerca=${endZone ?? "Fuera de zona"}, '
+            'detenido=${lastPoint.speed < 3.0}, '
+            'duración=${duration.inHours}h ${duration.inMinutes % 60}m');
+      }
+
       return GpsHistoricalTrip(
         plate: plate,
         startTime: startTime,
@@ -822,9 +979,15 @@ class ModoGpsService {
         points: points,
         legs: legs,
         stops: stops,
+        journeyStart: journeyStart,
+        journeyEnd: journeyEnd,
       );
     } catch (e) {
       debugPrint('[ModoGPS] Error fetchTripInterval: $e');
+      // Reset sesión por si Wialon la invalidó durante la consulta histórica
+      // Así el próximo fetchFleetData (vista en vivo) re-autentica limpiamente
+      _cachedEid = null;
+      _lastLoginTime = null;
       return null;
     }
   }

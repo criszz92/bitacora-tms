@@ -718,7 +718,9 @@ class KpiDashboardView extends ConsumerWidget {
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: Text(
-                                        '${timeFmt.format(startTime)} - ${timeFmt.format(endTime)}',
+                                        (hTrip?.journeyStart != null && hTrip?.journeyEnd != null)
+                                            ? '${timeFmt.format(hTrip!.journeyStart!.determinedStartTime)} - ${timeFmt.format(hTrip.journeyEnd!.determinedEndTime)}'
+                                            : '${timeFmt.format(startTime)} - ${timeFmt.format(endTime)}',
                                         style: const TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold),
                                       ),
                                     ),
@@ -795,6 +797,26 @@ class KpiDashboardView extends ConsumerWidget {
                                       icon: const Icon(Icons.auto_fix_high, size: 16),
                                       label: const Text('Aplicar KM Calculados por GPS al Viaje', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                                     ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                ],
+
+                                // ── JORNADA INTELIGENTE DETECTADA POR MODOGPS ──
+                                if (hTrip != null && (hTrip.journeyStart != null || hTrip.journeyEnd != null)) ...[
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      if (hTrip.journeyStart != null)
+                                        Expanded(
+                                          child: _buildDashboardJourneyStartCard(hTrip.journeyStart!, timeFmt),
+                                        ),
+                                      if (hTrip.journeyStart != null && hTrip.journeyEnd != null)
+                                        const SizedBox(width: 8),
+                                      if (hTrip.journeyEnd != null)
+                                        Expanded(
+                                          child: _buildDashboardJourneyEndCard(hTrip.journeyEnd!, timeFmt),
+                                        ),
+                                    ],
                                   ),
                                   const SizedBox(height: 16),
                                 ],
@@ -1207,4 +1229,237 @@ class KpiDashboardView extends ConsumerWidget {
   String _fmt(double amount) { final isNeg = amount < 0; final abs = amount.abs(); final parts = abs.toStringAsFixed(0).split(''); final buf = StringBuffer(isNeg ? '-\$' : '\$'); for (int i = 0; i < parts.length; i++) { if (i > 0 && (parts.length - i) % 3 == 0) buf.write('.'); buf.write(parts[i]); } return buf.toString(); }
 
   Widget _emptyState(String message) => Center(child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.inbox_outlined, size: 40, color: Colors.white10), const SizedBox(height: 12), Text(message, style: const TextStyle(color: Colors.grey, fontSize: 12))]));
+
+  Widget _buildDashboardJourneyStartCard(GpsJourneyStart start, DateFormat timeFmt) {
+    final determinedTime = start.determinedStartTime;
+    final timeStr = timeFmt.format(determinedTime);
+
+    final String confidence;
+    final Color confidenceColor;
+    if (start.firstMotionTime != null && start.engineOnAtStart) {
+      confidence = 'ALTA';
+      confidenceColor = Colors.greenAccent;
+    } else if (start.firstMotionTime != null) {
+      confidence = 'MEDIA';
+      confidenceColor = Colors.amberAccent;
+    } else {
+      confidence = 'BAJA';
+      confidenceColor = Colors.redAccent;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D2137),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.blueAccent.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Icon(Icons.play_circle_fill, color: Colors.blueAccent, size: 13),
+              ),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text(
+                  'INICIO JORNADA',
+                  style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.6),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  color: confidenceColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: confidenceColor.withValues(alpha: 0.4)),
+                ),
+                child: Text(
+                  'CONF. $confidence',
+                  style: TextStyle(color: confidenceColor, fontSize: 8, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                timeStr,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'monospace',
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      start.firstMotionTime != null ? 'Primer movimiento' : 'Primer GPS',
+                      style: const TextStyle(color: Colors.white54, fontSize: 9),
+                    ),
+                    if (start.startGeofenceName != null)
+                      Text(
+                        start.startGeofenceName!,
+                        style: const TextStyle(color: Colors.cyanAccent, fontSize: 9, fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Divider(color: Colors.white10, height: 1),
+          const SizedBox(height: 6),
+          _buildJourneyMiniRow(Icons.gps_fixed, '1er GPS:', timeFmt.format(start.firstGpsTime), Colors.cyanAccent),
+          const SizedBox(height: 3),
+          _buildJourneyMiniRow(
+            Icons.directions_car,
+            'Movimiento:',
+            start.firstMotionTime != null ? timeFmt.format(start.firstMotionTime!) : 'S/D',
+            Colors.greenAccent,
+          ),
+          const SizedBox(height: 3),
+          _buildJourneyMiniRow(
+            Icons.power,
+            'Motor:',
+            start.engineOnAtStart ? 'Encendido ✓' : 'Sin datos',
+            start.engineOnAtStart ? Colors.greenAccent : Colors.white38,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDashboardJourneyEndCard(GpsJourneyEnd end, DateFormat timeFmt) {
+    final determinedTime = end.determinedEndTime;
+    final timeStr = timeFmt.format(determinedTime);
+    final dur = end.totalDuration;
+    final durStr = dur.inHours > 0 ? '${dur.inHours}h ${dur.inMinutes % 60}m' : '${dur.inMinutes}m';
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF20132A),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.purpleAccent.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.purpleAccent.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Icon(Icons.stop_circle, color: Colors.purpleAccent, size: 13),
+              ),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text(
+                  'TÉRMINO JORNADA',
+                  style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.6),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.purpleAccent.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.purpleAccent.withValues(alpha: 0.4)),
+                ),
+                child: Text(
+                  durStr,
+                  style: const TextStyle(color: Colors.purpleAccent, fontSize: 8, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                timeStr,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'monospace',
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      end.isStopped ? 'Vehículo detenido' : 'En movimiento',
+                      style: const TextStyle(color: Colors.white54, fontSize: 9),
+                    ),
+                    if (end.endGeofenceName != null)
+                      Text(
+                        end.endGeofenceName!,
+                        style: const TextStyle(color: Colors.purpleAccent, fontSize: 9, fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Divider(color: Colors.white10, height: 1),
+          const SizedBox(height: 6),
+          _buildJourneyMiniRow(Icons.flag, 'Último GPS:', timeStr, Colors.purpleAccent),
+          const SizedBox(height: 3),
+          _buildJourneyMiniRow(
+            Icons.pause_circle_outline,
+            'Estado:',
+            end.isStopped ? 'Detenido (0 km/h)' : '${end.lastSpeed.toStringAsFixed(0)} km/h',
+            end.isStopped ? Colors.greenAccent : Colors.amberAccent,
+          ),
+          const SizedBox(height: 3),
+          _buildJourneyMiniRow(Icons.timelapse, 'Duración:', durStr, Colors.amberAccent),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildJourneyMiniRow(IconData icon, String label, String value, Color valColor) {
+    return Row(
+      children: [
+        Icon(icon, size: 10, color: Colors.white38),
+        const SizedBox(width: 4),
+        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 9)),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(color: valColor, fontSize: 9, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.right,
+          ),
+        ),
+      ],
+    );
+  }
 }

@@ -1673,6 +1673,20 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
             const Divider(color: Colors.white10),
             const SizedBox(height: 12),
 
+            // ── TARJETAS: INICIO Y TÉRMINO INTELIGENTE DE JORNADA ────
+            if (_historicalTrip!.journeyStart != null) ...[
+              _buildJourneyStartCard(_historicalTrip!.journeyStart!),
+              const SizedBox(height: 10),
+            ],
+            if (_historicalTrip!.journeyEnd != null) ...[
+              _buildJourneyEndCard(_historicalTrip!.journeyEnd!),
+              const SizedBox(height: 14),
+            ],
+            if (_historicalTrip!.journeyStart != null || _historicalTrip!.journeyEnd != null) ...[
+              const Divider(color: Colors.white10),
+              const SizedBox(height: 12),
+            ],
+
             Row(
               children: [
                 const Icon(Icons.analytics_outlined, color: Colors.blueAccent, size: 16),
@@ -1940,6 +1954,347 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
               }),
             ],
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildJourneyStartCard(GpsJourneyStart start) {
+    final determinedTime = start.determinedStartTime;
+    final timeStr = '${determinedTime.hour.toString().padLeft(2, '0')}:${determinedTime.minute.toString().padLeft(2, '0')}';
+
+    // Diferencia entre primer GPS y primer movimiento
+    String? delayStr;
+    if (start.firstMotionTime != null) {
+      final delayMin = start.firstMotionTime!.difference(start.firstGpsTime).inMinutes;
+      if (delayMin > 0) {
+        delayStr = '${delayMin}m entre encendido y primer mov.';
+      }
+    }
+
+    final gpsTimeStr = '${start.firstGpsTime.hour.toString().padLeft(2, '0')}:${start.firstGpsTime.minute.toString().padLeft(2, '0')}';
+    final motionTimeStr = start.firstMotionTime != null
+        ? '${start.firstMotionTime!.hour.toString().padLeft(2, '0')}:${start.firstMotionTime!.minute.toString().padLeft(2, '0')}'
+        : null;
+
+    // Nivel de confianza de la determinación
+    final String confidence;
+    final Color confidenceColor;
+    if (start.firstMotionTime != null && start.engineOnAtStart) {
+      confidence = 'ALTA';
+      confidenceColor = Colors.greenAccent;
+    } else if (start.firstMotionTime != null) {
+      confidence = 'MEDIA';
+      confidenceColor = Colors.amberAccent;
+    } else {
+      confidence = 'BAJA';
+      confidenceColor = Colors.redAccent;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFF0D2137),
+            const Color(0xFF091929),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.4)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.blueAccent.withValues(alpha: 0.12),
+            blurRadius: 10,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.blueAccent.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Icon(Icons.play_circle_filled, color: Colors.blueAccent, size: 16),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'INICIO DE JORNADA',
+                  style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: confidenceColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: confidenceColor.withValues(alpha: 0.4)),
+                ),
+                child: Text(
+                  'CONF. $confidence',
+                  style: TextStyle(color: confidenceColor, fontSize: 8, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Hora principal determinada
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                timeStr,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'monospace',
+                  height: 1.0,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      start.firstMotionTime != null ? 'Primer movimiento' : 'Primer dato GPS',
+                      style: const TextStyle(color: Colors.white60, fontSize: 10),
+                    ),
+                    if (start.startGeofenceName != null)
+                      Text(
+                        start.startGeofenceName!,
+                        style: const TextStyle(color: Colors.blueAccent, fontSize: 10, fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 10),
+          const Divider(color: Colors.white10, height: 1),
+          const SizedBox(height: 10),
+
+          // Desglose de señales cruzadas
+          _buildStartSignalRow(
+            icon: Icons.gps_fixed,
+            label: 'Primer GPS del día',
+            value: gpsTimeStr,
+            active: true,
+            color: Colors.cyanAccent,
+          ),
+          const SizedBox(height: 6),
+          _buildStartSignalRow(
+            icon: Icons.directions_car,
+            label: 'Primer movimiento (>3 km/h)',
+            value: motionTimeStr ?? 'No detectado',
+            active: motionTimeStr != null,
+            color: Colors.greenAccent,
+          ),
+          const SizedBox(height: 6),
+          _buildStartSignalRow(
+            icon: Icons.power,
+            label: 'Motor al inicio',
+            value: start.engineOnAtStart ? 'Encendido ✓' : 'Sin datos / Apagado',
+            active: start.engineOnAtStart,
+            color: Colors.amberAccent,
+          ),
+
+          // Nota de demora si aplica
+          if (delayStr != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.04),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, color: Colors.white38, size: 11),
+                  const SizedBox(width: 4),
+                  Text(
+                    delayStr,
+                    style: const TextStyle(color: Colors.white38, fontSize: 10),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStartSignalRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    required bool active,
+    required Color color,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, size: 12, color: active ? color : Colors.white24),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(label, style: const TextStyle(color: Colors.white54, fontSize: 10)),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            color: active ? color : Colors.white24,
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+            fontFamily: 'monospace',
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildJourneyEndCard(GpsJourneyEnd end) {
+    final determinedTime = end.determinedEndTime;
+    final timeStr = '${determinedTime.hour.toString().padLeft(2, '0')}:${determinedTime.minute.toString().padLeft(2, '0')}';
+    final dur = end.totalDuration;
+    final durStr = '${dur.inHours}h ${dur.inMinutes % 60}m';
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xFF26122F),
+            Color(0xFF190C1F),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.purpleAccent.withValues(alpha: 0.4)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.purpleAccent.withValues(alpha: 0.12),
+            blurRadius: 10,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.purpleAccent.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Icon(Icons.stop_circle, color: Colors.purpleAccent, size: 16),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'TÉRMINO DE JORNADA',
+                  style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.purpleAccent.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.purpleAccent.withValues(alpha: 0.4)),
+                ),
+                child: Text(
+                  'JORNADA $durStr',
+                  style: const TextStyle(color: Colors.purpleAccent, fontSize: 8, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Hora principal determinada
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                timeStr,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'monospace',
+                  height: 1.0,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      end.isStopped ? 'Vehículo detenido' : 'En movimiento',
+                      style: const TextStyle(color: Colors.white60, fontSize: 10),
+                    ),
+                    if (end.endGeofenceName != null)
+                      Text(
+                        end.endGeofenceName!,
+                        style: const TextStyle(color: Colors.purpleAccent, fontSize: 10, fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 10),
+          const Divider(color: Colors.white10, height: 1),
+          const SizedBox(height: 10),
+
+          // Desglose de señales
+          _buildStartSignalRow(
+            icon: Icons.flag,
+            label: 'Último reporte GPS',
+            value: timeStr,
+            active: true,
+            color: Colors.purpleAccent,
+          ),
+          const SizedBox(height: 6),
+          _buildStartSignalRow(
+            icon: Icons.pause_circle_outline,
+            label: 'Estado al finalizar',
+            value: end.isStopped ? 'Detenido (0 km/h)' : '${end.lastSpeed.toStringAsFixed(0)} km/h',
+            active: end.isStopped,
+            color: Colors.greenAccent,
+          ),
+          const SizedBox(height: 6),
+          _buildStartSignalRow(
+            icon: Icons.timelapse,
+            label: 'Duración total de jornada',
+            value: durStr,
+            active: true,
+            color: Colors.amberAccent,
+          ),
         ],
       ),
     );
