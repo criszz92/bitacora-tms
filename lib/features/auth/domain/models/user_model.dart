@@ -24,6 +24,14 @@ class UserModel {
   final String? patenteAsignada;
   final String? fcmToken; // Token de Firebase Cloud Messaging
 
+  /// Determina si el usuario tiene privilegios de Usuario Maestro / SuperAdmin
+  bool get isSuperAdmin =>
+      rol == 'SUPER_ADMIN' ||
+      (rol == 'ADMIN' &&
+          (email.toLowerCase().contains('inostroza') ||
+              email.toLowerCase().contains('heirlog') ||
+              idEmpresa.toLowerCase() == 'heirlog'));
+
   UserModel({
     required this.uid,
     required this.idEmpresa,

@@ -7,6 +7,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/services/modogps_service.dart';
 import '../../domain/services/gps_harvest_service.dart';
+import '../../domain/models/infraestructura_vial_model.dart';
+import '../../data/repositories/infraestructura_repository.dart';
 
 export '../../domain/services/modogps_service.dart' show GpsUnit, modoGpsServiceProvider, singleVehicleGpsProvider, GpsGeofence;
 
@@ -72,6 +74,7 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
   bool _hasCenteredInitial = false;
   bool _useSatellite = false;
   bool _showGeofences = true;
+  bool _showInfraestructura = true;
 
   // Modo de vista: 0 = En Vivo, 1 = Historial de Recorridos
   int _viewMode = 0;
@@ -603,6 +606,10 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
   @override
   Widget build(BuildContext context) {
     final fleetAsync = ref.watch(fleetStreamProvider);
+    final puntosInfraAsync = ref.watch(puntosInfraestructuraProvider);
+    final puntosInfra = puntosInfraAsync.value ?? [];
+    final currentUser = ref.watch(currentUserProfileProvider).value;
+    final isSuperAdmin = currentUser?.isSuperAdmin ?? false;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -716,6 +723,12 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                                 ),
                               );
                             }).toList(),
+                          ),
+
+                        // Capa de Infraestructura Vial Universal (Peajes, Romanas, Restricciones)
+                        if (_showInfraestructura && puntosInfra.isNotEmpty)
+                          MarkerLayer(
+                            markers: puntosInfra.map((p) => _buildInfraestructuraMarker(p, isSuperAdmin)).toList(),
                           ),
 
                         // Capa de Trazado Histórico (Ruta segmentada por tramos de color y paradas)
@@ -1104,6 +1117,60 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                                 ),
                               ),
                             ),
+                            const SizedBox(width: 4),
+                            // Botón Mostrar/Ocultar Infraestructura (Peajes, Romanas)
+                            InkWell(
+                              onTap: () => setState(() => _showInfraestructura = !_showInfraestructura),
+                              borderRadius: BorderRadius.circular(6),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: _showInfraestructura ? const Color(0xFF00E676).withValues(alpha: 0.25) : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: _showInfraestructura ? const Color(0xFF00E676) : Colors.transparent,
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.toll, size: 14, color: _showInfraestructura ? const Color(0xFF00E676) : Colors.white60),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Puntos Viales (${puntosInfra.length})',
+                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _showInfraestructura ? const Color(0xFF00E676) : Colors.white60),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            // Botón Agregar Punto Vial (Solo SuperAdmin)
+                            if (isSuperAdmin) ...[
+                              const SizedBox(width: 4),
+                              InkWell(
+                                onTap: () => _showCrearEditarPuntoDialog(context, initialPos: _mapController.camera.center),
+                                borderRadius: BorderRadius.circular(6),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF00E676),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.add_location_alt, size: 14, color: Colors.black),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        '+ Punto Vial',
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -2296,6 +2363,619 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
             color: Colors.amberAccent,
           ),
         ],
+      ),
+    );
+  }
+
+  // ─── INFRAESTRUCTURA VIAL UNIVERSAL (PEAJES, ROMANAS, RESTRICCIONES) ─────
+
+  Marker _buildInfraestructuraMarker(PuntoInfraestructuraModel p, bool isSuperAdmin) {
+    Color color = Colors.amberAccent;
+    IconData icon = Icons.toll;
+    String badgeText = 'Punto';
+
+    switch (p.tipo) {
+      case TipoPuntoInfraestructura.peaje:
+        color = Colors.amberAccent;
+        icon = Icons.toll;
+        final tarifa = p.tarifaCamionPesado ?? p.tarifaCamionSimple;
+        badgeText = tarifa != null ? '\$${tarifa.toStringAsFixed(0)}' : 'Peaje';
+        break;
+      case TipoPuntoInfraestructura.romana:
+        color = Colors.cyanAccent;
+        icon = Icons.scale;
+        badgeText = 'Romana';
+        break;
+      case TipoPuntoInfraestructura.restriccion:
+        color = Colors.redAccent;
+        icon = Icons.warning_amber_rounded;
+        badgeText = p.alturaMaximaMetros != null ? '${p.alturaMaximaMetros}m' : 'Restricción';
+        break;
+      case TipoPuntoInfraestructura.descanso:
+        color = Colors.greenAccent;
+        icon = Icons.local_gas_station;
+        badgeText = 'Descanso';
+        break;
+    }
+
+    return Marker(
+      point: p.position,
+      width: 120,
+      height: 48,
+      child: GestureDetector(
+        onTap: () => _showPuntoInfraestructuraDialog(context, p, isSuperAdmin),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.85),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: color, width: 1),
+                boxShadow: [
+                  BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 4),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 10, color: color),
+                  const SizedBox(width: 3),
+                  Flexible(
+                    child: Text(
+                      badgeText,
+                      style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 2),
+            Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.black,
+                shape: BoxShape.circle,
+                border: Border.all(color: color, width: 2),
+                boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 4)],
+              ),
+              child: Icon(
+                icon,
+                color: color,
+                size: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showPuntoInfraestructuraDialog(BuildContext context, PuntoInfraestructuraModel p, bool isSuperAdmin) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF161B22),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.blueAccent.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                p.tipo == TipoPuntoInfraestructura.peaje
+                    ? Icons.toll
+                    : (p.tipo == TipoPuntoInfraestructura.romana
+                        ? Icons.scale
+                        : (p.tipo == TipoPuntoInfraestructura.restriccion ? Icons.warning_amber_rounded : Icons.local_gas_station)),
+                color: Colors.blueAccent,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    p.nombre,
+                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    '${p.tipo.label} • ${p.subtipo}',
+                    style: const TextStyle(color: Colors.white54, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (p.ruta.isNotEmpty)
+                _buildInfraDetailRow('Ruta / Autopista:', p.km != null ? '${p.ruta} (Km ${p.km})' : p.ruta),
+              _buildInfraDetailRow('Sentido:', p.sentido),
+              _buildInfraDetailRow('Coordenadas:', '${p.lat.toStringAsFixed(5)}, ${p.lng.toStringAsFixed(5)}'),
+              const Divider(color: Colors.white10, height: 16),
+              if (p.tipo == TipoPuntoInfraestructura.peaje) ...[
+                if (p.tarifaCamionSimple != null)
+                  _buildInfraDetailRow('Tarifa Camión 2 Ejes:', '\$${p.tarifaCamionSimple!.toStringAsFixed(0)}'),
+                if (p.tarifaCamionPesado != null)
+                  _buildInfraDetailRow('Tarifa Camión >2 Ejes (Rampla):', '\$${p.tarifaCamionPesado!.toStringAsFixed(0)}'),
+                _buildInfraDetailRow('Modalidad de Cobro:', p.admiteTag ? 'Efectivo y TAG (Free Flow)' : 'Solo Manual / Efectivo'),
+                if (p.concesionaria != null)
+                  _buildInfraDetailRow('Concesionaria:', p.concesionaria!),
+              ] else if (p.tipo == TipoPuntoInfraestructura.romana) ...[
+                _buildInfraDetailRow('Entidad:', p.entidadFiscalizadora ?? 'MOP / Vialidad'),
+                _buildInfraDetailRow('Pista de Pesaje:', p.pistaObligatoria ?? 'Pista Derecha Obligatoria'),
+              ] else if (p.tipo == TipoPuntoInfraestructura.restriccion) ...[
+                if (p.alturaMaximaMetros != null)
+                  _buildInfraDetailRow('Gálibo / Altura Máxima:', '${p.alturaMaximaMetros} metros'),
+                if (p.pesoMaximoToneladas != null)
+                  _buildInfraDetailRow('Peso Máximo PBV:', '${p.pesoMaximoToneladas} toneladas'),
+                if (p.horarioRestriccion != null)
+                  _buildInfraDetailRow('Horario Restricción:', p.horarioRestriccion!),
+                _buildInfraDetailRow('Cargas Peligrosas:', p.permiteCargasPeligrosas ? 'Permitido' : 'Prohibido (Desvío obligatorio)'),
+              ] else if (p.tipo == TipoPuntoInfraestructura.descanso) ...[
+                if (p.capacidadCamiones != null)
+                  _buildInfraDetailRow('Capacidad Estimada:', '${p.capacidadCamiones} camiones'),
+                _buildInfraDetailRow('Servicios:', [
+                  if (p.tieneDuchas) 'Duchas',
+                  if (p.tieneSeguridad) 'Seguridad 24h',
+                  if (p.combustibleAltoFlujo) 'Diésel Alto Flujo',
+                ].join(', ')),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          if (isSuperAdmin) ...[
+            TextButton(
+              onPressed: () async {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (c) => AlertDialog(
+                    backgroundColor: const Color(0xFF1E1E1E),
+                    title: const Text('Eliminar Punto', style: TextStyle(color: Colors.redAccent)),
+                    content: Text('¿Seguro que deseas eliminar "${p.nombre}" del catálogo universal?'),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancelar')),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+                        onPressed: () => Navigator.pop(c, true),
+                        child: const Text('Eliminar'),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm == true) {
+                  await ref.read(infraestructuraRepositoryProvider).eliminarPunto(p.id);
+                  if (ctx.mounted) Navigator.pop(ctx);
+                }
+              },
+              child: const Text('Eliminar', style: TextStyle(color: Colors.redAccent)),
+            ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blueAccent,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () {
+                Navigator.pop(ctx);
+                _showCrearEditarPuntoDialog(context, punto: p);
+              },
+              icon: const Icon(Icons.edit, size: 14),
+              label: const Text('Editar'),
+            ),
+          ],
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cerrar', style: TextStyle(color: Colors.white60)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfraDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 140,
+            child: Text(label, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCrearEditarPuntoDialog(BuildContext context, {PuntoInfraestructuraModel? punto, LatLng? initialPos}) {
+    final isEditing = punto != null;
+    final nombreCtrl = TextEditingController(text: punto?.nombre ?? '');
+    final rutaCtrl = TextEditingController(text: punto?.ruta ?? '');
+    final kmCtrl = TextEditingController(text: punto?.km?.toString() ?? '');
+    final latCtrl = TextEditingController(text: punto?.lat.toString() ?? initialPos?.latitude.toStringAsFixed(6) ?? '-36.9840');
+    final lngCtrl = TextEditingController(text: punto?.lng.toString() ?? initialPos?.longitude.toStringAsFixed(6) ?? '-73.1774');
+    final tarifaSimpleCtrl = TextEditingController(text: punto?.tarifaCamionSimple?.toStringAsFixed(0) ?? '');
+    final tarifaPesadoCtrl = TextEditingController(text: punto?.tarifaCamionPesado?.toStringAsFixed(0) ?? '');
+    final concesionariaCtrl = TextEditingController(text: punto?.concesionaria ?? '');
+    final entidadCtrl = TextEditingController(text: punto?.entidadFiscalizadora ?? 'MOP / Vialidad');
+    final alturaCtrl = TextEditingController(text: punto?.alturaMaximaMetros?.toString() ?? '');
+    final pesoCtrl = TextEditingController(text: punto?.pesoMaximoToneladas?.toString() ?? '');
+    final horarioCtrl = TextEditingController(text: punto?.horarioRestriccion ?? '');
+
+    TipoPuntoInfraestructura tipo = punto?.tipo ?? TipoPuntoInfraestructura.peaje;
+    String subtipo = punto?.subtipo ?? (tipo == TipoPuntoInfraestructura.peaje ? 'Troncal' : 'General');
+    String sentido = punto?.sentido ?? 'Bidireccional';
+    bool admiteTag = punto?.admiteTag ?? false;
+    bool permiteHazmat = punto?.permiteCargasPeligrosas ?? true;
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => Dialog(
+          backgroundColor: const Color(0xFF161B22),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: Container(
+            width: 520,
+            constraints: const BoxConstraints(maxHeight: 720),
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF00E676).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.add_location_alt, color: Color(0xFF00E676), size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            isEditing ? 'Editar Punto Vial' : 'Registrar Nuevo Punto Vial',
+                            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                          const Text(
+                            'Catálogo Universal de Infraestructura (TMS)',
+                            style: TextStyle(color: Colors.white38, fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        // Tipo de Punto
+                        DropdownButtonFormField<TipoPuntoInfraestructura>(
+                          initialValue: tipo,
+                          dropdownColor: const Color(0xFF161B22),
+                          style: const TextStyle(color: Colors.white),
+                          decoration: const InputDecoration(labelText: 'Tipo de Infraestructura', labelStyle: TextStyle(color: Colors.grey)),
+                          items: TipoPuntoInfraestructura.values.map((t) => DropdownMenuItem(value: t, child: Text(t.label))).toList(),
+                          onChanged: (val) {
+                            if (val != null) {
+                              setDialogState(() {
+                                tipo = val;
+                                if (tipo == TipoPuntoInfraestructura.peaje) subtipo = 'Troncal';
+                                if (tipo == TipoPuntoInfraestructura.romana) subtipo = 'Pesaje Fijo';
+                                if (tipo == TipoPuntoInfraestructura.restriccion) subtipo = 'Paso Bajo Nivel';
+                                if (tipo == TipoPuntoInfraestructura.descanso) subtipo = 'Servicentro';
+                              });
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: nombreCtrl,
+                          style: const TextStyle(color: Colors.white, fontSize: 13),
+                          decoration: const InputDecoration(labelText: 'Nombre del Punto (ej: Peaje Agua Amarilla)', labelStyle: TextStyle(color: Colors.grey)),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: TextField(
+                                controller: rutaCtrl,
+                                style: const TextStyle(color: Colors.white, fontSize: 13),
+                                decoration: const InputDecoration(labelText: 'Ruta / Autopista (ej: Ruta 148)', labelStyle: TextStyle(color: Colors.grey)),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              flex: 2,
+                              child: TextField(
+                                controller: kmCtrl,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                style: const TextStyle(color: Colors.white, fontSize: 13),
+                                decoration: const InputDecoration(labelText: 'Km (ej: 52.4)', labelStyle: TextStyle(color: Colors.grey)),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: latCtrl,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                style: const TextStyle(color: Colors.white, fontSize: 13),
+                                decoration: const InputDecoration(labelText: 'Latitud GPS', labelStyle: TextStyle(color: Colors.grey)),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: TextField(
+                                controller: lngCtrl,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                style: const TextStyle(color: Colors.white, fontSize: 13),
+                                decoration: const InputDecoration(labelText: 'Longitud GPS', labelStyle: TextStyle(color: Colors.grey)),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          initialValue: sentido,
+                          dropdownColor: const Color(0xFF161B22),
+                          style: const TextStyle(color: Colors.white),
+                          decoration: const InputDecoration(labelText: 'Sentido de Calzada', labelStyle: TextStyle(color: Colors.grey)),
+                          items: ['Bidireccional', 'Norte-Sur', 'Sur-Norte', 'Oriente-Poniente', 'Poniente-Oriente']
+                              .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                              .toList(),
+                          onChanged: (val) => setDialogState(() => sentido = val ?? 'Bidireccional'),
+                        ),
+                        const SizedBox(height: 14),
+
+                        // ── Campos según Tipo ──
+                        if (tipo == TipoPuntoInfraestructura.peaje) ...[
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.amber.withValues(alpha: 0.25)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Tarifas de Peaje (CLP)', style: TextStyle(color: Colors.amberAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextField(
+                                        controller: tarifaSimpleCtrl,
+                                        keyboardType: TextInputType.number,
+                                        style: const TextStyle(color: Colors.white, fontSize: 13),
+                                        decoration: const InputDecoration(labelText: 'Camión 2 Ejes (\$)', labelStyle: TextStyle(color: Colors.grey)),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: TextField(
+                                        controller: tarifaPesadoCtrl,
+                                        keyboardType: TextInputType.number,
+                                        style: const TextStyle(color: Colors.white, fontSize: 13),
+                                        decoration: const InputDecoration(labelText: 'Camión >2 Ejes (\$)', labelStyle: TextStyle(color: Colors.grey)),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text('Admite TAG / Free Flow:', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                                    Switch(
+                                      value: admiteTag,
+                                      activeThumbColor: Colors.amberAccent,
+                                      onChanged: (val) => setDialogState(() => admiteTag = val),
+                                    ),
+                                  ],
+                                ),
+                                TextField(
+                                  controller: concesionariaCtrl,
+                                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                                  decoration: const InputDecoration(labelText: 'Concesionaria (ej: Autopista del Itata)', labelStyle: TextStyle(color: Colors.grey)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ] else if (tipo == TipoPuntoInfraestructura.romana) ...[
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.cyan.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.cyan.withValues(alpha: 0.25)),
+                            ),
+                            child: Column(
+                              children: [
+                                TextField(
+                                  controller: entidadCtrl,
+                                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                                  decoration: const InputDecoration(labelText: 'Entidad (ej: MOP / Vialidad)', labelStyle: TextStyle(color: Colors.grey)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ] else if (tipo == TipoPuntoInfraestructura.restriccion) ...[
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.red.withValues(alpha: 0.25)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Límites y Restricciones', style: TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextField(
+                                        controller: alturaCtrl,
+                                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                        style: const TextStyle(color: Colors.white, fontSize: 13),
+                                        decoration: const InputDecoration(labelText: 'Altura Máx (m)', labelStyle: TextStyle(color: Colors.grey)),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: TextField(
+                                        controller: pesoCtrl,
+                                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                        style: const TextStyle(color: Colors.white, fontSize: 13),
+                                        decoration: const InputDecoration(labelText: 'Peso Máx (ton)', labelStyle: TextStyle(color: Colors.grey)),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                TextField(
+                                  controller: horarioCtrl,
+                                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                                  decoration: const InputDecoration(labelText: 'Horario Restringido (ej: 07:00 a 09:00 hrs)', labelStyle: TextStyle(color: Colors.grey)),
+                                ),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text('Permite Cargas Peligrosas (HAZMAT):', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                                    Switch(
+                                      value: permiteHazmat,
+                                      activeThumbColor: Colors.redAccent,
+                                      onChanged: (val) => setDialogState(() => permiteHazmat = val),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: isSaving ? null : () => Navigator.pop(ctx),
+                      child: const Text('Cancelar', style: TextStyle(color: Colors.white38)),
+                    ),
+                    const SizedBox(width: 10),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF00E676),
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      onPressed: isSaving
+                          ? null
+                          : () async {
+                              final name = nombreCtrl.text.trim();
+                              final lat = double.tryParse(latCtrl.text.trim());
+                              final lng = double.tryParse(lngCtrl.text.trim());
+                              if (name.isEmpty || lat == null || lng == null) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Por favor completa nombre y coordenadas válidas')),
+                                );
+                                return;
+                              }
+
+                              setDialogState(() => isSaving = true);
+                              try {
+                                final userProfile = ref.read(currentUserProfileProvider).value;
+                                final model = PuntoInfraestructuraModel(
+                                  id: punto?.id ?? '',
+                                  nombre: name,
+                                  tipo: tipo,
+                                  subtipo: subtipo,
+                                  ruta: rutaCtrl.text.trim(),
+                                  km: double.tryParse(kmCtrl.text.trim()),
+                                  lat: lat,
+                                  lng: lng,
+                                  sentido: sentido,
+                                  tarifaCamionSimple: double.tryParse(tarifaSimpleCtrl.text.trim()),
+                                  tarifaCamionPesado: double.tryParse(tarifaPesadoCtrl.text.trim()),
+                                  admiteTag: admiteTag,
+                                  concesionaria: concesionariaCtrl.text.trim().isNotEmpty ? concesionariaCtrl.text.trim() : null,
+                                  entidadFiscalizadora: entidadCtrl.text.trim().isNotEmpty ? entidadCtrl.text.trim() : null,
+                                  alturaMaximaMetros: double.tryParse(alturaCtrl.text.trim()),
+                                  pesoMaximoToneladas: double.tryParse(pesoCtrl.text.trim()),
+                                  horarioRestriccion: horarioCtrl.text.trim().isNotEmpty ? horarioCtrl.text.trim() : null,
+                                  permiteCargasPeligrosas: permiteHazmat,
+                                  creadoPor: userProfile?.uid ?? 'MAESTRO',
+                                  createdAt: punto?.createdAt ?? DateTime.now(),
+                                );
+
+                                await ref.read(infraestructuraRepositoryProvider).guardarPunto(model);
+                                if (ctx.mounted) Navigator.pop(ctx);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('✓ Punto "${model.nombre}" guardado en el Catálogo Universal'),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                }
+                              } catch (e) {
+                                setDialogState(() => isSaving = false);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Error al guardar: $e'), backgroundColor: Colors.red),
+                                  );
+                                }
+                              }
+                            },
+                      icon: isSaving
+                          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
+                          : const Icon(Icons.check, size: 16),
+                      label: Text(isSaving ? 'Guardando...' : (isEditing ? 'Actualizar Punto' : 'Guardar Punto')),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

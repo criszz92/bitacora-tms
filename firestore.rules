@@ -29,6 +29,16 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol == 'ADMIN';
     }
 
+    // Verifica si el usuario es SUPER_ADMIN / Maestro de la plataforma
+    function isSuperAdmin() {
+      let userData = get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
+      return userData.rol == 'SUPER_ADMIN' || 
+             userData.isSuperAdmin == true || 
+             (userData.rol == 'ADMIN' && (request.auth.token.email.matches('.*inostroza.*') || 
+                                          request.auth.token.email.matches('.*heirlog.*') || 
+                                          userData.idEmpresa == 'heirlog'));
+    }
+
     // Verifica si el usuario es dueño del documento (asumiendo campo idChofer)
     function isOwner() {
       return resource.data.idChofer == request.auth.uid;
@@ -138,9 +148,9 @@ service cloud.firestore {
       allow read: if isAuthenticated() && isCompanyAdmin();
       allow write: if false; // Nadie escribe desde la app
     }
-    // 7. Solicitudes de Servicio (IA)
+    // 7. Solicitudes de Servicio (IA) - Aislado por empresa
     match /service_requests/{docId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isAuthenticated() && isSameEmpresa();
     }
 
     // 8. Telemetría GPS (raw_positions, events, trip_summaries)
@@ -164,6 +174,23 @@ service cloud.firestore {
         // Solo admin puede borrar resúmenes históricos
         allow delete: if isAuthenticated() && getUserEmpresa() == empresaId && isCompanyAdmin();
       }
+    }
+
+    // 9. Infraestructura Vial Universal (Peajes, Romanas, Restricciones)
+    // Lectura global para cualquier usuario autenticado de la plataforma
+    // Creación, edición y borrado exclusivo para el Usuario Maestro (SuperAdmin)
+    match /infraestructura_vial/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isSuperAdmin();
+    }
+
+    // 10. Buzón de Reportes Colaborativos de Ruta (Crowdsourcing)
+    // Choferes y administradores pueden reportar eventos con estado 'pendiente'
+    // Solo el SuperAdmin puede moderar, aprobar o descartar
+    match /reportes_infraestructura/{docId} {
+      allow read: if isAuthenticated() && (isSameEmpresa() || isSuperAdmin());
+      allow create: if isAuthenticated() && request.resource.data.estado == 'pendiente';
+      allow update, delete: if isAuthenticated() && isSuperAdmin();
     }
   }
 }
