@@ -81,6 +81,7 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
   bool _isLoadingHistory = false;
   GpsHistoricalTrip? _historicalTrip;
   List<GpsGeofence> _cachedGeofencesList = [];
+  int? _selectedLegIndex; // null = ver todos los tramos, o índice de tramo específico
 
   @override
   void initState() {
@@ -717,28 +718,41 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                             }).toList(),
                           ),
 
-                        // Capa de Trazado Histórico (Ruta del intervalo seleccionado)
+                        // Capa de Trazado Histórico (Ruta segmentada por tramos de color y paradas)
                         if (_viewMode == 1 && _historicalTrip != null && _historicalTrip!.points.isNotEmpty) ...[
+                          // Polylines coloreadas según el tramo (Ida vs Retorno)
                           PolylineLayer(
-                            polylines: [
-                              Polyline(
-                                points: _historicalTrip!.points.map((p) => p.position).toList(),
-                                color: const Color(0xFF00E676),
-                                strokeWidth: 5.0,
-                                borderColor: Colors.black,
-                                borderStrokeWidth: 1.5,
-                              ),
-                            ],
+                            polylines: (_historicalTrip!.legs.isNotEmpty
+                                    ? _historicalTrip!.legs
+                                        .where((leg) => _selectedLegIndex == null || _selectedLegIndex == leg.index)
+                                        .map((leg) {
+                                        return Polyline(
+                                          points: leg.points.map((p) => p.position).toList(),
+                                          color: leg.color,
+                                          strokeWidth: 5.5,
+                                          borderColor: Colors.black,
+                                          borderStrokeWidth: 1.5,
+                                        );
+                                      }).toList()
+                                    : [
+                                        Polyline(
+                                          points: _historicalTrip!.points.map((p) => p.position).toList(),
+                                          color: const Color(0xFF00E5FF),
+                                          strokeWidth: 5.5,
+                                          borderColor: Colors.black,
+                                          borderStrokeWidth: 1.5,
+                                        ),
+                                      ]),
                           ),
 
-                          // Marcadores de Inicio, Fin y Paradas del Historial
+                          // Flechas direccionales de rumbo y Marcadores de Paradas
                           MarkerLayer(
                             markers: [
                               // Marcador Inicio
                               Marker(
                                 point: _historicalTrip!.points.first.position,
-                                width: 40,
-                                height: 40,
+                                width: 36,
+                                height: 36,
                                 child: Container(
                                   decoration: BoxDecoration(
                                     color: Colors.green,
@@ -746,14 +760,15 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                                     border: Border.all(color: Colors.white, width: 2),
                                     boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 6)],
                                   ),
-                                  child: const Icon(Icons.play_arrow, color: Colors.white, size: 22),
+                                  child: const Icon(Icons.play_arrow, color: Colors.white, size: 20),
                                 ),
                               ),
+
                               // Marcador Fin
                               Marker(
                                 point: _historicalTrip!.points.last.position,
-                                width: 40,
-                                height: 40,
+                                width: 36,
+                                height: 36,
                                 child: Container(
                                   decoration: BoxDecoration(
                                     color: Colors.redAccent,
@@ -761,9 +776,109 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                                     border: Border.all(color: Colors.white, width: 2),
                                     boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 6)],
                                   ),
-                                  child: const Icon(Icons.flag, color: Colors.white, size: 20),
+                                  child: const Icon(Icons.flag, color: Colors.white, size: 18),
                                 ),
                               ),
+
+                              // Flechas de dirección sobre la ruta (cada ~15 puntos con movimiento)
+                              ...() {
+                                final arrows = <Marker>[];
+                                final visibleLegs = _historicalTrip!.legs.isNotEmpty
+                                    ? _historicalTrip!.legs.where((leg) => _selectedLegIndex == null || _selectedLegIndex == leg.index)
+                                    : [GpsTripLeg(index: 1, name: '', startTime: _historicalTrip!.startTime, endTime: _historicalTrip!.endTime, distanceKm: 0, maxSpeed: 0, avgSpeed: 0, points: _historicalTrip!.points, color: Colors.cyan)];
+
+                                for (final leg in visibleLegs) {
+                                  final pts = leg.points;
+                                  final step = math.max(12, pts.length ~/ 15);
+                                  for (int i = step; i < pts.length - 2; i += step) {
+                                    final p1 = pts[i];
+                                    final p2 = pts[i + 1];
+                                    if (p1.speed > 8.0) {
+                                      final dLat = p2.position.latitude - p1.position.latitude;
+                                      final dLng = p2.position.longitude - p1.position.longitude;
+                                      final headingRad = math.atan2(dLng, dLat);
+
+                                      arrows.add(
+                                        Marker(
+                                          point: p1.position,
+                                          width: 22,
+                                          height: 22,
+                                          child: Transform.rotate(
+                                            angle: headingRad,
+                                            child: Icon(
+                                              Icons.navigation,
+                                              size: 14,
+                                              color: Colors.white.withValues(alpha: 0.95),
+                                              shadows: const [Shadow(color: Colors.black, blurRadius: 4)],
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                }
+                                return arrows;
+                              }(),
+
+                              // Marcadores de Paradas y Detenciones (ej: Repostaje de combustible, Espera en Cliente)
+                              ..._historicalTrip!.stops.map((stop) {
+                                final isGasStation = (stop.geofenceName ?? '').toUpperCase().contains('COPEC') ||
+                                    (stop.geofenceName ?? '').toUpperCase().contains('SHELL') ||
+                                    (stop.geofenceName ?? '').toUpperCase().contains('PETROBRAS');
+                                final dur = stop.durationMinutes >= 60
+                                    ? '${stop.durationMinutes ~/ 60}h ${stop.durationMinutes % 60}m'
+                                    : '${stop.durationMinutes}m';
+
+                                return Marker(
+                                  point: stop.position,
+                                  width: 90,
+                                  height: 50,
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            '🛑 Parada: $dur ${stop.geofenceName != null ? 'en ${stop.geofenceName}' : ''} (${stop.startTime.hour.toString().padLeft(2, '0')}:${stop.startTime.minute.toString().padLeft(2, '0')} - ${stop.endTime.hour.toString().padLeft(2, '0')}:${stop.endTime.minute.toString().padLeft(2, '0')})',
+                                          ),
+                                          backgroundColor: Colors.amber[800],
+                                        ),
+                                      );
+                                    },
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.black.withValues(alpha: 0.85),
+                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(color: Colors.amberAccent, width: 1),
+                                          ),
+                                          child: Text(
+                                            dur,
+                                            style: const TextStyle(color: Colors.amberAccent, fontSize: 9, fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Container(
+                                          padding: const EdgeInsets.all(4),
+                                          decoration: BoxDecoration(
+                                            color: Colors.amber[800],
+                                            shape: BoxShape.circle,
+                                            border: Border.all(color: Colors.white, width: 1.5),
+                                            boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 4)],
+                                          ),
+                                          child: Icon(
+                                            isGasStation ? Icons.local_gas_station : Icons.pause_circle_filled,
+                                            color: Colors.white,
+                                            size: 14,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              }),
                             ],
                           ),
                         ],
@@ -1627,6 +1742,8 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
 
             const SizedBox(height: 10),
 
+            const SizedBox(height: 10),
+
             // Velocidades
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1651,6 +1768,128 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
             ),
 
             const SizedBox(height: 16),
+
+            // ── TRAMOS DEL RECORRIDO (IDA Y RETORNO) ──────────
+            if (_historicalTrip!.legs.isNotEmpty) ...[
+              Row(
+                children: [
+                  const Text('TRAMOS / RECORRIDOS', style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold)),
+                  const Spacer(),
+                  if (_selectedLegIndex != null)
+                    InkWell(
+                      onTap: () => setState(() => _selectedLegIndex = null),
+                      child: const Text('Ver Todos', style: TextStyle(color: Colors.blueAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ..._historicalTrip!.legs.map((leg) {
+                final isSelected = _selectedLegIndex == leg.index;
+                final startStr = '${leg.startTime.hour.toString().padLeft(2, '0')}:${leg.startTime.minute.toString().padLeft(2, '0')}';
+                final endStr = '${leg.endTime.hour.toString().padLeft(2, '0')}:${leg.endTime.minute.toString().padLeft(2, '0')}';
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  decoration: BoxDecoration(
+                    color: isSelected ? leg.color.withValues(alpha: 0.15) : const Color(0xFF161B22),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isSelected ? leg.color : leg.color.withValues(alpha: 0.3),
+                      width: isSelected ? 1.5 : 1.0,
+                    ),
+                  ),
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                    onTap: () {
+                      setState(() {
+                        if (_selectedLegIndex == leg.index) {
+                          _selectedLegIndex = null;
+                        } else {
+                          _selectedLegIndex = leg.index;
+                          if (leg.points.isNotEmpty) {
+                            _mapController.move(leg.points[leg.points.length ~/ 2].position, 13);
+                          }
+                        }
+                      });
+                    },
+                    leading: Container(
+                      width: 14,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: leg.color,
+                        shape: BoxShape.circle,
+                        boxShadow: [BoxShadow(color: leg.color.withValues(alpha: 0.6), blurRadius: 4)],
+                      ),
+                    ),
+                    title: Text(
+                      leg.name,
+                      style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(
+                      '$startStr - $endStr  •  ${leg.distanceKm.toStringAsFixed(1)} km  •  ${leg.maxSpeed.toStringAsFixed(0)} km/h máx',
+                      style: const TextStyle(color: Colors.white54, fontSize: 10),
+                    ),
+                    trailing: Icon(
+                      isSelected ? Icons.check_circle : Icons.visibility_outlined,
+                      color: isSelected ? leg.color : Colors.white24,
+                      size: 18,
+                    ),
+                  ),
+                );
+              }),
+            ],
+
+            // ── PARADAS / DETENCIONES DETECTADAS ───────────────
+            if (_historicalTrip!.stops.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text('PARADAS DETECTADAS (${_historicalTrip!.stops.length})', style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 6),
+              ..._historicalTrip!.stops.map((stop) {
+                final dur = stop.durationMinutes >= 60
+                    ? '${stop.durationMinutes ~/ 60}h ${stop.durationMinutes % 60}m'
+                    : '${stop.durationMinutes}m';
+                final hora = '${stop.startTime.hour.toString().padLeft(2, '0')}:${stop.startTime.minute.toString().padLeft(2, '0')}';
+
+                return InkWell(
+                  onTap: () => _mapController.move(stop.position, 16),
+                  borderRadius: BorderRadius.circular(6),
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF161B22),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Colors.amber.withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.pause_circle_filled, color: Colors.amberAccent, size: 14),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            stop.geofenceName ?? 'Detención en Ruta ($hora)',
+                            style: const TextStyle(color: Colors.white, fontSize: 11),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            dur,
+                            style: const TextStyle(color: Colors.amberAccent, fontSize: 10, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+            ],
 
             // Geocercas Visitadas y Tiempos de Espera
             if (_historicalTrip!.stays.isNotEmpty) ...[

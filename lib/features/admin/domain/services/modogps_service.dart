@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:latlong2/latlong.dart';
@@ -145,6 +146,46 @@ class GpsHistoricalPoint {
   });
 }
 
+class GpsStop {
+  final LatLng position;
+  final DateTime startTime;
+  final DateTime endTime;
+  final int durationMinutes;
+  final String? geofenceName;
+
+  GpsStop({
+    required this.position,
+    required this.startTime,
+    required this.endTime,
+    required this.durationMinutes,
+    this.geofenceName,
+  });
+}
+
+class GpsTripLeg {
+  final int index;
+  final String name; // ej: "Tramo 1 (Ida)", "Tramo 2 (Retorno)"
+  final DateTime startTime;
+  final DateTime endTime;
+  final double distanceKm;
+  final double maxSpeed;
+  final double avgSpeed;
+  final List<GpsHistoricalPoint> points;
+  final Color color;
+
+  GpsTripLeg({
+    required this.index,
+    required this.name,
+    required this.startTime,
+    required this.endTime,
+    required this.distanceKm,
+    required this.maxSpeed,
+    required this.avgSpeed,
+    required this.points,
+    required this.color,
+  });
+}
+
 class GpsHistoricalTrip {
   final String plate;
   final DateTime startTime;
@@ -156,6 +197,8 @@ class GpsHistoricalTrip {
   final List<GpsGeofenceStay> stays;
   final List<String> routePattern;
   final List<GpsHistoricalPoint> points;
+  final List<GpsTripLeg> legs;
+  final List<GpsStop> stops;
 
   GpsHistoricalTrip({
     required this.plate,
@@ -168,6 +211,8 @@ class GpsHistoricalTrip {
     required this.stays,
     required this.routePattern,
     required this.points,
+    this.legs = const [],
+    this.stops = const [],
   });
 }
 
@@ -593,11 +638,16 @@ class ModoGpsService {
         // Detectar transiciones de geocerca
         if (foundZone != currentZone) {
           if (currentZone != null && currentZoneEntry != null) {
-            stays.add(GpsGeofenceStay(
-              geofenceName: currentZone,
-              entryTime: currentZoneEntry,
-              exitTime: timestamp,
-            ));
+            final durMin = timestamp.difference(currentZoneEntry).inMinutes;
+            // FILTRO DE GEOCERCA: Solo registrar estadía si estuvo al menos 3 minutos
+            // (evita pasadas en ruta a alta velocidad como en Orizon)
+            if (durMin >= 3) {
+              stays.add(GpsGeofenceStay(
+                geofenceName: currentZone,
+                entryTime: currentZoneEntry,
+                exitTime: timestamp,
+              ));
+            }
           }
           if (foundZone != null) {
             currentZoneEntry = timestamp;
@@ -610,11 +660,152 @@ class ModoGpsService {
       }
 
       if (currentZone != null && currentZoneEntry != null && points.isNotEmpty) {
-        stays.add(GpsGeofenceStay(
-          geofenceName: currentZone,
-          entryTime: currentZoneEntry,
-          exitTime: points.last.timestamp,
-        ));
+        final durMin = points.last.timestamp.difference(currentZoneEntry).inMinutes;
+        if (durMin >= 3) {
+          stays.add(GpsGeofenceStay(
+            geofenceName: currentZone,
+            entryTime: currentZoneEntry,
+            exitTime: points.last.timestamp,
+          ));
+        }
+      }
+
+      // ── DETECCIÓN DE PARADAS / DETENCIONES Y SEGMENTACIÓN DE TRAMOS ──
+      // Paleta de colores distintivos para los tramos (Ida = Azul/Cyan, Retorno = Morado/Magenta, etc.)
+      const legColors = [
+        Color(0xFF00E5FF), // Cyan eléctrico (Ida)
+        Color(0xFFE040FB), // Magenta/Morado (Retorno)
+        Color(0xFFFF9100), // Naranja (Tramo 3)
+        Color(0xFF76FF03), // Verde lima (Tramo 4)
+        Color(0xFFFFD600), // Amarillo
+      ];
+
+      final stops = <GpsStop>[];
+      final legs = <GpsTripLeg>[];
+
+      // Analizar secuencias de velocidad 0 o muy baja (< 3 km/h) de más de 8 minutos
+      int? stopStartIndex;
+      final splitIndices = <int>[]; // Índices donde se corta un tramo para iniciar el siguiente
+
+      for (int i = 0; i < points.length; i++) {
+        final p = points[i];
+        final isStopped = p.speed < 3.0;
+
+        if (isStopped) {
+          stopStartIndex ??= i;
+        } else {
+          if (stopStartIndex != null) {
+            final startP = points[stopStartIndex];
+            final prevP = points[i - 1];
+            final stopDurationMin = prevP.timestamp.difference(startP.timestamp).inMinutes;
+
+            // Si estuvo detenido >= 8 minutos (ej: repostar diésel, almuerzo, carga/descarga)
+            if (stopDurationMin >= 8) {
+              stops.add(GpsStop(
+                position: startP.position,
+                startTime: startP.timestamp,
+                endTime: prevP.timestamp,
+                durationMinutes: stopDurationMin,
+                geofenceName: startP.geofence ?? prevP.geofence,
+              ));
+
+              // Este punto de detención corta el tramo para diferenciar Ida vs Retorno
+              splitIndices.add(i);
+            }
+            stopStartIndex = null;
+          }
+        }
+      }
+
+      // Si quedó detenido al final del intervalo
+      if (stopStartIndex != null && stopStartIndex < points.length - 1) {
+        final startP = points[stopStartIndex];
+        final endP = points.last;
+        final stopDurationMin = endP.timestamp.difference(startP.timestamp).inMinutes;
+        if (stopDurationMin >= 8) {
+          stops.add(GpsStop(
+            position: startP.position,
+            startTime: startP.timestamp,
+            endTime: endP.timestamp,
+            durationMinutes: stopDurationMin,
+            geofenceName: startP.geofence ?? endP.geofence,
+          ));
+        }
+      }
+
+      // Construir los Tramos (Legs) a partir de los puntos de corte
+      if (points.isNotEmpty) {
+        int currentLegStart = 0;
+        int legIdx = 0;
+
+        for (final splitIdx in splitIndices) {
+          if (splitIdx > currentLegStart) {
+            final legPoints = points.sublist(currentLegStart, splitIdx);
+            if (legPoints.length > 5) {
+              double legDist = 0;
+              double legMaxSpd = 0;
+              double legSumSpd = 0;
+              for (int k = 1; k < legPoints.length; k++) {
+                legDist += GpsGeofence._haversineMeters(
+                  legPoints[k - 1].position.latitude,
+                  legPoints[k - 1].position.longitude,
+                  legPoints[k].position.latitude,
+                  legPoints[k].position.longitude,
+                );
+                if (legPoints[k].speed > legMaxSpd) legMaxSpd = legPoints[k].speed;
+                legSumSpd += legPoints[k].speed;
+              }
+
+              final name = legIdx == 0 ? 'Tramo 1 (Ida)' : (legIdx == 1 ? 'Tramo 2 (Retorno)' : 'Tramo ${legIdx + 1}');
+              legs.add(GpsTripLeg(
+                index: legIdx + 1,
+                name: name,
+                startTime: legPoints.first.timestamp,
+                endTime: legPoints.last.timestamp,
+                distanceKm: legDist / 1000.0,
+                maxSpeed: legMaxSpd,
+                avgSpeed: legPoints.isNotEmpty ? (legSumSpd / legPoints.length) : 0.0,
+                points: legPoints,
+                color: legColors[legIdx % legColors.length],
+              ));
+              legIdx++;
+            }
+            currentLegStart = splitIdx;
+          }
+        }
+
+        // Último tramo hasta el final
+        if (currentLegStart < points.length) {
+          final legPoints = points.sublist(currentLegStart);
+          if (legPoints.length > 2) {
+            double legDist = 0;
+            double legMaxSpd = 0;
+            double legSumSpd = 0;
+            for (int k = 1; k < legPoints.length; k++) {
+              legDist += GpsGeofence._haversineMeters(
+                legPoints[k - 1].position.latitude,
+                legPoints[k - 1].position.longitude,
+                legPoints[k].position.latitude,
+                legPoints[k].position.longitude,
+              );
+              if (legPoints[k].speed > legMaxSpd) legMaxSpd = legPoints[k].speed;
+              legSumSpd += legPoints[k].speed;
+            }
+
+            final name = legIdx == 0 ? 'Tramo 1 (Completo)' : (legIdx == 1 ? 'Tramo 2 (Retorno)' : 'Tramo ${legIdx + 1}');
+            legs.add(GpsTripLeg(
+              index: legIdx + 1,
+              name: name,
+              startTime: legPoints.first.timestamp,
+              endTime: legPoints.last.timestamp,
+              distanceKm: legDist / 1000.0,
+              maxSpeed: legMaxSpd,
+              avgSpeed: legPoints.isNotEmpty ? (legSumSpd / legPoints.length) : 0.0,
+              points: legPoints,
+              color: legColors[legIdx % legColors.length],
+            ));
+          }
+        }
       }
 
       final avgSpeed = speedCount > 0 ? (speedSum / speedCount) : 0.0;
@@ -630,6 +821,8 @@ class ModoGpsService {
         stays: stays,
         routePattern: routePattern,
         points: points,
+        legs: legs,
+        stops: stops,
       );
     } catch (e) {
       debugPrint('[ModoGPS] Error fetchTripInterval: $e');
