@@ -16,6 +16,22 @@ class VehicleModel {
   final double rendimientoKmPorLitro; // default: 2.5
   final String categoriaPeaje; // "camion_2_ejes" | "camion_mas_2_ejes"
 
+  // --- CONTROL DE ESTANQUE DIGITAL & EQUIPOS AUXILIARES ---
+  final double capacidadEstanqueLitros;     // Capacidad del estanque principal (ej. 600L)
+  final bool tanqueCalibrado;               // True si ya se realizó el evento "Full Tank" inicial
+  final double? ultimoLlenadoKm;            // Odómetro al momento del último Full Tank
+  final DateTime? ultimoLlenadoFecha;       // Fecha del último Full Tank
+  final double litrosReservaAlerta;         // Litros mínimos para encender alerta preventiva (ej. 120L)
+  
+  // Soporte Equipo Auxiliar (Genset / Thermo King / Under-slung)
+  final bool tieneEquipoAuxiliar;           // True si tiene generador / thermo asignado
+  final String? tipoEquipoAuxiliar;         // 'Genset', 'Thermo King', 'Carrier'
+  final String? identificadorAuxiliar;      // Ej: 'GEN-04'
+  final double? capacidadEstanqueAuxiliar;  // Capacidad estanque del generador (ej: 200L)
+  final double consumoHoraAuxiliar;         // Litros/Hora esperados (ej: 2.5 L/h)
+  final double? horometroActualAuxiliar;    // Horas acumuladas de motor del equipo de frío
+  final double? ultimoLlenadoHorometroAux;  // Horómetro del último Full Tank del auxiliar
+
   VehicleModel({
     required this.id,
     required this.idEmpresa,
@@ -31,6 +47,18 @@ class VehicleModel {
     this.permisoExpirationDate,
     this.rendimientoKmPorLitro = 2.5,
     this.categoriaPeaje = 'camion_mas_2_ejes',
+    this.capacidadEstanqueLitros = 600.0,
+    this.tanqueCalibrado = false,
+    this.ultimoLlenadoKm,
+    this.ultimoLlenadoFecha,
+    this.litrosReservaAlerta = 120.0,
+    this.tieneEquipoAuxiliar = false,
+    this.tipoEquipoAuxiliar,
+    this.identificadorAuxiliar,
+    this.capacidadEstanqueAuxiliar,
+    this.consumoHoraAuxiliar = 2.5,
+    this.horometroActualAuxiliar,
+    this.ultimoLlenadoHorometroAux,
   });
 
   Map<String, dynamic> toMap() {
@@ -48,6 +76,18 @@ class VehicleModel {
       'permisoExpirationDate': permisoExpirationDate?.toIso8601String(),
       'rendimientoKmPorLitro': rendimientoKmPorLitro,
       'categoriaPeaje': categoriaPeaje,
+      'capacidadEstanqueLitros': capacidadEstanqueLitros,
+      'tanqueCalibrado': tanqueCalibrado,
+      'ultimoLlenadoKm': ultimoLlenadoKm,
+      'ultimoLlenadoFecha': ultimoLlenadoFecha?.toIso8601String(),
+      'litrosReservaAlerta': litrosReservaAlerta,
+      'tieneEquipoAuxiliar': tieneEquipoAuxiliar,
+      'tipoEquipoAuxiliar': tipoEquipoAuxiliar,
+      'identificadorAuxiliar': identificadorAuxiliar,
+      'capacidadEstanqueAuxiliar': capacidadEstanqueAuxiliar,
+      'consumoHoraAuxiliar': consumoHoraAuxiliar,
+      'horometroActualAuxiliar': horometroActualAuxiliar,
+      'ultimoLlenadoHorometroAux': ultimoLlenadoHorometroAux,
     };
   }
 
@@ -67,6 +107,18 @@ class VehicleModel {
       permisoExpirationDate: map['permisoExpirationDate'] != null ? DateTime.parse(map['permisoExpirationDate']) : null,
       rendimientoKmPorLitro: (map['rendimientoKmPorLitro'] as num?)?.toDouble() ?? 2.5,
       categoriaPeaje: map['categoriaPeaje'] ?? 'camion_mas_2_ejes',
+      capacidadEstanqueLitros: (map['capacidadEstanqueLitros'] as num?)?.toDouble() ?? 600.0,
+      tanqueCalibrado: map['tanqueCalibrado'] as bool? ?? false,
+      ultimoLlenadoKm: (map['ultimoLlenadoKm'] as num?)?.toDouble(),
+      ultimoLlenadoFecha: map['ultimoLlenadoFecha'] != null ? DateTime.parse(map['ultimoLlenadoFecha']) : null,
+      litrosReservaAlerta: (map['litrosReservaAlerta'] as num?)?.toDouble() ?? 120.0,
+      tieneEquipoAuxiliar: map['tieneEquipoAuxiliar'] as bool? ?? false,
+      tipoEquipoAuxiliar: map['tipoEquipoAuxiliar'],
+      identificadorAuxiliar: map['identificadorAuxiliar'],
+      capacidadEstanqueAuxiliar: (map['capacidadEstanqueAuxiliar'] as num?)?.toDouble(),
+      consumoHoraAuxiliar: (map['consumoHoraAuxiliar'] as num?)?.toDouble() ?? 2.5,
+      horometroActualAuxiliar: (map['horometroActualAuxiliar'] as num?)?.toDouble(),
+      ultimoLlenadoHorometroAux: (map['ultimoLlenadoHorometroAux'] as num?)?.toDouble(),
     );
   }
 
@@ -85,6 +137,18 @@ class VehicleModel {
     DateTime? permisoExpirationDate,
     double? rendimientoKmPorLitro,
     String? categoriaPeaje,
+    double? capacidadEstanqueLitros,
+    bool? tanqueCalibrado,
+    double? ultimoLlenadoKm,
+    DateTime? ultimoLlenadoFecha,
+    double? litrosReservaAlerta,
+    bool? tieneEquipoAuxiliar,
+    String? tipoEquipoAuxiliar,
+    String? identificadorAuxiliar,
+    double? capacidadEstanqueAuxiliar,
+    double? consumoHoraAuxiliar,
+    double? horometroActualAuxiliar,
+    double? ultimoLlenadoHorometroAux,
   }) {
     return VehicleModel(
       id: id ?? this.id,
@@ -101,6 +165,18 @@ class VehicleModel {
       permisoExpirationDate: permisoExpirationDate ?? this.permisoExpirationDate,
       rendimientoKmPorLitro: rendimientoKmPorLitro ?? this.rendimientoKmPorLitro,
       categoriaPeaje: categoriaPeaje ?? this.categoriaPeaje,
+      capacidadEstanqueLitros: capacidadEstanqueLitros ?? this.capacidadEstanqueLitros,
+      tanqueCalibrado: tanqueCalibrado ?? this.tanqueCalibrado,
+      ultimoLlenadoKm: ultimoLlenadoKm ?? this.ultimoLlenadoKm,
+      ultimoLlenadoFecha: ultimoLlenadoFecha ?? this.ultimoLlenadoFecha,
+      litrosReservaAlerta: litrosReservaAlerta ?? this.litrosReservaAlerta,
+      tieneEquipoAuxiliar: tieneEquipoAuxiliar ?? this.tieneEquipoAuxiliar,
+      tipoEquipoAuxiliar: tipoEquipoAuxiliar ?? this.tipoEquipoAuxiliar,
+      identificadorAuxiliar: identificadorAuxiliar ?? this.identificadorAuxiliar,
+      capacidadEstanqueAuxiliar: capacidadEstanqueAuxiliar ?? this.capacidadEstanqueAuxiliar,
+      consumoHoraAuxiliar: consumoHoraAuxiliar ?? this.consumoHoraAuxiliar,
+      horometroActualAuxiliar: horometroActualAuxiliar ?? this.horometroActualAuxiliar,
+      ultimoLlenadoHorometroAux: ultimoLlenadoHorometroAux ?? this.ultimoLlenadoHorometroAux,
     );
   }
 

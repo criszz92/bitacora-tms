@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../providers/trip_provider.dart';
-import '../../domain/models/expense_model.dart';
-import '../../../auth/presentation/providers/auth_provider.dart';
-import '../../../../core/utils/number_utils.dart';
+import 'package:bitacora/features/trips/presentation/providers/trip_provider.dart';
+import 'package:bitacora/features/trips/domain/models/expense_model.dart';
+import 'package:bitacora/features/auth/presentation/providers/auth_provider.dart';
+import 'package:bitacora/features/admin/presentation/providers/admin_provider.dart';
+import 'package:bitacora/core/utils/number_utils.dart';
 
 class ExpenseFormScreen extends ConsumerStatefulWidget {
   final String? initialType;
@@ -18,8 +19,13 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final _amountController = TextEditingController();
   final _litrosController = TextEditingController();
+  final _odometerController = TextEditingController();
+  final _horometroController = TextEditingController();
   final _descriptionController = TextEditingController();
+
   String _selectedType = 'Peaje';
+  String _destinoCombustible = 'CAMION'; // 'CAMION' | 'AUXILIAR'
+  bool _isFullTank = false; // Evento de calibración / llenado a tope
 
   final List<String> _expenseTypes = ['Peaje', 'Combustible'];
 
@@ -37,6 +43,8 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
   void dispose() {
     _amountController.dispose();
     _litrosController.dispose();
+    _odometerController.dispose();
+    _horometroController.dispose();
     _descriptionController.dispose();
     super.dispose();
   }
@@ -48,19 +56,42 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
 
       if (user == null || shift == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error: No hay jornada activa para asociar este gasto.'), backgroundColor: Colors.red),
+          const SnackBar(
+            content: Text('Error: No hay jornada activa para asociar este gasto.'),
+            backgroundColor: Colors.red,
+          ),
         );
         return;
       }
 
-      // Parseo seguro de números usando la nueva utilidad
       final amountValue = NumberUtils.tryParseDouble(_amountController.text) ?? 0.0;
       final litrosValue = _isCombustible ? NumberUtils.tryParseDouble(_litrosController.text) : null;
+      final odoValue = (_isCombustible && _destinoCombustible == 'CAMION')
+          ? NumberUtils.tryParseDouble(_odometerController.text)
+          : null;
+      final horoValue = (_isCombustible && _destinoCombustible == 'AUXILIAR')
+          ? NumberUtils.tryParseDouble(_horometroController.text)
+          : null;
 
-      // Buscar el ID real del vehículo
+      // Buscar el vehículo correspondiente para vincular ID
       final vehicles = ref.read(vehiclesProvider).value ?? [];
       final matchedVehicle = vehicles.where((v) => v.patente == shift.patenteCamion).firstOrNull;
       final vehicleDocId = matchedVehicle?.id ?? '';
+
+      // Cálculo automático de rendimiento de tramo si es Full Tank
+      double? kmRecorridos;
+      double? rendimientoTramo;
+
+      if (_isCombustible && _isFullTank && matchedVehicle != null) {
+        if (_destinoCombustible == 'CAMION' && odoValue != null && matchedVehicle.ultimoLlenadoKm != null) {
+          kmRecorridos = (odoValue >= matchedVehicle.ultimoLlenadoKm!)
+              ? (odoValue - matchedVehicle.ultimoLlenadoKm!)
+              : null;
+          if (kmRecorridos != null && litrosValue != null && litrosValue > 0) {
+            rendimientoTramo = double.parse((kmRecorridos / litrosValue).toStringAsFixed(2));
+          }
+        }
+      }
 
       final newExpense = ExpenseModel(
         id: 'EXP-${DateTime.now().millisecondsSinceEpoch}',
@@ -75,15 +106,47 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
         description: _descriptionController.text,
         status: 'Pendiente',
         vehicleId: vehicleDocId,
+        destinoCombustible: _isCombustible ? _destinoCombustible : null,
+        isFullTank: _isCombustible ? _isFullTank : false,
+        odometerAtFill: odoValue,
+        horometroAtFill: horoValue,
+        kmRecorridosTramo: kmRecorridos,
+        rendimientoTramo: rendimientoTramo,
       );
 
       await ref.read(tripRepositoryProvider).addExpense(newExpense);
 
+      // Si fue Full Tank o actualizó odómetro, actualizamos el vehículo en el repositorio
+      if (_isCombustible && matchedVehicle != null) {
+        final updatedVehicle = matchedVehicle.copyWith(
+          currentOdometer: odoValue ?? matchedVehicle.currentOdometer,
+          tanqueCalibrado: _isFullTank ? true : matchedVehicle.tanqueCalibrado,
+          ultimoLlenadoKm: (_isFullTank && _destinoCombustible == 'CAMION' && odoValue != null)
+              ? odoValue
+              : matchedVehicle.ultimoLlenadoKm,
+          ultimoLlenadoFecha: _isFullTank ? DateTime.now() : matchedVehicle.ultimoLlenadoFecha,
+          horometroActualAuxiliar: horoValue ?? matchedVehicle.horometroActualAuxiliar,
+          ultimoLlenadoHorometroAux: (_isFullTank && _destinoCombustible == 'AUXILIAR' && horoValue != null)
+              ? horoValue
+              : matchedVehicle.ultimoLlenadoHorometroAux,
+        );
+        try {
+          await ref.read(adminRepositoryProvider).updateVehicle(updatedVehicle);
+        } catch (_) {
+          // Si el chofer no tiene permisos directos sobre flota, el gasto queda registrado
+        }
+      }
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Gasto registrado exitosamente', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-          backgroundColor: Color(0xFFFFFFFF),
+        SnackBar(
+          content: Text(
+            rendimientoTramo != null
+                ? '¡Carga registrada! Rendimiento tramo: $rendimientoTramo km/L'
+                : 'Gasto registrado exitosamente',
+            style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+          ),
+          backgroundColor: const Color(0xFFFFFFFF),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -93,6 +156,21 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final shift = ref.watch(activeShiftProvider).value;
+    final vehicles = ref.watch(vehiclesProvider).value ?? [];
+    final matchedVehicle = vehicles.where((v) => v.patente == shift?.patenteCamion).firstOrNull;
+
+    // Precargar odómetro sugerido si no lo ha ingresado
+    if (_odometerController.text.isEmpty && matchedVehicle != null && matchedVehicle.currentOdometer > 0) {
+      _odometerController.text = matchedVehicle.currentOdometer.toStringAsFixed(0);
+    }
+    if (_horometroController.text.isEmpty &&
+        matchedVehicle != null &&
+        matchedVehicle.horometroActualAuxiliar != null &&
+        matchedVehicle.horometroActualAuxiliar! > 0) {
+      _horometroController.text = matchedVehicle.horometroActualAuxiliar!.toStringAsFixed(1);
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Registrar Gasto', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -139,8 +217,154 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
+
+                // SI ES COMBUSTIBLE: SELECCIÓN DE ESTANQUE DESTINO & FULL TANK
+                if (_isCombustible) ...[
+                  // Selector de Estanque (Camión vs Equipo Auxiliar/Thermo King)
+                  if (matchedVehicle != null && matchedVehicle.tieneEquipoAuxiliar) ...[
+                    const Text(
+                      'Estanque Destino',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => setState(() => _destinoCombustible = 'CAMION'),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              decoration: BoxDecoration(
+                                color: _destinoCombustible == 'CAMION'
+                                    ? Colors.white.withValues(alpha: 0.12)
+                                    : const Color(0xFF1E1E1E),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: _destinoCombustible == 'CAMION'
+                                      ? Colors.white
+                                      : Colors.white12,
+                                  width: _destinoCombustible == 'CAMION' ? 2 : 1,
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    Icons.local_shipping,
+                                    color: _destinoCombustible == 'CAMION' ? Colors.white : Colors.grey,
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Camión (${matchedVehicle.patente})',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: _destinoCombustible == 'CAMION' ? Colors.white : Colors.grey,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => setState(() => _destinoCombustible = 'AUXILIAR'),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              decoration: BoxDecoration(
+                                color: _destinoCombustible == 'AUXILIAR'
+                                    ? Colors.cyanAccent.withValues(alpha: 0.12)
+                                    : const Color(0xFF1E1E1E),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: _destinoCombustible == 'AUXILIAR'
+                                      ? Colors.cyanAccent
+                                      : Colors.white12,
+                                  width: _destinoCombustible == 'AUXILIAR' ? 2 : 1,
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    Icons.ac_unit,
+                                    color: _destinoCombustible == 'AUXILIAR'
+                                        ? Colors.cyanAccent
+                                        : Colors.grey,
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    matchedVehicle.identificadorAuxiliar ?? 'Thermo King / Reefer',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: _destinoCombustible == 'AUXILIAR'
+                                          ? Colors.cyanAccent
+                                          : Colors.grey,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+
+                  // SWITCH FULL TANK (LLENADO A TOPE / CALIBRACIÓN)
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: _isFullTank ? Colors.green.withValues(alpha: 0.12) : const Color(0xFF1E1E1E),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _isFullTank ? Colors.greenAccent : Colors.white12,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.local_gas_station,
+                          color: _isFullTank ? Colors.greenAccent : Colors.grey,
+                          size: 30,
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                matchedVehicle?.tanqueCalibrado == false
+                                    ? '⭐ Calibración Inicial (Lleno a Tope)'
+                                    : 'Estanque Lleno (Full Tank)',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                matchedVehicle?.tanqueCalibrado == false
+                                    ? 'Obligatorio para calibrar el estanque digital al 100%'
+                                    : 'Calcula rendimiento real y calibra el estanque al 100%',
+                                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Switch(
+                          value: _isFullTank,
+                          activeThumbColor: Colors.greenAccent,
+                          onChanged: (val) {
+                            setState(() => _isFullTank = val);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                ],
+
                 const Text(
-                  'Monto',
+                  'Monto Pagado',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey),
                 ),
                 const SizedBox(height: 12),
@@ -174,7 +398,8 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                   },
                 ),
                 const SizedBox(height: 24),
-                if (_isCombustible) ...[  
+
+                if (_isCombustible) ...[
                   const Text(
                     'Litros Cargados',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey),
@@ -188,7 +413,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                     decoration: InputDecoration(
                       suffixText: 'L',
                       suffixStyle: const TextStyle(fontSize: 20, color: Colors.white54),
-                      hintText: 'Ej: 120.5',
+                      hintText: 'Ej: 350.0',
                       hintStyle: const TextStyle(color: Colors.white30, fontSize: 20),
                       filled: true,
                       fillColor: const Color(0xFF1E1E1E),
@@ -203,7 +428,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                     ),
                     validator: (value) {
                       if (_isCombustible && (value == null || value.isEmpty)) {
-                         return 'Ingrese litros';
+                        return 'Ingrese litros';
                       }
                       if (value != null && value.isNotEmpty && NumberUtils.tryParseDouble(value) == null) {
                         return 'Formato inválido';
@@ -212,7 +437,76 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                     },
                   ),
                   const SizedBox(height: 24),
+
+                  // Si carga en camión: Odómetro
+                  if (_destinoCombustible == 'CAMION') ...[
+                    const Text(
+                      'Odómetro Tablero (KM)',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _odometerController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [DecimalTextInputFormatter()],
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+                      decoration: InputDecoration(
+                        suffixText: 'KM',
+                        suffixStyle: const TextStyle(fontSize: 16, color: Colors.white54),
+                        hintText: 'Ej: 145200',
+                        hintStyle: const TextStyle(color: Colors.white30, fontSize: 18),
+                        filled: true,
+                        fillColor: const Color(0xFF1E1E1E),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      validator: (value) {
+                        if (_isCombustible && _destinoCombustible == 'CAMION' && (value == null || value.isEmpty)) {
+                          return 'Ingrese el kilometraje del tablero';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+
+                  // Si carga en generador auxiliar: Horómetro
+                  if (_destinoCombustible == 'AUXILIAR') ...[
+                    const Text(
+                      'Horómetro Generador / Frío (Horas)',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _horometroController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [DecimalTextInputFormatter()],
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.cyanAccent),
+                      decoration: InputDecoration(
+                        suffixText: 'Horas',
+                        suffixStyle: const TextStyle(fontSize: 16, color: Colors.cyanAccent),
+                        hintText: 'Ej: 3450.5',
+                        hintStyle: const TextStyle(color: Colors.white30, fontSize: 18),
+                        filled: true,
+                        fillColor: const Color(0xFF1E1E1E),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      validator: (value) {
+                        if (_isCombustible && _destinoCombustible == 'AUXILIAR' && (value == null || value.isEmpty)) {
+                          return 'Ingrese las horas del horómetro';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 24),
+                  ],
                 ],
+
                 const Text(
                   'Descripción (Opcional)',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey),
@@ -220,10 +514,10 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _descriptionController,
-                  maxLines: 3,
+                  maxLines: 2,
                   style: const TextStyle(fontSize: 16),
                   decoration: InputDecoration(
-                    hintText: 'Ej: Peaje Angostura / Carga de Diesel',
+                    hintText: 'Ej: Copec Curicó / Carga completa',
                     hintStyle: const TextStyle(color: Colors.white30),
                     filled: true,
                     fillColor: const Color(0xFF1E1E1E),
@@ -234,6 +528,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                   ),
                 ),
                 const SizedBox(height: 32),
+
                 SizedBox(
                   width: double.infinity,
                   height: 64,
@@ -244,7 +539,10 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                       foregroundColor: Colors.black,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),
-                    child: const Text('GUARDAR GASTO', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 1.2)),
+                    child: const Text(
+                      'GUARDAR GASTO',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 1.2),
+                    ),
                   ),
                 ),
               ],

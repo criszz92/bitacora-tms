@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../providers/admin_provider.dart';
-import '../../../auth/presentation/providers/auth_provider.dart';
-import '../../../trips/domain/models/vehicle_model.dart';
+import 'package:bitacora/features/admin/presentation/providers/admin_provider.dart';
+import 'package:bitacora/features/auth/presentation/providers/auth_provider.dart';
+import 'package:bitacora/features/trips/domain/models/vehicle_model.dart';
 
 /// Vista de gestión de flota para el Admin.
-/// Permite agregar y eliminar camiones. Las patentes aparecen en el autocompletado
-/// de los conductores al iniciar jornada.
+/// Permite agregar, editar y eliminar camiones, configurar capacidad de estanques
+/// y vincular equipos auxiliares de frío (Thermo King / Genset).
 class FlotaAdminView extends ConsumerWidget {
   const FlotaAdminView({super.key});
 
@@ -29,7 +29,7 @@ class FlotaAdminView extends ConsumerWidget {
                   Text('Gestión de Flota',
                       style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
                   SizedBox(height: 4),
-                  Text('Los camiones registrados aquí aparecen en el autocomplete de los conductores.',
+                  Text('Configuración de unidades, capacidad de estanques y equipos de refrigeración auxiliar.',
                       style: TextStyle(color: Colors.grey, fontSize: 13)),
                 ],
               ),
@@ -64,8 +64,8 @@ class FlotaAdminView extends ConsumerWidget {
   Widget _buildGrid(BuildContext context, WidgetRef ref, List<VehicleModel> vehicles) {
     return GridView.builder(
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 320,
-        childAspectRatio: 1.6,
+        maxCrossAxisExtent: 380,
+        childAspectRatio: 1.4,
         crossAxisSpacing: 16,
         mainAxisSpacing: 16,
       ),
@@ -78,50 +78,87 @@ class FlotaAdminView extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFFFFFFF).withValues(alpha: 0.2)),
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white12),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Icon(Icons.local_shipping, color: Color(0xFFFFFFFF), size: 24),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(v.patente,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 20, letterSpacing: 1.5)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  v.patente,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 2,
+                    color: Colors.black,
+                  ),
+                ),
               ),
               Row(
-                mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.edit_outlined, color: Colors.orange, size: 20),
-                    tooltip: 'Editar camión',
+                    icon: const Icon(Icons.edit_outlined, color: Colors.grey, size: 20),
+                    tooltip: 'Editar unidad y estanque',
                     onPressed: () => _showAddDialog(context, ref, v.idEmpresa, vehiculoAEditar: v),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-                    tooltip: 'Eliminar camión',
+                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                    tooltip: 'Eliminar',
                     onPressed: () => _confirmDelete(context, ref, v),
                   ),
                 ],
               ),
             ],
           ),
-          if (v.marca != null || v.modelo != null || v.anio != null)
-            Text(
-              [v.marca, v.modelo, if (v.anio != null) v.anio.toString()]
-                  .whereType<String>()
-                  .join(' '),
-              style: const TextStyle(color: Colors.grey, fontSize: 13),
-            )
-          else
-            const Text('Sin detalles registrados',
-                style: TextStyle(color: Colors.grey, fontSize: 12)),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (v.marca != null || v.modelo != null || v.anio != null)
+                Text(
+                  [v.marca, v.modelo, if (v.anio != null) v.anio.toString()]
+                      .whereType<String>()
+                      .join(' '),
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                )
+              else
+                const Text('Sin detalles registrados', style: TextStyle(color: Colors.grey, fontSize: 13)),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  const Icon(Icons.local_gas_station, size: 15, color: Colors.greenAccent),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Estanque: ${v.capacidadEstanqueLitros.toStringAsFixed(0)} Lts (${v.rendimientoKmPorLitro} km/L)',
+                    style: const TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
+                ],
+              ),
+              if (v.tieneEquipoAuxiliar) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(Icons.ac_unit, size: 14, color: Colors.cyanAccent),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Auxiliar: ${v.identificadorAuxiliar ?? 'Thermo'} (${v.capacidadEstanqueAuxiliar?.toStringAsFixed(0) ?? '200'} Lts)',
+                      style: const TextStyle(color: Colors.cyanAccent, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
         ],
       ),
     );
@@ -132,6 +169,15 @@ class FlotaAdminView extends ConsumerWidget {
     final marcaCtrl = TextEditingController(text: vehiculoAEditar?.marca);
     final modeloCtrl = TextEditingController(text: vehiculoAEditar?.modelo);
     final anioCtrl = TextEditingController(text: vehiculoAEditar?.anio?.toString());
+    final estanqueCtrl = TextEditingController(text: (vehiculoAEditar?.capacidadEstanqueLitros ?? 600.0).toStringAsFixed(0));
+    final rendimientoCtrl = TextEditingController(text: (vehiculoAEditar?.rendimientoKmPorLitro ?? 2.5).toStringAsFixed(1));
+    
+    // Auxiliar
+    bool tieneAuxiliar = vehiculoAEditar?.tieneEquipoAuxiliar ?? false;
+    final idAuxiliarCtrl = TextEditingController(text: vehiculoAEditar?.identificadorAuxiliar ?? 'THERMO-01');
+    final capAuxiliarCtrl = TextEditingController(text: (vehiculoAEditar?.capacidadEstanqueAuxiliar ?? 200.0).toStringAsFixed(0));
+    final consumoAuxCtrl = TextEditingController(text: (vehiculoAEditar?.consumoHoraAuxiliar ?? 2.5).toStringAsFixed(1));
+
     String selectedCategoria = vehiculoAEditar?.categoriaPeaje ?? 'camion_mas_2_ejes';
     final formKey = GlobalKey<FormState>();
 
@@ -139,56 +185,125 @@ class FlotaAdminView extends ConsumerWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: Text(vehiculoAEditar == null ? 'Agregar Camión' : 'Editar Camión', style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(
+          vehiculoAEditar == null ? 'Agregar Camión & Estanque' : 'Editar Camión & Estanque',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
         content: SizedBox(
-          width: 360,
+          width: 440,
           child: StatefulBuilder(
             builder: (context, setState) {
               return Form(
                 key: formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                _dialogField(patenteCtrl, 'Patente *', TextCapitalization.characters, true),
-                const SizedBox(height: 12),
-                _dialogField(marcaCtrl, 'Marca (opcional)', TextCapitalization.words, false),
-                const SizedBox(height: 12),
-                _dialogField(modeloCtrl, 'Modelo (opcional)', TextCapitalization.words, false),
-                const SizedBox(height: 12),
-                _dialogField(anioCtrl, 'Año (opcional)', TextCapitalization.none, false,
-                    inputType: TextInputType.number),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: selectedCategoria,
-                  decoration: InputDecoration(
-                    labelText: 'Categoría de Peaje',
-                    filled: true,
-                    fillColor: const Color(0xFF2A2A2A),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                    isDense: true,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _dialogField(patenteCtrl, 'Patente *', TextCapitalization.characters, true),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(child: _dialogField(marcaCtrl, 'Marca', TextCapitalization.words, false)),
+                          const SizedBox(width: 10),
+                          Expanded(child: _dialogField(modeloCtrl, 'Modelo', TextCapitalization.words, false)),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _dialogField(anioCtrl, 'Año', TextCapitalization.none, false, inputType: TextInputType.number),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              initialValue: selectedCategoria,
+                              decoration: InputDecoration(
+                                labelText: 'Categoría Ejes',
+                                filled: true,
+                                fillColor: const Color(0xFF2A2A2A),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                                isDense: true,
+                              ),
+                              dropdownColor: const Color(0xFF2A2A2A),
+                              items: const [
+                                DropdownMenuItem(value: 'camion_2_ejes', child: Text('2 ejes')),
+                                DropdownMenuItem(value: 'camion_mas_2_ejes', child: Text('+2 ejes')),
+                              ],
+                              onChanged: (v) {
+                                if (v != null) setState(() => selectedCategoria = v);
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      const Text('Estanque Principal del Camión', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.greenAccent, fontSize: 13)),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _dialogField(estanqueCtrl, 'Capacidad Estanque (Lts)', TextCapitalization.none, true, inputType: TextInputType.number),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _dialogField(rendimientoCtrl, 'Rendimiento (km/L)', TextCapitalization.none, true, inputType: const TextInputType.numberWithOptions(decimal: true)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      // SECCIÓN EQUIPO DE FRÍO AUXILIAR
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.04),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.white12),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Row(
+                                  children: [
+                                    Icon(Icons.ac_unit, color: Colors.cyanAccent, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('Equipo de Frío / Auxiliar', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                  ],
+                                ),
+                                Switch(
+                                  value: tieneAuxiliar,
+                                  activeThumbColor: Colors.cyanAccent,
+                                  onChanged: (val) => setState(() => tieneAuxiliar = val),
+                                ),
+                              ],
+                            ),
+                            if (tieneAuxiliar) ...[
+                              const SizedBox(height: 10),
+                              _dialogField(idAuxiliarCtrl, 'Código / N° Serie (ej: GEN-04)', TextCapitalization.characters, false),
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _dialogField(capAuxiliarCtrl, 'Capacidad (Lts)', TextCapitalization.none, false, inputType: TextInputType.number),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: _dialogField(consumoAuxCtrl, 'Consumo (Lts/Hr)', TextCapitalization.none, false, inputType: const TextInputType.numberWithOptions(decimal: true)),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  dropdownColor: const Color(0xFF2A2A2A),
-                  items: const [
-                    DropdownMenuItem(value: 'camion_2_ejes', child: Text('Equipo de 2 ejes')),
-                    DropdownMenuItem(value: 'camion_mas_2_ejes', child: Text('Equipo de más de 2 ejes')),
-                  ],
-                  onChanged: (v) {
-                    if (v != null) {
-                      setState(() {
-                        selectedCategoria = v;
-                      });
-                    }
-                  },
                 ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Considera el total de ejes del equipo completo (cabeza tractora + remolque/semirremolque), no solo la cabeza tractora.',
-                  style: TextStyle(color: Colors.grey, fontSize: 11),
-                ),
-              ],
-            ),
-          );
+              );
             },
           ),
         ),
@@ -199,9 +314,16 @@ class FlotaAdminView extends ConsumerWidget {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFFFFFF), foregroundColor: Colors.black),
+              backgroundColor: const Color(0xFFFFFFFF),
+              foregroundColor: Colors.black,
+            ),
             onPressed: () async {
               if (!formKey.currentState!.validate()) return;
+              final capEstanque = double.tryParse(estanqueCtrl.text.trim()) ?? 600.0;
+              final rendKm = double.tryParse(rendimientoCtrl.text.trim()) ?? 2.5;
+              final capAux = tieneAuxiliar ? double.tryParse(capAuxiliarCtrl.text.trim()) : null;
+              final consumoAux = tieneAuxiliar ? (double.tryParse(consumoAuxCtrl.text.trim()) ?? 2.5) : 2.5;
+
               final vehicle = VehicleModel(
                 id: vehiculoAEditar?.id ?? 'VEH-${DateTime.now().millisecondsSinceEpoch}',
                 idEmpresa: idEmpresa,
@@ -215,9 +337,20 @@ class FlotaAdminView extends ConsumerWidget {
                 rtExpirationDate: vehiculoAEditar?.rtExpirationDate,
                 soapExpirationDate: vehiculoAEditar?.soapExpirationDate,
                 permisoExpirationDate: vehiculoAEditar?.permisoExpirationDate,
-                rendimientoKmPorLitro: vehiculoAEditar?.rendimientoKmPorLitro ?? 2.5,
+                rendimientoKmPorLitro: rendKm,
+                capacidadEstanqueLitros: capEstanque,
+                tanqueCalibrado: vehiculoAEditar?.tanqueCalibrado ?? false,
+                ultimoLlenadoKm: vehiculoAEditar?.ultimoLlenadoKm,
+                ultimoLlenadoFecha: vehiculoAEditar?.ultimoLlenadoFecha,
+                tieneEquipoAuxiliar: tieneAuxiliar,
+                tipoEquipoAuxiliar: tieneAuxiliar ? 'Thermo King / Reefer' : null,
+                identificadorAuxiliar: tieneAuxiliar ? idAuxiliarCtrl.text.trim() : null,
+                capacidadEstanqueAuxiliar: capAux,
+                consumoHoraAuxiliar: consumoAux,
+                horometroActualAuxiliar: vehiculoAEditar?.horometroActualAuxiliar,
+                ultimoLlenadoHorometroAux: vehiculoAEditar?.ultimoLlenadoHorometroAux,
               );
-              
+
               if (vehiculoAEditar == null) {
                 await ref.read(adminRepositoryProvider).addVehicle(vehicle);
               } else {
@@ -235,6 +368,11 @@ class FlotaAdminView extends ConsumerWidget {
     marcaCtrl.dispose();
     modeloCtrl.dispose();
     anioCtrl.dispose();
+    estanqueCtrl.dispose();
+    rendimientoCtrl.dispose();
+    idAuxiliarCtrl.dispose();
+    capAuxiliarCtrl.dispose();
+    consumoAuxCtrl.dispose();
   }
 
   TextFormField _dialogField(
@@ -253,48 +391,45 @@ class FlotaAdminView extends ConsumerWidget {
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
         isDense: true,
       ),
-      validator: required
-          ? (v) => (v == null || v.trim().isEmpty) ? 'Campo obligatorio' : null
-          : null,
+      validator: required ? (v) => v == null || v.trim().isEmpty ? 'Requerido' : null : null,
     );
   }
 
-  Future<void> _confirmDelete(BuildContext context, WidgetRef ref, VehicleModel v) async {
-    final confirm = await showDialog<bool>(
+  void _confirmDelete(BuildContext context, WidgetRef ref, VehicleModel v) {
+    showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('Eliminar Camión'),
+        title: const Text('Eliminar Vehículo'),
         content: Text('¿Seguro que deseas eliminar el camión ${v.patente}?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+          ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () async {
+              await ref.read(adminRepositoryProvider).deleteVehicle(v.id);
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
             child: const Text('Eliminar'),
           ),
         ],
       ),
     );
-
-    if (confirm == true) {
-      await ref.read(adminRepositoryProvider).deleteVehicle(v.id);
-    }
   }
 
   Widget _buildEmpty() {
-    return Center(
+    return const Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.local_shipping_outlined, size: 72, color: Colors.grey.withValues(alpha: 0.3)),
-          const SizedBox(height: 16),
-          const Text('No hay camiones registrados.',
-              style: TextStyle(color: Colors.grey, fontSize: 16)),
-          const SizedBox(height: 8),
-          const Text('Agrega camiones para que los conductores puedan seleccionarlos al iniciar jornada.',
-              style: TextStyle(color: Colors.grey, fontSize: 13), textAlign: TextAlign.center),
+          Icon(Icons.local_shipping_outlined, size: 64, color: Colors.grey),
+          SizedBox(height: 16),
+          Text('No hay camiones registrados', style: TextStyle(color: Colors.grey, fontSize: 16)),
+          SizedBox(height: 8),
+          Text('Agrega tu primer camión con el botón superior.', style: TextStyle(color: Colors.grey, fontSize: 13)),
         ],
       ),
     );

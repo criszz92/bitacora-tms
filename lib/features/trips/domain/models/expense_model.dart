@@ -10,7 +10,15 @@ class ExpenseModel {
   final DateTime date;
   final String description;
   final String status;  // 'Pendiente', 'Rendido', 'Pagado'
-  final String? vehicleId; // Patente del vehículo asociado
+  final String? vehicleId; // Patente o ID del vehículo asociado
+
+  // --- CONTROL AVANZADO DE COMBUSTIBLE Y ESTANQUE DIGITAL ---
+  final String? destinoCombustible; // 'CAMION' | 'AUXILIAR'
+  final bool isFullTank;            // True si se llenó a tope (evento de calibración/cierre de ciclo)
+  final double? odometerAtFill;     // Odómetro del camión al momento de la carga
+  final double? horometroAtFill;    // Horómetro del generador/thermo al momento de la carga
+  final double? kmRecorridosTramo;  // KM recorridos desde el último Full Tank (calculado)
+  final double? rendimientoTramo;   // Km/L real obtenido en este ciclo (calculado)
 
   ExpenseModel({
     required this.id,
@@ -25,6 +33,12 @@ class ExpenseModel {
     required this.description,
     required this.status,
     this.vehicleId,
+    this.destinoCombustible = 'CAMION',
+    this.isFullTank = false,
+    this.odometerAtFill,
+    this.horometroAtFill,
+    this.kmRecorridosTramo,
+    this.rendimientoTramo,
   });
 
   Map<String, dynamic> toMap() {
@@ -40,6 +54,12 @@ class ExpenseModel {
       'description': description,
       'status': status,
       'vehicleId': vehicleId,
+      'destinoCombustible': destinoCombustible,
+      'isFullTank': isFullTank,
+      'odometerAtFill': odometerAtFill,
+      'horometroAtFill': horometroAtFill,
+      'kmRecorridosTramo': kmRecorridosTramo,
+      'rendimientoTramo': rendimientoTramo,
     };
   }
 
@@ -57,6 +77,12 @@ class ExpenseModel {
       description: map['description'] ?? '',
       status: map['status'] ?? 'Pendiente',
       vehicleId: map['vehicleId'],
+      destinoCombustible: map['destinoCombustible'] ?? 'CAMION',
+      isFullTank: map['isFullTank'] as bool? ?? false,
+      odometerAtFill: (map['odometerAtFill'] as num?)?.toDouble(),
+      horometroAtFill: (map['horometroAtFill'] as num?)?.toDouble(),
+      kmRecorridosTramo: (map['kmRecorridosTramo'] as num?)?.toDouble(),
+      rendimientoTramo: (map['rendimientoTramo'] as num?)?.toDouble(),
     );
   }
 }

@@ -16,6 +16,21 @@ class NumberUtils {
 
   static TextInputFormatter get commaToPointFormatter =>
       FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'));
+
+  /// Formatea un número como moneda chilena con puntos de miles (ej: 1.500.000)
+  static String formatCurrency(num? value) {
+    if (value == null) return '0';
+    final intValue = value.round();
+    final str = intValue.abs().toString();
+    final buffer = StringBuffer();
+    for (int i = 0; i < str.length; i++) {
+      if (i > 0 && (str.length - i) % 3 == 0) {
+        buffer.write('.');
+      }
+      buffer.write(str[i]);
+    }
+    return (intValue < 0 ? '-' : '') + buffer.toString();
+  }
 }
 
 class DecimalTextInputFormatter extends TextInputFormatter {
