@@ -146,7 +146,7 @@ class _FuelPerformanceViewState extends ConsumerState<FuelPerformanceView> {
                 title: 'DÉFICIT PARA 100% FLOTA',
                 value: '\$ ${NumberUtils.formatCurrency(summary.moneyNeededToFullClp)}',
                 subtitle: 'Faltan ${summary.litersToFullFleet.toStringAsFixed(0)} Lts para llenar todo',
-                icon: Icons.local_gas_station_outlined,
+                icon: Icons.local_gas_station,
                 color: Colors.orangeAccent,
               ),
               const SizedBox(width: 16),

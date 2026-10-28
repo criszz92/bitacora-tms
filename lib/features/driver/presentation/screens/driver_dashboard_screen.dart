@@ -13,6 +13,11 @@ import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
 import '../../../admin/domain/models/service_request_model.dart';
 import '../../../admin/domain/services/modogps_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:latlong2/latlong.dart' hide Path;
+import '../../../admin/domain/models/infraestructura_vial_model.dart';
+import '../../../admin/data/repositories/infraestructura_repository.dart';
+import '../../../trips/domain/models/expense_model.dart';
 
 class DriverDashboardScreen extends ConsumerWidget {
   const DriverDashboardScreen({super.key});
@@ -237,74 +242,127 @@ class DriverDashboardScreen extends ConsumerWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Tus Registros',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Tus Registros',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    'Camión asignado: ${shift.patenteCamion}',
+                    style: const TextStyle(fontSize: 12, color: Colors.white60),
+                  ),
+                ],
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE0E0E0).withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.directions_car, size: 16, color: Color(0xFFE0E0E0)),
-                    const SizedBox(width: 8),
-                    Text(
-                      shift.patenteCamion,
-                      style: const TextStyle(color: Color(0xFFE0E0E0), fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(width: 12),
-                    InkWell(
-                      onTap: () {
-                        _showEndShiftDialog(context, ref, shift);
-                      },
-                      child: const Icon(Icons.stop_circle, color: Colors.redAccent, size: 28),
-                    )
-                  ],
+              InkWell(
+                onTap: () => _showEndShiftDialog(context, ref, shift),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.redAccent.withValues(alpha: 0.5), width: 0.8),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.stop_circle, color: Colors.redAccent, size: 18),
+                      SizedBox(width: 6),
+                      Text(
+                        'Cerrar Jornada',
+                        style: TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.redAccent.withValues(alpha: 0.1),
-                foregroundColor: Colors.redAccent,
-                side: const BorderSide(color: Colors.redAccent, width: 0.5),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              onPressed: () => _showReportIncidentDialog(context, ref, shift),
-              icon: const Icon(Icons.report_problem_outlined, size: 18),
-              label: const Text('REPORTAR PROBLEMA TÉCNICO', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-            ),
-          ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
           shiftTripsAsync.when(
             data: (trips) {
               final activeCount = trips.where((t) => t.status == 'En Ruta').length;
               final completedTrips = trips.where((t) => t.status != 'En Ruta').toList();
               final double totalKmJornada = completedTrips.fold(0.0, (acc, t) => acc + (t.totalKm ?? 0.0));
-              return Row(
-                children: [
-                  Expanded(child: _buildSummaryCard('Viajes Activos', '$activeCount', Icons.local_shipping)),
-                  const SizedBox(width: 12),
-                  Expanded(child: _buildSummaryCard('KM Jornada', totalKmJornada.toStringAsFixed(0), Icons.route)),
-                ],
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E222B),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.local_shipping, size: 16, color: activeCount > 0 ? Colors.greenAccent : Colors.white60),
+                    const SizedBox(width: 6),
+                    Text('$activeCount', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
+                    const SizedBox(width: 4),
+                    Text(activeCount == 1 ? 'Activo' : 'Activos', style: const TextStyle(color: Colors.white60, fontSize: 11)),
+                    const SizedBox(width: 12),
+                    Container(width: 1, height: 16, color: Colors.white12),
+                    const SizedBox(width: 12),
+                    const Icon(Icons.route, size: 16, color: Colors.purpleAccent),
+                    const SizedBox(width: 6),
+                    Text('${totalKmJornada.toStringAsFixed(0)} KM', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
+                    const SizedBox(width: 4),
+                    const Text('Jornada', style: TextStyle(color: Colors.white60, fontSize: 11)),
+                    const Spacer(),
+                    InkWell(
+                      onTap: () => _showReportIncidentDialog(context, ref, shift),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.redAccent.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.redAccent.withValues(alpha: 0.4), width: 0.8),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.report_problem_outlined, size: 13, color: Colors.redAccent),
+                            SizedBox(width: 4),
+                            Text('Incidencia', style: TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               );
             },
-            loading: () => Row(children: [Expanded(child: _buildLoadingCard())]),
-            error: (err, stack) => Row(children: [Expanded(child: _buildErrorCard())]),
+            loading: () => Container(height: 38, decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12))),
+            error: (err, stack) => const SizedBox.shrink(),
           ),
-          const SizedBox(height: 24),
-          const Text(
-            'Viajes de la Jornada',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          const SizedBox(height: 14),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Viajes de la Jornada',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              shiftTripsAsync.maybeWhen(
+                data: (trips) {
+                  final hasActive = trips.any((t) => t.status == 'En Ruta');
+                  if (!hasActive) return const SizedBox.shrink();
+                  return TextButton.icon(
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: () => context.push('/add-trip'),
+                    icon: const Icon(Icons.add, size: 16, color: Colors.blueAccent),
+                    label: const Text('Nuevo Viaje', style: TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                  );
+                },
+                orElse: () => const SizedBox.shrink(),
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Expanded(
             child: shiftTripsAsync.when(
               data: (trips) {
@@ -327,27 +385,32 @@ class DriverDashboardScreen extends ConsumerWidget {
               error: (error, _) => Center(child: Text('Error: $error')),
             ),
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
+          // Botón inferior: solo se muestra destacado si NO hay viaje activo para no tapar la pantalla
+          shiftTripsAsync.maybeWhen(
+            data: (trips) {
+              final hasActive = trips.any((t) => t.status == 'En Ruta');
+              if (hasActive) {
+                return const SizedBox.shrink();
+              }
+              return Padding(
+                padding: const EdgeInsets.only(top: 8.0),
                 child: SizedBox(
-                  height: 64,
+                  height: 50,
+                  width: double.infinity,
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFFFFFFF),
                       foregroundColor: Colors.black,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                     ),
-                    onPressed: () {
-                      context.push('/add-trip');
-                    },
-                    icon: const Icon(Icons.add_box, color: Colors.black),
-                    label: const Text('INICIAR NUEVO VIAJE', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1)),
+                    onPressed: () => context.push('/add-trip'),
+                    icon: const Icon(Icons.add_box, color: Colors.black, size: 20),
+                    label: const Text('INICIAR NUEVO VIAJE', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5)),
                   ),
                 ),
-              ),
-            ],
+              );
+            },
+            orElse: () => const SizedBox.shrink(),
           ),
         ],
       ),
@@ -595,214 +658,400 @@ class DriverDashboardScreen extends ConsumerWidget {
     return _buildInfoRow(label, date != null ? DateFormat('dd/MM/yyyy').format(date) : 'No cargado', color: isExpired ? Colors.redAccent : null);
   }
 
-  Widget _buildSummaryCard(String title, String value, IconData icon) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: const Color(0xFFFFFFFF), size: 32),
-            const SizedBox(height: 16),
-            Text(value, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
-            Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-          ],
-        ),
-      ),
-    );
-  }
 
-  Widget _buildLoadingCard() {
-    return const Card(
-      child: Padding(
-        padding: EdgeInsets.all(32.0),
-        child: Center(child: CircularProgressIndicator(color: Color(0xFFFFFFFF))),
-      ),
-    );
-  }
-
-  Widget _buildErrorCard() {
-    return const Card(
-      child: Padding(
-        padding: EdgeInsets.all(32.0),
-        child: Center(child: Icon(Icons.error, color: Colors.red)),
-      ),
-    );
-  }
 
   Widget _buildTripCard(BuildContext context, WidgetRef ref, TripModel trip, String defaultPlate) {
     final isEnRuta = trip.status == 'En Ruta';
     final targetPlate = trip.vehicleId ?? defaultPlate;
     final gpsUnitAsync = ref.watch(singleVehicleGpsProvider(targetPlate));
 
+    if (isEnRuta) {
+      return _buildActiveTripCard(context, ref, trip, targetPlate, gpsUnitAsync);
+    } else {
+      return _buildCompletedTripCard(context, ref, trip, targetPlate);
+    }
+  }
+
+  Widget _buildActiveTripCard(
+    BuildContext context,
+    WidgetRef ref,
+    TripModel trip,
+    String targetPlate,
+    AsyncValue<GpsUnit?> gpsUnitAsync,
+  ) {
+    final nextHito = _getNextHito(trip.hitoActual);
+
     return Card(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 3,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: isEnRuta ? const Color(0xFFFFFFFF) : Colors.white24, width: 1),
+        side: const BorderSide(color: Color(0xFF22C55E), width: 1.5),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: LinearGradient(
+            colors: [
+              const Color(0xFF161B22),
+              const Color(0xFF0F172A).withValues(alpha: 0.95),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        padding: const EdgeInsets.all(14.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header del viaje activo
+            Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF22C55E),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 7),
+                const Text(
+                  'VIAJE EN CURSO',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF4ADE80),
+                    fontSize: 12,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                const Spacer(),
+                if (trip.containerNumber != null && trip.containerNumber!.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.inventory_2, size: 12, color: Colors.white70),
+                        const SizedBox(width: 4),
+                        Text(
+                          trip.containerNumber!,
+                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (trip.guideNumber != null && trip.guideNumber!.isNotEmpty)
+                  Text('Guía: ${trip.guideNumber}', style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                const SizedBox(width: 8),
+                Text(
+                  DateFormat('HH:mm').format(trip.startDate),
+                  style: const TextStyle(color: Colors.white38, fontSize: 11),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+
+            // Telemetría GPS en vivo / Geocerca detectada
+            gpsUnitAsync.when(
+              data: (unit) {
+                if (unit == null) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.04),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.satellite_alt, size: 12, color: Colors.white38),
+                        SizedBox(width: 6),
+                        Text('Sincronizando con ModoGPS...', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                      ],
+                    ),
+                  );
+                }
+
+                final inGeofence = unit.currentGeofence != null && unit.currentGeofence!.isNotEmpty;
+                if (inGeofence) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F5132).withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.5), width: 0.8),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.location_on, size: 14, color: Colors.greenAccent),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Geocerca GPS: ${unit.currentGeofence}',
+                            style: const TextStyle(color: Colors.greenAccent, fontSize: 11.5, fontWeight: FontWeight.bold),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                } else {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E3A8A).withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.4), width: 0.8),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.satellite_alt, size: 13, color: Colors.lightBlueAccent),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            unit.status == 'online'
+                                ? 'GPS Conectado • En Ruta (${unit.speed.toStringAsFixed(0)} km/h)'
+                                : 'GPS Conectado • Detenido',
+                            style: const TextStyle(color: Color(0xFF93C5FD), fontSize: 11.5, fontWeight: FontWeight.bold),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+              },
+              loading: () => const SizedBox.shrink(),
+              error: (_, _) => const SizedBox.shrink(),
+            ),
+            const SizedBox(height: 10),
+
+            // Trazado de Ruta: Origen ➔ Destino (compacto y elegante)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.black26,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.white10),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.radio_button_checked, size: 14, color: Colors.greenAccent),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          trip.origin,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 6.5, top: 2, bottom: 2),
+                    child: Row(
+                      children: [
+                        Container(width: 1.5, height: 14, color: Colors.white24),
+                        const SizedBox(width: 14),
+                        Text('Cliente: ${trip.client}', style: const TextStyle(color: Colors.white60, fontSize: 11)),
+                      ],
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      const Icon(Icons.location_on, size: 14, color: Colors.redAccent),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          trip.destination,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            // Hito Operativo Actual y Avance Rápido (1 solo toque)
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.04),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.white12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.flag_rounded, size: 15, color: Colors.amber),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Hito: ${trip.hitoActual ?? "En Tránsito Inicial"}',
+                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (trip.hitos != null && trip.hitos!.isNotEmpty)
+                        Text('${trip.hitos!.length} reg.', style: const TextStyle(color: Colors.white38, fontSize: 10)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF2563EB),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            elevation: 0,
+                          ),
+                          onPressed: () async {
+                            await ref.read(tripRepositoryProvider).registrarHito(trip.id, nextHito);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('✓ Hito avanzado a: "$nextHito"'),
+                                  duration: const Duration(seconds: 2),
+                                  backgroundColor: const Color(0xFF1E3A8A),
+                                ),
+                              );
+                            }
+                          },
+                          icon: const Icon(Icons.fast_forward_rounded, size: 15),
+                          label: Text(
+                            'Avanzar: $nextHito',
+                            style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      IconButton(
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.white.withValues(alpha: 0.08),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          padding: const EdgeInsets.all(8),
+                          minimumSize: const Size(36, 36),
+                        ),
+                        icon: const Icon(Icons.more_horiz, size: 18, color: Colors.white70),
+                        tooltip: 'Ver lista completa de hitos',
+                        onPressed: () => _showChangeHitoModal(context, ref, trip),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    '🤖 ModoGPS detecta paradas automáticamente por satélite.',
+                    style: TextStyle(color: Colors.white38, fontSize: 9.5),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Botones de Acción: FINALIZAR VIAJE + Trazado GPS
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 2,
+                    ),
+                    onPressed: () => _showEndTripDialog(context, ref, trip, targetPlate),
+                    icon: const Icon(Icons.check_circle, color: Colors.black, size: 18),
+                    label: const Text(
+                      'FINALIZAR VIAJE',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.lightBlueAccent,
+                    side: BorderSide(color: Colors.blueAccent.withValues(alpha: 0.4)),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () => _showTripGpsComparisonDialog(context, ref, trip, targetPlate),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.satellite_alt_outlined, size: 16),
+                      SizedBox(width: 4),
+                      Text('GPS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompletedTripCard(BuildContext context, WidgetRef ref, TripModel trip, String targetPlate) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: const BorderSide(color: Colors.white12, width: 0.8),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(14.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  isEnRuta ? 'VIAJE ACTIVO' : 'VIAJE COMPLETADO',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: isEnRuta ? const Color(0xFFFFFFFF) : Colors.white70,
-                  ),
+                const Text(
+                  'VIAJE COMPLETADO',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70, fontSize: 12),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: isEnRuta
-                        ? const Color(0xFFFFFFFF).withValues(alpha: 0.2)
-                        : Colors.green.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(12),
+                    color: Colors.green.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
                     trip.status,
-                    style: TextStyle(
-                      color: isEnRuta ? const Color(0xFFFFFFFF) : Colors.greenAccent,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: const TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold),
                   ),
                 ),
               ],
             ),
-
-            // Indicador sutil de Geocerca / GPS en vivo
-            if (isEnRuta) ...[
-              const SizedBox(height: 8),
-              gpsUnitAsync.when(
-                data: (unit) {
-                  if (unit == null) {
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white10,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.white24, width: 0.5),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.satellite_alt, size: 13, color: Colors.white54),
-                          SizedBox(width: 6),
-                          Text(
-                            'GPS: Conectando con unidad...',
-                            style: TextStyle(color: Colors.white60, fontSize: 11),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  final inGeofence = unit.currentGeofence != null && unit.currentGeofence!.isNotEmpty;
-
-                  if (inGeofence) {
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0F5132).withValues(alpha: 0.35),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.5), width: 1),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 7,
-                            height: 7,
-                            decoration: const BoxDecoration(
-                              color: Colors.greenAccent,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 7),
-                          Flexible(
-                            child: Text(
-                              'En Geocerca: ${unit.currentGeofence}',
-                              style: const TextStyle(
-                                color: Colors.greenAccent,
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  } else {
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1E3A8A).withValues(alpha: 0.25),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.4), width: 0.8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.satellite_alt, size: 13, color: Colors.blueAccent),
-                          const SizedBox(width: 7),
-                          Flexible(
-                            child: Text(
-                              unit.status == 'online'
-                                  ? 'GPS Conectado • En Ruta (${unit.speed.toStringAsFixed(0)} km/h)'
-                                  : 'GPS Conectado • Detenido',
-                              style: const TextStyle(
-                                color: Color(0xFF93C5FD),
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-                },
-                loading: () => Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white10,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 10,
-                        height: 10,
-                        child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white54),
-                      ),
-                      SizedBox(width: 8),
-                      Text('Sincronizando GPS...', style: TextStyle(color: Colors.white54, fontSize: 11)),
-                    ],
-                  ),
-                ),
-                error: (e, s) => const SizedBox.shrink(),
-              ),
-            ],
-
-            const Divider(height: 24, color: Colors.white24),
+            const Divider(height: 16, color: Colors.white12),
             _buildRouteRow(Icons.my_location, 'Origen', trip.origin),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             _buildRouteRow(Icons.location_on, 'Destino', trip.destination),
-            const SizedBox(height: 16),
+            const SizedBox(height: 10),
             Row(
               children: [
-                const Icon(Icons.inventory_2, size: 16, color: Colors.grey),
-                const SizedBox(width: 8),
+                const Icon(Icons.inventory_2, size: 14, color: Colors.grey),
+                const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     trip.containerNumber != null && trip.containerNumber!.isNotEmpty
@@ -810,159 +1059,76 @@ class DriverDashboardScreen extends ConsumerWidget {
                         : (trip.guideNumber != null && trip.guideNumber!.isNotEmpty
                             ? 'Guía: ${trip.guideNumber}'
                             : 'Carga Suelta'),
-                    style: const TextStyle(color: Colors.grey, fontSize: 14),
+                    style: const TextStyle(color: Colors.grey, fontSize: 12),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                if (!isEnRuta && trip.totalKm != null) ...[
-                  const Icon(Icons.route, size: 16, color: Colors.purpleAccent),
-                  const SizedBox(width: 6),
+                if (trip.totalKm != null) ...[
+                  const Icon(Icons.route, size: 14, color: Colors.purpleAccent),
+                  const SizedBox(width: 4),
                   Text(
                     '${trip.totalKm!.toStringAsFixed(1)} KM',
-                    style: const TextStyle(color: Colors.purpleAccent, fontWeight: FontWeight.bold, fontSize: 14),
+                    style: const TextStyle(color: Colors.purpleAccent, fontWeight: FontWeight.bold, fontSize: 13),
                   ),
                 ],
               ],
             ),
-            const SizedBox(height: 12),
-
-            // ─── HITOS OPERATIVOS DEL TRAMO ───
-            if (isEnRuta) ...[
-              Container(
-                margin: const EdgeInsets.symmetric(vertical: 8),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.04),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white12),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'HITO OPERATIVO ACTUAL',
-                          style: TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.8),
-                        ),
-                        InkWell(
-                          onTap: () => _showChangeHitoModal(context, ref, trip),
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                            child: Row(
-                              children: [
-                                Icon(Icons.edit_location_alt, size: 14, color: Colors.blueAccent),
-                                SizedBox(width: 4),
-                                Text('Cambiar', style: TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: Colors.amber.withValues(alpha: 0.15),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.flag_rounded, size: 16, color: Colors.amber),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                trip.hitoActual ?? 'En Tránsito Inicial',
-                                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
-                              ),
-                              if (trip.hitos != null && trip.hitos!.isNotEmpty)
-                                Text(
-                                  '${trip.hitos!.length} hito(s) registrado(s) en este viaje',
-                                  style: const TextStyle(color: Colors.white38, fontSize: 10),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-
-            // Botón sutil para comparar tramo con GPS
+            const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
-              child: TextButton.icon(
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.lightBlueAccent,
-                  backgroundColor: Colors.blue.withValues(alpha: 0.08),
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white70,
+                  side: const BorderSide(color: Colors.white24),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
                 ),
-                onPressed: () => _showTripGpsComparisonDialog(context, ref, trip, targetPlate),
-                icon: const Icon(Icons.satellite_alt_outlined, size: 15),
-                label: const Text('Comparativa Tramo GPS (Fecha/Hora)', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600)),
+                onPressed: () => _showEditTripDriverDialog(context, ref, trip),
+                icon: const Icon(Icons.edit, size: 15),
+                label: const Text('EDITAR KM / GUÍA', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
               ),
             ),
-            const SizedBox(height: 12),
-
-            if (isEnRuta)
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFFFFFFFF),
-                    side: const BorderSide(color: Color(0xFFFFFFFF)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  onPressed: () => _showEndTripDialog(context, ref, trip),
-                  icon: const Icon(Icons.check_circle),
-                  label: const Text('FINALIZAR VIAJE', style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-              )
-            else
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white70,
-                    side: const BorderSide(color: Colors.white24),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  onPressed: () => _showEditTripDriverDialog(context, ref, trip),
-                  icon: const Icon(Icons.edit, size: 16),
-                  label: const Text('EDITAR KM / GUÍA', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                ),
-              ),
           ],
         ),
       ),
     );
   }
 
+  String _getNextHito(String? current) {
+    if (current == null) return 'En Faena (Carga / Retiro)';
+    final c = current.toLowerCase();
+    if (c.contains('base') || c.contains('inicial') || c.contains('tránsito a puerto')) {
+      return 'En Faena (Carga / Retiro)';
+    } else if (c.contains('faena') || c.contains('antepuerto') || c.contains('retiro') || c.contains('puerto')) {
+      return 'En Ruta a Destino';
+    } else if (c.contains('ruta a destino') || c.contains('tránsito a cliente') || c.contains('cliente 1')) {
+      return 'Llegada a Destino (Descarga)';
+    } else if (c.contains('llegada') || c.contains('destino') || c.contains('descarga') || c.contains('devolución')) {
+      return 'Retorno a Base / Cierre';
+    }
+    return 'En Faena (Carga / Retiro)';
+  }
+
   Future<void> _showChangeHitoModal(BuildContext context, WidgetRef ref, TripModel trip) async {
-    final opcionesHitos = [
-      {'nombre': 'En Base (Preparación)', 'icon': Icons.home_work_outlined, 'desc': 'Camión en base, iniciando jornada o alistando tracto'},
-      {'nombre': 'En Tránsito a Puerto / Depósito', 'icon': Icons.directions_bus_outlined, 'desc': 'Traslado hacia terminal de retiro de vacío'},
-      {'nombre': 'En Antepuerto (Espera de Turno / Stacking)', 'icon': Icons.hourglass_top_rounded, 'desc': 'Fila de espera o gestión documental en antepuerto'},
-      {'nombre': 'En Puerto / Depósito (Retiro de Vacío)', 'icon': Icons.archive_outlined, 'desc': 'Ingreso al terminal, inspección y carga de contenedor'},
-      {'nombre': 'En Tránsito a Cliente', 'icon': Icons.route_outlined, 'desc': 'Viaje por carretera con contenedor montado'},
-      {'nombre': 'En Cliente 1 (Carga / Descarga)', 'icon': Icons.storefront_outlined, 'desc': 'Llegada a planta principal, pesaje o faena'},
-      {'nombre': 'En Cliente 2 (Consolidación / Punto Adicional)', 'icon': Icons.add_business_outlined, 'desc': 'Segundo punto de carga para completar viaje'},
-      {'nombre': 'En Tránsito a Puerto / Devolución', 'icon': Icons.alt_route_outlined, 'desc': 'Retorno hacia terminal marítimo o depósito'},
-      {'nombre': 'En Puerto / Depósito (Entrega de Contenedor)', 'icon': Icons.unarchive_outlined, 'desc': 'Descarga en muelle o devolución de vacío con EIR'},
-      {'nombre': 'Retorno a Base / Cierre de Ciclo', 'icon': Icons.home_rounded, 'desc': 'Traslado final de vuelta a la base'},
+    final macroHitos = [
+      {'nombre': 'En Tránsito Inicial / A Carga', 'icon': Icons.directions_bus_outlined, 'desc': 'Traslado inicial hacia punto de retiro o faena'},
+      {'nombre': 'En Faena / Carga / Operación', 'icon': Icons.storefront_outlined, 'desc': 'En cliente o terminal cargando o realizando faena'},
+      {'nombre': 'En Ruta a Destino', 'icon': Icons.route_outlined, 'desc': 'Viaje por carretera con carga hacia destino final'},
+      {'nombre': 'Llegada a Destino (Descarga)', 'icon': Icons.done_all_rounded, 'desc': 'En planta de descarga o entrega de contenedor'},
+    ];
+
+    final hitosDetallados = [
+      {'nombre': 'En Base (Preparación)', 'icon': Icons.home_work_outlined},
+      {'nombre': 'En Antepuerto (Espera / Stacking)', 'icon': Icons.hourglass_top_rounded},
+      {'nombre': 'En Puerto / Depósito (Retiro de Vacío)', 'icon': Icons.archive_outlined},
+      {'nombre': 'En Cliente 2 (Consolidación / Punto Adicional)', 'icon': Icons.add_business_outlined},
+      {'nombre': 'En Puerto / Depósito (Entrega de Contenedor)', 'icon': Icons.unarchive_outlined},
+      {'nombre': 'Retorno a Base / Cierre de Ciclo', 'icon': Icons.home_rounded},
     ];
 
     await showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: const Color(0xFF1E222B),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -971,61 +1137,98 @@ class DriverDashboardScreen extends ConsumerWidget {
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 14),
-                const Text(
-                  'Seleccionar Hito Operativo Actual',
-                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Registra la etapa exacta en la que se encuentra el camión para control de tiempos y sobreestadías.',
-                  style: TextStyle(color: Colors.white54, fontSize: 11),
-                ),
-                const SizedBox(height: 12),
-                Flexible(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: opcionesHitos.length,
-                    separatorBuilder: (_, _) => const Divider(color: Colors.white10, height: 1),
-                    itemBuilder: (context, idx) {
-                      final item = opcionesHitos[idx];
-                      final isSelected = trip.hitoActual == item['nombre'];
-                      return ListTile(
-                        dense: true,
-                        leading: Icon(item['icon'] as IconData, color: isSelected ? Colors.amber : Colors.white70),
-                        title: Text(
-                          item['nombre'] as String,
-                          style: TextStyle(
-                            color: isSelected ? Colors.amber : Colors.white,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                            fontSize: 13,
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Hito Operativo de Ruta',
+                    style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.blueAccent.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.info_outline, size: 14, color: Colors.lightBlueAccent),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'ModoGPS detecta paradas y geocercas satelitalmente sin necesidad de ingreso manual.',
+                            style: TextStyle(color: Colors.lightBlueAccent, fontSize: 10.5),
                           ),
                         ),
-                        subtitle: Text(
-                          item['desc'] as String,
-                          style: const TextStyle(color: Colors.white38, fontSize: 10),
-                        ),
-                        trailing: isSelected ? const Icon(Icons.check_circle, color: Colors.amber, size: 18) : null,
-                        onTap: () async {
-                          Navigator.pop(ctx);
-                          await ref.read(tripRepositoryProvider).registrarHito(trip.id, item['nombre'] as String);
-                        },
-                      );
-                    },
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 14),
+                  const Text(
+                    'ETAPAS PRINCIPALES (RECOMENDADO):',
+                    style: TextStyle(color: Colors.white60, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                  ),
+                  const SizedBox(height: 6),
+                  ...macroHitos.map((item) {
+                    final isSelected = trip.hitoActual == item['nombre'];
+                    return ListTile(
+                      dense: true,
+                      leading: Icon(item['icon'] as IconData, color: isSelected ? Colors.greenAccent : Colors.white70),
+                      title: Text(
+                        item['nombre'] as String,
+                        style: TextStyle(
+                          color: isSelected ? Colors.greenAccent : Colors.white,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                          fontSize: 13,
+                        ),
+                      ),
+                      subtitle: Text(
+                        item['desc'] as String,
+                        style: const TextStyle(color: Colors.white38, fontSize: 10),
+                      ),
+                      trailing: isSelected ? const Icon(Icons.check_circle, color: Colors.greenAccent, size: 18) : null,
+                      onTap: () async {
+                        Navigator.pop(ctx);
+                        await ref.read(tripRepositoryProvider).registrarHito(trip.id, item['nombre'] as String);
+                      },
+                    );
+                  }),
+                  const Divider(color: Colors.white12, height: 20),
+                  const Text(
+                    'HITOS ESPECÍFICOS DE PUERTO / FAENA:',
+                    style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                  ),
+                  const SizedBox(height: 4),
+                  ...hitosDetallados.map((item) {
+                    final isSelected = trip.hitoActual == item['nombre'];
+                    return ListTile(
+                      dense: true,
+                      leading: Icon(item['icon'] as IconData, size: 18, color: isSelected ? Colors.amber : Colors.white60),
+                      title: Text(
+                        item['nombre'] as String,
+                        style: TextStyle(color: isSelected ? Colors.amber : Colors.white70, fontSize: 12),
+                      ),
+                      trailing: isSelected ? const Icon(Icons.check_circle, color: Colors.amber, size: 16) : null,
+                      onTap: () async {
+                        Navigator.pop(ctx);
+                        await ref.read(tripRepositoryProvider).registrarHito(trip.id, item['nombre'] as String);
+                      },
+                    );
+                  }),
+                ],
+              ),
             ),
           ),
         );
@@ -1261,153 +1464,11 @@ class DriverDashboardScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _showEndTripDialog(BuildContext context, WidgetRef ref, TripModel trip) async {
-    // Intentar sugerir KM desde la tabla de distancias
-    final distSvc = ref.read(distanceServiceProvider);
-    final suggestedKm = (trip.totalKm == null || trip.totalKm! <= 0)
-        ? distSvc.lookupKm(trip.client, trip.destination)
-        : null;
-
-    final guideCtrl = TextEditingController(text: trip.guideNumber ?? '');
-    final kmCtrl = TextEditingController(
-      text: (trip.totalKm != null && trip.totalKm! > 0)
-          ? trip.totalKm!.toStringAsFixed(0)
-          : (suggestedKm != null ? suggestedKm.toStringAsFixed(0) : ''),
-    );
-    final formKey = GlobalKey<FormState>();
-    // Rastrear si el conductor modificó el valor sugerido
-    bool isUsingSuggestion = suggestedKm != null;
-
+  Future<void> _showEndTripDialog(BuildContext context, WidgetRef ref, TripModel trip, String targetPlate) async {
     await showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Finalizar Viaje', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('${trip.origin} → ${trip.destination}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
-              // Chip de sugerencia de KM
-              if (isUsingSuggestion) ...[
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    const Icon(Icons.auto_awesome, size: 12, color: Colors.purpleAccent),
-                    const SizedBox(width: 4),
-                    Text(
-                      'KM sugerido desde tabla de distancias',
-                      style: const TextStyle(color: Colors.purpleAccent, fontSize: 10),
-                    ),
-                  ],
-                ),
-              ],
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: guideCtrl,
-                keyboardType: TextInputType.text,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  labelText: 'Nº Guía de Despacho',
-                  hintText: 'Ej: 12345',
-                  hintStyle: const TextStyle(color: Colors.white30),
-                  filled: true,
-                  fillColor: Colors.black26,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                ),
-              ),
-              const SizedBox(height: 16),
-              StatefulBuilder(
-                builder: (ctx2, setFieldState) {
-                  kmCtrl.addListener(() {
-                    if (isUsingSuggestion) {
-                      final typed = kmCtrl.text.replaceAll(',', '.').trim();
-                      final parsed = double.tryParse(typed);
-                      if (parsed != null && parsed != suggestedKm) {
-                        setFieldState(() => isUsingSuggestion = false);
-                      }
-                    }
-                  });
-                  return TextFormField(
-                    controller: kmCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      labelText: 'Kilómetros aprox. recorridos',
-                      hintText: 'Ej: 120',
-                      hintStyle: const TextStyle(color: Colors.white30),
-                      suffixText: 'KM',
-                      suffixStyle: const TextStyle(color: Colors.white70),
-                      filled: true,
-                      fillColor: isUsingSuggestion
-                          ? Colors.purple.withValues(alpha: 0.15)
-                          : Colors.black26,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: isUsingSuggestion
-                            ? const BorderSide(color: Colors.purpleAccent, width: 1)
-                            : BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: isUsingSuggestion
-                            ? const BorderSide(color: Colors.purpleAccent, width: 1)
-                            : BorderSide.none,
-                      ),
-                    ),
-                    validator: (val) {
-                      if (val == null || val.trim().isEmpty) {
-                        return 'Ingresa los kilómetros aproximados';
-                      }
-                      final parsed = double.tryParse(val.replaceAll(',', '.').trim());
-                      if (parsed == null || parsed < 0) {
-                        return 'Ingresa un valor numérico válido';
-                      }
-                      return null;
-                    },
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFFFFF), foregroundColor: Colors.black),
-            onPressed: () async {
-              if (!formKey.currentState!.validate()) return;
-
-              final parsedKm = double.tryParse(kmCtrl.text.replaceAll(',', '.').trim()) ?? 0.0;
-
-              await ref.read(tripRepositoryProvider).endTripWithGuide(
-                trip.id,
-                guideCtrl.text.trim(),
-                totalKm: parsedKm,
-              );
-
-              if (ctx.mounted) Navigator.pop(ctx);
-
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('✓ Viaje cerrado: ${parsedKm.toStringAsFixed(1)} KM registrados'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              }
-            },
-            child: const Text('FINALIZAR', style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
+      builder: (ctx) => _EndTripDialog(trip: trip, targetPlate: targetPlate),
     );
   }
 
@@ -1643,6 +1704,941 @@ class DriverDashboardScreen extends ConsumerWidget {
       },
       loading: () => const SizedBox.shrink(),
       error: (err, stack) => const SizedBox.shrink(),
+    );
+  }
+}
+
+class _DetectedTollPass {
+  final String id;
+  final PuntoInfraestructuraModel peaje;
+  final DateTime passTime;
+  final double distanceMeters;
+  final bool isFromGps;
+  bool isSelected;
+  final bool isAlreadySaved;
+  final TextEditingController amountController;
+
+  _DetectedTollPass({
+    required this.id,
+    required this.peaje,
+    required this.passTime,
+    required this.distanceMeters,
+    this.isFromGps = true,
+    this.isSelected = true,
+    this.isAlreadySaved = false,
+    required double initialAmount,
+  }) : amountController = TextEditingController(
+          text: initialAmount > 0 ? initialAmount.toInt().toString() : '0',
+        );
+
+  double get amount => double.tryParse(amountController.text.trim().replaceAll('.', '').replaceAll(',', '.')) ?? 0.0;
+
+  void dispose() {
+    amountController.dispose();
+  }
+}
+
+class _EndTripDialog extends ConsumerStatefulWidget {
+  final TripModel trip;
+  final String targetPlate;
+
+  const _EndTripDialog({
+    required this.trip,
+    required this.targetPlate,
+  });
+
+  @override
+  ConsumerState<_EndTripDialog> createState() => _EndTripDialogState();
+}
+
+class _EndTripDialogState extends ConsumerState<_EndTripDialog> {
+  late final TextEditingController _guideCtrl;
+  late final TextEditingController _kmCtrl;
+  final _formKey = GlobalKey<FormState>();
+
+  bool _isLoadingGps = true;
+  bool _isLoadingTolls = true;
+  double? _gpsKm;
+  double? _suggestedTheoreticalKm;
+  bool _isFinalizing = false;
+
+  List<_DetectedTollPass> _detectedTolls = [];
+  List<PuntoInfraestructuraModel> _allAvailablePeajes = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _guideCtrl = TextEditingController(text: widget.trip.guideNumber ?? '');
+    _kmCtrl = TextEditingController(
+      text: (widget.trip.totalKm != null && widget.trip.totalKm! > 0)
+          ? widget.trip.totalKm!.toStringAsFixed(1)
+          : '',
+    );
+    _queryGpsAndTolls();
+  }
+
+  @override
+  void dispose() {
+    _guideCtrl.dispose();
+    _kmCtrl.dispose();
+    for (final t in _detectedTolls) {
+      t.dispose();
+    }
+    super.dispose();
+  }
+
+  double get _totalValidatedTolls {
+    double total = 0.0;
+    for (final toll in _detectedTolls) {
+      if (toll.isSelected && !toll.isAlreadySaved) {
+        total += toll.amount;
+      }
+    }
+    return total;
+  }
+
+  Future<void> _queryGpsAndTolls() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoadingGps = true;
+      _isLoadingTolls = true;
+    });
+
+    try {
+      final modoGps = ref.read(modoGpsServiceProvider);
+      final activeShift = ref.read(activeShiftProvider).value;
+      final endTime = widget.trip.endDate ?? DateTime.now();
+
+      // 1. Cargar catálogo universal de peajes
+      try {
+        final infraRepo = ref.read(infraestructuraRepositoryProvider);
+        final puntos = await infraRepo.getPuntos(soloActivos: true);
+        _allAvailablePeajes = puntos.where((p) => p.tipo == TipoPuntoInfraestructura.peaje).toList();
+      } catch (e) {
+        debugPrint('[Peajes] Error cargando catálogo de peajes: $e');
+      }
+
+      // 2. Cargar gastos existentes para este viaje (para no duplicar si ya rindió un peaje)
+      final existingPeajeNames = <String>[];
+      try {
+        final existingGastos = await FirebaseFirestore.instance
+            .collection('gastos')
+            .where('tripId', isEqualTo: widget.trip.id)
+            .where('type', isEqualTo: 'Peaje')
+            .get();
+        for (final doc in existingGastos.docs) {
+          final desc = (doc.data()['description'] ?? '').toString().toLowerCase();
+          existingPeajeNames.add(desc);
+        }
+      } catch (e) {
+        debugPrint('[Peajes] Error consultando gastos existentes: $e');
+      }
+
+      // 3. Consultar intervalo GPS
+      final hTrip = await modoGps.fetchTripInterval(
+        plate: widget.targetPlate,
+        startTime: widget.trip.startDate,
+        endTime: endTime,
+        idEmpresa: activeShift?.idEmpresa,
+      );
+
+      if (hTrip != null && hTrip.totalDistanceKm > 0) {
+        _gpsKm = hTrip.totalDistanceKm;
+        _kmCtrl.text = _gpsKm!.toStringAsFixed(1);
+      } else {
+        final distSvc = ref.read(distanceServiceProvider);
+        final theoretical = distSvc.lookupKm(widget.trip.client, widget.trip.destination);
+        if (theoretical != null) {
+          _suggestedTheoreticalKm = theoretical;
+          if (_kmCtrl.text.isEmpty) {
+            _kmCtrl.text = theoretical.toStringAsFixed(0);
+          }
+        }
+      }
+
+      // 4. Cruzar puntos de ruta GPS con catálogo de peajes
+      if (hTrip != null && hTrip.points.isNotEmpty && _allAvailablePeajes.isNotEmpty) {
+        const distanceCalc = Distance();
+        final detected = <_DetectedTollPass>[];
+
+        for (final peaje in _allAvailablePeajes) {
+          final peajeLatLng = LatLng(peaje.lat, peaje.lng);
+          // Radio estricto: entre 40 y 110 metros para casetas de peaje
+          final maxRadius = (peaje.radioMetros >= 40 && peaje.radioMetros <= 120)
+              ? peaje.radioMetros
+              : 80.0;
+
+          DateTime? lastDetectionTime;
+          double minDistanceInPass = double.infinity;
+          DateTime bestPointTime = peaje.createdAt;
+
+          for (final pt in hTrip.points) {
+            final distM = distanceCalc.as(LengthUnit.Meter, peajeLatLng, pt.position);
+            if (distM <= maxRadius) {
+              if (lastDetectionTime == null || pt.timestamp.difference(lastDetectionTime).inMinutes.abs() > 15) {
+                if (lastDetectionTime != null && minDistanceInPass < double.infinity) {
+                  final defaultAmount = peaje.tarifaCamionPesado ?? peaje.tarifaCamionSimple ?? 0.0;
+                  final isSaved = existingPeajeNames.any((n) => n.contains(peaje.nombre.toLowerCase()));
+                  detected.add(_DetectedTollPass(
+                    id: 'pass-${peaje.id}-${bestPointTime.millisecondsSinceEpoch}',
+                    peaje: peaje,
+                    passTime: bestPointTime,
+                    distanceMeters: minDistanceInPass,
+                    isAlreadySaved: isSaved,
+                    isSelected: !isSaved,
+                    initialAmount: defaultAmount,
+                  ));
+                }
+                lastDetectionTime = pt.timestamp;
+                minDistanceInPass = distM;
+                bestPointTime = pt.timestamp;
+              } else {
+                if (distM < minDistanceInPass) {
+                  minDistanceInPass = distM;
+                  bestPointTime = pt.timestamp;
+                }
+              }
+            }
+          }
+
+          if (lastDetectionTime != null && minDistanceInPass < double.infinity) {
+            final defaultAmount = peaje.tarifaCamionPesado ?? peaje.tarifaCamionSimple ?? 0.0;
+            final isSaved = existingPeajeNames.any((n) => n.contains(peaje.nombre.toLowerCase()));
+            detected.add(_DetectedTollPass(
+              id: 'pass-${peaje.id}-${bestPointTime.millisecondsSinceEpoch}',
+              peaje: peaje,
+              passTime: bestPointTime,
+              distanceMeters: minDistanceInPass,
+              isAlreadySaved: isSaved,
+              isSelected: !isSaved,
+              initialAmount: defaultAmount,
+            ));
+          }
+        }
+
+        detected.sort((a, b) => a.passTime.compareTo(b.passTime));
+
+        for (final t in _detectedTolls) {
+          t.dispose();
+        }
+        _detectedTolls = detected;
+      }
+    } catch (e) {
+      debugPrint('[FinalizarViaje] Error en telemetría o peajes: $e');
+      final distSvc = ref.read(distanceServiceProvider);
+      final theoretical = distSvc.lookupKm(widget.trip.client, widget.trip.destination);
+      if (theoretical != null && _kmCtrl.text.isEmpty) {
+        _suggestedTheoreticalKm = theoretical;
+        _kmCtrl.text = theoretical.toStringAsFixed(0);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingGps = false;
+          _isLoadingTolls = false;
+        });
+      }
+    }
+  }
+
+  void _showAddManualTollDialog() {
+    final nameCtrl = TextEditingController();
+    final amountCtrl = TextEditingController();
+    PuntoInfraestructuraModel? selectedFromCatalog;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlgState) => AlertDialog(
+          backgroundColor: const Color(0xFF1E242B),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.add_road, color: Colors.amberAccent, size: 20),
+              SizedBox(width: 8),
+              Text('Agregar Peaje al Viaje', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Seleccionar del Catálogo de Peajes:', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.black38,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.white12),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<PuntoInfraestructuraModel?>(
+                      isExpanded: true,
+                      dropdownColor: const Color(0xFF1E242B),
+                      value: selectedFromCatalog,
+                      hint: const Text('Elegir peaje registrado...', style: TextStyle(color: Colors.white60, fontSize: 13)),
+                      items: [
+                        const DropdownMenuItem(
+                          value: null,
+                          child: Text('Otro (Ingreso manual libre)', style: TextStyle(color: Colors.cyanAccent, fontSize: 13)),
+                        ),
+                        ..._allAvailablePeajes.map((p) => DropdownMenuItem(
+                              value: p,
+                              child: Text(
+                                '${p.nombre} (${p.ruta})',
+                                style: const TextStyle(color: Colors.white, fontSize: 13),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            )),
+                      ],
+                      onChanged: (val) {
+                        setDlgState(() {
+                          selectedFromCatalog = val;
+                          if (val != null) {
+                            nameCtrl.text = val.nombre;
+                            final rate = val.tarifaCamionPesado ?? val.tarifaCamionSimple ?? 0.0;
+                            if (rate > 0) amountCtrl.text = rate.toInt().toString();
+                          }
+                        });
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: nameCtrl,
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                  decoration: InputDecoration(
+                    labelText: 'Nombre del Peaje',
+                    labelStyle: const TextStyle(color: Colors.grey, fontSize: 12),
+                    filled: true,
+                    fillColor: Colors.black26,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: amountCtrl,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                  decoration: InputDecoration(
+                    labelText: 'Monto a Rendir (\$)',
+                    labelStyle: const TextStyle(color: Colors.grey, fontSize: 12),
+                    prefixText: '\$ ',
+                    prefixStyle: const TextStyle(color: Colors.amberAccent),
+                    filled: true,
+                    fillColor: Colors.black26,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.amberAccent, foregroundColor: Colors.black),
+              onPressed: () {
+                final name = nameCtrl.text.trim();
+                final amount = double.tryParse(amountCtrl.text.trim()) ?? 0.0;
+                if (name.isEmpty) return;
+
+                final model = selectedFromCatalog ??
+                    PuntoInfraestructuraModel(
+                      id: 'manual-${DateTime.now().millisecondsSinceEpoch}',
+                      nombre: name,
+                      tipo: TipoPuntoInfraestructura.peaje,
+                      subtipo: 'Manual',
+                      ruta: '',
+                      lat: 0.0,
+                      lng: 0.0,
+                      radioMetros: 0,
+                      sentido: 'Bidireccional',
+                      creadoPor: 'CONDUCTOR',
+                      createdAt: DateTime.now(),
+                    );
+
+                final newPass = _DetectedTollPass(
+                  id: 'manual-${DateTime.now().millisecondsSinceEpoch}',
+                  peaje: model,
+                  passTime: DateTime.now(),
+                  distanceMeters: 0,
+                  isFromGps: false,
+                  isSelected: true,
+                  initialAmount: amount,
+                );
+
+                setState(() {
+                  _detectedTolls.add(newPass);
+                });
+
+                Navigator.pop(ctx);
+              },
+              child: const Text('AGREGAR', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTollsSection() {
+    final currencyFmt = NumberFormat.currency(locale: 'es_CL', symbol: '\$', decimalDigits: 0);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.toll_outlined, size: 16, color: Colors.amberAccent),
+                const SizedBox(width: 6),
+                const Text(
+                  'Peajes en Ruta',
+                  style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                ),
+                if (_detectedTolls.isNotEmpty) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: Colors.amberAccent.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${_detectedTolls.length}',
+                      style: const TextStyle(color: Colors.amberAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            if (_isLoadingTolls)
+              const SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amberAccent),
+              ),
+          ],
+        ),
+        const SizedBox(height: 6),
+
+        if (_isLoadingTolls)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.amber.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.amber.withValues(alpha: 0.2)),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.search, size: 14, color: Colors.amberAccent),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Identificando pasadas por peajes...',
+                    style: TextStyle(color: Colors.amberAccent, fontSize: 11),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else if (_detectedTolls.isEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.black26,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.toll_outlined, size: 16, color: Colors.grey),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Sin pasadas por peajes detectadas en este tramo.',
+                    style: TextStyle(color: Colors.grey, fontSize: 11),
+                  ),
+                ),
+                InkWell(
+                  onTap: _showAddManualTollDialog,
+                  borderRadius: BorderRadius.circular(6),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.add, size: 14, color: Colors.amberAccent),
+                        SizedBox(width: 2),
+                        Text('Agregar', style: TextStyle(color: Colors.amberAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else ...[
+          ..._detectedTolls.map((toll) {
+            return Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: toll.isAlreadySaved
+                    ? Colors.white.withValues(alpha: 0.03)
+                    : (toll.isSelected ? const Color(0xFF1E2836) : Colors.black12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: toll.isAlreadySaved
+                      ? Colors.green.withValues(alpha: 0.3)
+                      : (toll.isSelected ? Colors.amber.withValues(alpha: 0.4) : Colors.white10),
+                ),
+              ),
+              child: Row(
+                children: [
+                  if (toll.isAlreadySaved)
+                    const Padding(
+                      padding: EdgeInsets.only(right: 6),
+                      child: Icon(Icons.check_circle, size: 18, color: Colors.greenAccent),
+                    )
+                  else
+                    SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: Checkbox(
+                        value: toll.isSelected,
+                        activeColor: Colors.amberAccent,
+                        checkColor: Colors.black,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                        visualDensity: VisualDensity.compact,
+                        onChanged: (val) {
+                          setState(() {
+                            toll.isSelected = val ?? false;
+                          });
+                        },
+                      ),
+                    ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                toll.peaje.nombre,
+                                style: TextStyle(
+                                  color: toll.isSelected ? Colors.white : Colors.grey,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  decoration: toll.isSelected ? null : TextDecoration.lineThrough,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (toll.isAlreadySaved)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text('Rendido', style: TextStyle(color: Colors.greenAccent, fontSize: 9.5, fontWeight: FontWeight.bold)),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          toll.isFromGps
+                              ? '${toll.peaje.ruta.isNotEmpty ? "${toll.peaje.ruta} • " : ""}🛰️ ${DateFormat('HH:mm').format(toll.passTime)} hrs (~${toll.distanceMeters.toStringAsFixed(0)}m)'
+                              : '${toll.peaje.ruta.isNotEmpty ? "${toll.peaje.ruta} • " : ""}✍️ Agregado manual',
+                          style: const TextStyle(color: Colors.white54, fontSize: 10.5),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 82,
+                    child: TextFormField(
+                      controller: toll.amountController,
+                      enabled: toll.isSelected && !toll.isAlreadySaved,
+                      keyboardType: TextInputType.number,
+                      style: TextStyle(
+                        color: toll.isSelected ? Colors.amberAccent : Colors.grey,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        prefixText: '\$ ',
+                        prefixStyle: const TextStyle(color: Colors.white70, fontSize: 11),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                        filled: true,
+                        fillColor: Colors.black38,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide.none),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: Colors.amberAccent)),
+                      ),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                  if (!toll.isFromGps && !toll.isAlreadySaved)
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 16, color: Colors.redAccent),
+                      padding: const EdgeInsets.only(left: 4),
+                      constraints: const BoxConstraints(),
+                      tooltip: 'Quitar',
+                      onPressed: () {
+                        setState(() {
+                          toll.dispose();
+                          _detectedTolls.remove(toll);
+                        });
+                      },
+                    ),
+                ],
+              ),
+            );
+          }),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              InkWell(
+                onTap: _showAddManualTollDialog,
+                borderRadius: BorderRadius.circular(6),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+                  child: Row(
+                    children: [
+                      Icon(Icons.add_circle_outline, size: 14, color: Colors.amberAccent),
+                      SizedBox(width: 4),
+                      Text('Agregar otro peaje', style: TextStyle(color: Colors.amberAccent, fontSize: 11)),
+                    ],
+                  ),
+                ),
+              ),
+              Text(
+                'Total: ${currencyFmt.format(_totalValidatedTolls)}',
+                style: const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 12),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final timeFmt = DateFormat('HH:mm');
+    final startTimeStr = timeFmt.format(widget.trip.startDate);
+    final endTimeStr = timeFmt.format(DateTime.now());
+
+    return AlertDialog(
+      backgroundColor: const Color(0xFF161B22),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.check_circle_outline, color: Colors.greenAccent, size: 22),
+          ),
+          const SizedBox(width: 12),
+          const Text('Finalizar Viaje', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 18)),
+        ],
+      ),
+      content: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black26,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.white10),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.route, size: 14, color: Colors.white60),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        '${widget.trip.origin} ➔ ${widget.trip.destination}',
+                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Banner de recomendación GPS
+              if (_isLoadingGps)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.blueAccent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3)),
+                  ),
+                  child: const Row(
+                    children: [
+                      SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blueAccent)),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Consultando KM reales y peajes capturados por GPS...',
+                          style: TextStyle(color: Colors.lightBlueAccent, fontSize: 11.5),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else if (_gpsKm != null && _gpsKm! > 0)
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F5132).withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.5)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.satellite_alt, color: Colors.greenAccent, size: 22),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '🛰️ GPS Detectó: ${_gpsKm!.toStringAsFixed(1)} KM reales',
+                              style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                            Text(
+                              'Tramo: $startTimeStr ➔ $endTimeStr (${widget.targetPlate})',
+                              style: const TextStyle(color: Colors.white70, fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.refresh, size: 18, color: Colors.greenAccent),
+                        tooltip: 'Recalcular GPS',
+                        onPressed: _queryGpsAndTolls,
+                      ),
+                    ],
+                  ),
+                )
+              else if (_suggestedTheoreticalKm != null)
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.purple.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.purpleAccent.withValues(alpha: 0.4)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.auto_awesome, color: Colors.purpleAccent, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'KM sugerido por tabla: ${_suggestedTheoreticalKm!.toStringAsFixed(0)} KM',
+                          style: const TextStyle(color: Colors.purpleAccent, fontSize: 11),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline, color: Colors.amber, size: 18),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Sin señal GPS en este tramo. Ingrese los KM manualmente.',
+                          style: TextStyle(color: Colors.amber, fontSize: 11),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.refresh, size: 16, color: Colors.amber),
+                        onPressed: _queryGpsAndTolls,
+                      ),
+                    ],
+                  ),
+                ),
+
+              const SizedBox(height: 14),
+
+              // SECCIÓN DE PEAJES DETECTADOS / VALIDACIÓN
+              _buildTollsSection(),
+
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _guideCtrl,
+                keyboardType: TextInputType.text,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: 'Nº Guía de Despacho (opcional)',
+                  labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
+                  hintText: 'Ej: 12345',
+                  hintStyle: const TextStyle(color: Colors.white30),
+                  filled: true,
+                  fillColor: Colors.black26,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _kmCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                decoration: InputDecoration(
+                  labelText: 'Kilómetros recorridos',
+                  labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
+                  suffixText: 'KM',
+                  suffixStyle: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold),
+                  filled: true,
+                  fillColor: _gpsKm != null ? Colors.green.withValues(alpha: 0.1) : Colors.black26,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: _gpsKm != null ? const BorderSide(color: Colors.greenAccent, width: 1) : BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: _gpsKm != null ? const BorderSide(color: Colors.greenAccent, width: 1) : BorderSide.none,
+                  ),
+                ),
+                validator: (val) {
+                  if (val == null || val.trim().isEmpty) {
+                    return 'Ingresa los kilómetros recorridos';
+                  }
+                  final parsed = double.tryParse(val.replaceAll(',', '.').trim());
+                  if (parsed == null || parsed < 0) {
+                    return 'Ingresa un valor numérico válido';
+                  }
+                  return null;
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isFinalizing ? null : () => Navigator.pop(context),
+          child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFFFFFFF),
+            foregroundColor: Colors.black,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          onPressed: _isFinalizing
+              ? null
+              : () async {
+                  if (!_formKey.currentState!.validate()) return;
+                  final messenger = ScaffoldMessenger.of(context);
+                  final nav = Navigator.of(context);
+
+                  setState(() => _isFinalizing = true);
+
+                  final parsedKm = double.tryParse(_kmCtrl.text.replaceAll(',', '.').trim()) ?? 0.0;
+                  final activeShift = ref.read(activeShiftProvider).value;
+
+                  try {
+                    // 1. Finalizar viaje y registrar odómetro / guía
+                    await ref.read(tripRepositoryProvider).endTripWithGuide(
+                      widget.trip.id,
+                      _guideCtrl.text.trim(),
+                      totalKm: parsedKm,
+                    );
+
+                    // 2. Guardar y conciliar los peajes seleccionados en /gastos
+                    int savedTollsCount = 0;
+                    double totalTollsAmount = 0.0;
+
+                    for (final toll in _detectedTolls) {
+                      if (!toll.isSelected || toll.isAlreadySaved) continue;
+                      final tollAmount = toll.amount;
+                      if (tollAmount <= 0) continue;
+
+                      final expenseId = 'EXP-TOLL-${DateTime.now().millisecondsSinceEpoch}-$savedTollsCount';
+                      final expense = ExpenseModel(
+                        id: expenseId,
+                        idEmpresa: activeShift?.idEmpresa ?? widget.trip.idEmpresa,
+                        idChofer: widget.trip.idChofer,
+                        idJornada: widget.trip.idJornada,
+                        tripId: widget.trip.id,
+                        amount: tollAmount,
+                        type: 'Peaje',
+                        litros: null,
+                        date: toll.passTime,
+                        description: 'Peaje: ${toll.peaje.nombre}${toll.peaje.ruta.isNotEmpty ? ' (${toll.peaje.ruta})' : ''}',
+                        status: 'Pendiente',
+                        vehicleId: widget.targetPlate,
+                      );
+
+                      await ref.read(tripRepositoryProvider).addExpense(expense);
+                      savedTollsCount++;
+                      totalTollsAmount += tollAmount;
+                    }
+
+                    nav.pop();
+
+                    final currencyFmt = NumberFormat.currency(locale: 'es_CL', symbol: '\$', decimalDigits: 0);
+                    final tollsMsg = savedTollsCount > 0
+                        ? ' • $savedTollsCount peajes conciliados (${currencyFmt.format(totalTollsAmount)})'
+                        : '';
+
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text('✓ Viaje cerrado: ${parsedKm.toStringAsFixed(1)} KM$tollsMsg'),
+                        backgroundColor: Colors.green,
+                        duration: const Duration(seconds: 4),
+                      ),
+                    );
+                  } catch (e) {
+                    if (mounted) {
+                      setState(() => _isFinalizing = false);
+                      messenger.showSnackBar(
+                        SnackBar(content: Text('Error al finalizar viaje: $e'), backgroundColor: Colors.red),
+                      );
+                    }
+                  }
+                },
+          child: _isFinalizing
+              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+              : const Text('FINALIZAR', style: TextStyle(fontWeight: FontWeight.bold)),
+        ),
+      ],
     );
   }
 }

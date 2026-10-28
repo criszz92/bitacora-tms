@@ -89,7 +89,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       (Icons.satellite_alt_outlined, 'Torre de Control', 0),
       (Icons.auto_awesome_outlined, 'Solicitudes IA', 0),
       (Icons.analytics_outlined, 'Analítica', 0),
-      (Icons.local_gas_station_outlined, 'Rendimiento & Diésel', 0),
+      (Icons.local_gas_station, 'Rendimiento & Diésel', 0),
       (Icons.cloud_sync_outlined, 'Ziyu / Proformas', 0),
       (Icons.calculate_outlined, 'Cotizador', 0),
       (Icons.receipt_outlined, 'Liquidaciones', 0),
