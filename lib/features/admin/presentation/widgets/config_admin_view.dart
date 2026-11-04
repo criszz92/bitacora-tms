@@ -27,6 +27,9 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
   final _dieselNetoCtrl = TextEditingController();
   final _diasLaboralesCtrl = TextEditingController();
   final _margenObjetivoCtrl = TextEditingController();
+  final _ppmCtrl = TextEditingController();
+  final _remanenteCtrl = TextEditingController();
+  final _recuperacionIepdCtrl = TextEditingController();
 
   // Emisor
   final _razonSocialCtrl = TextEditingController();
@@ -64,6 +67,9 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
     _dieselNetoCtrl.text = config.precioDieselNeto.toStringAsFixed(0);
     _diasLaboralesCtrl.text = config.diasLaboralesMes.toString();
     _margenObjetivoCtrl.text = config.margenObjetivoCotizacion.toStringAsFixed(1);
+    _ppmCtrl.text = config.tasaPPM.toStringAsFixed(1);
+    _remanenteCtrl.text = config.remanenteCreditoFiscalAcumulado.toStringAsFixed(0);
+    _recuperacionIepdCtrl.text = config.porcentajeRecuperacionIepd.toStringAsFixed(0);
     _razonSocialCtrl.text = config.emisorRazonSocial;
     _rutCtrl.text = config.emisorRut;
     _giroCtrl.text = config.emisorGiro;
@@ -161,6 +167,9 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
         precioDieselNeto: double.tryParse(_dieselNetoCtrl.text.replaceAll('.', '')) ?? 800,
         diasLaboralesMes: int.tryParse(_diasLaboralesCtrl.text) ?? 22,
         margenObjetivoCotizacion: double.tryParse(_margenObjetivoCtrl.text) ?? 25.0,
+        tasaPPM: double.tryParse(_ppmCtrl.text.replaceAll(',', '.')) ?? 1.5,
+        remanenteCreditoFiscalAcumulado: double.tryParse(_remanenteCtrl.text.replaceAll('.', '').replaceAll(',', '.')) ?? 0.0,
+        porcentajeRecuperacionIepd: double.tryParse(_recuperacionIepdCtrl.text) ?? 80.0,
         maintenanceRules: _maintenanceRules,
         gastosRecurrentes: _recurringExpenses,
         mesesGastosFijosAplicados: currentConfig?.mesesGastosFijosAplicados ?? [],
@@ -444,6 +453,19 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
                                 const SizedBox(width: 16),
                                 Expanded(child: _buildTextField(_dieselNetoCtrl, 'Diésel Neto (Referencia)', 'Ej: 800')),
                               ],
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(child: _buildTextField(_remanenteCtrl, '⭐ Remanente IVA Crédito Acumulado', 'Ej: 3991596 (Compra camión)')),
+                                const SizedBox(width: 16),
+                                Expanded(child: _buildTextField(_ppmCtrl, 'Tasa PPM Mensual (%)', 'Ej: 1.5')),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            const Text(
+                              'El Remanente Acumulado se descuenta automáticamente del IVA débito mes a mes hasta agotarse.',
+                              style: TextStyle(color: Colors.grey, fontSize: 11),
                             ),
                           ],
                         ),
