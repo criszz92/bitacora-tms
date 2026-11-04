@@ -203,11 +203,21 @@ class KpiData {
   double get flujoCajaReal => summary['flujoCajaReal'] ?? 0;
   double get margenNetoCaja => summary['margenNetoCaja'] ?? 0;
   
-  // Para F29 detallado
+  // Para F29 detallado & Fuente de Verdad
   double get ivaDebito => summary['ivaDebito'] ?? 0;
   double get ivaCredito => summary['ivaCredito'] ?? 0;
   double get recuperacionDiesel => summary['recuperacionDiesel'] ?? 0;
   double get litrosDiesel => summary['litrosDiesel'] ?? 0;
+  double get remanenteAnterior => summary['remanenteAnterior'] ?? 0;
+  double get nuevoRemanenteFavor => summary['nuevoRemanenteFavor'] ?? 0;
+  double get ppmObligatorio => summary['ppmObligatorio'] ?? 0;
+  double get totalF29Pagar => summary['totalF29Pagar'] ?? 0;
+  double get gastosNetos => summary['gastosNetos'] ?? 0;
+  double get ingresosBrutos => summary['ingresosBrutos'] ?? 0;
+  double get mantenimientoTeoricoKm => summary['mantenimientoTeoricoKm'] ?? 0;
+  double get mantenimientoRealEjecutado => summary['mantenimientoRealEjecutado'] ?? 0;
+  double get saldoFondoMantenimiento => summary['saldoFondoMantenimiento'] ?? 0;
+  double get totalPeajesExentos => summary['totalPeajesExentos'] ?? 0;
 
   const KpiData({required this.totalViajes, required this.summary});
 }
@@ -231,11 +241,14 @@ final financialSummaryProvider = Provider<AsyncValue<Map<String, double>>>((ref)
   final utmValue = config.utmHistory[monthKey];
   final dieselValue = config.getDieselManualForMonth(monthKey);
 
+  final vehicles = ref.watch(adminVehiclesProvider).value ?? [];
+
   final summary = ChileanFinancialCalculator.calculateCompanySummary(
     allDrivers: choferes,
     monthlyTrips: filteredTrips,
     directExpenses: filteredExpenses,
     config: config,
+    vehicles: vehicles,
     customUtmValue: utmValue,
     customDieselValue: dieselValue,
   );

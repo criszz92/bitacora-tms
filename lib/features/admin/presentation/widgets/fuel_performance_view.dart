@@ -219,8 +219,8 @@ class _FuelPerformanceViewState extends ConsumerState<FuelPerformanceView> {
                                   Text('${v.marca ?? ''} ${v.modelo ?? ''}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
                                   Text(
                                     v.tieneEquipoAuxiliar
-                                        ? '❄️ Auxiliar: ${v.identificadorAuxiliar ?? 'Thermo King'}'
-                                        : 'Camión convencional',
+                                        ? '❄️ Aux: ${v.identificadorAuxiliar ?? 'Thermo'} | Ralentí: ${v.consumoRalentiLitrosHora.toStringAsFixed(1)} L/h'
+                                        : 'Ralentí: ${v.consumoRalentiLitrosHora.toStringAsFixed(1)} L/h (Alerta >${v.maxMinutosRalentiAlerta}m)',
                                     style: const TextStyle(fontSize: 11, color: Colors.grey),
                                   ),
                                 ],
@@ -414,6 +414,7 @@ class _FuelPerformanceViewState extends ConsumerState<FuelPerformanceView> {
                         children: [
                           _buildSubMetric('Autonomía Estimada', '~${tank.estimatedAutonomyKm.toStringAsFixed(0)} KM', Colors.cyanAccent),
                           _buildSubMetric('Rendimiento Usado', '${tank.expectedRendimiento.toStringAsFixed(2)} km/L', Colors.white),
+                          _buildSubMetric('Consumo Ralentí', '${vehicle.consumoRalentiLitrosHora.toStringAsFixed(1)} L/h (Max ${vehicle.maxMinutosRalentiAlerta}m)', Colors.orangeAccent),
                           _buildSubMetric('Dinero en Estanque', '\$ ${NumberUtils.formatCurrency(tank.fuelValueClp)}', Colors.greenAccent),
                         ],
                       ),

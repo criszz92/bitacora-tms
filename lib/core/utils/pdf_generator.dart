@@ -332,17 +332,20 @@ class PdfGenerator {
               context: context,
               headers: ['Fecha', 'Guía', 'Destino', 'Contenedor', 'KM', 'Cliente', 'Tipo', 'Valor'],
               headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
-              cellStyle: const pw.TextStyle(fontSize: 10),
               data: trips.map((t) {
+                final isNoRevenue = !t.isOperativo;
+                final tipoDesc = isNoRevenue
+                    ? (t.isRetiroAnticipado ? 'Retiro Anticipado' : (t.isMantenimiento ? 'Mantenimiento' : 'Traslado'))
+                    : t.billingType;
                 return [
                   '${t.startDate.day}/${t.startDate.month}/${t.startDate.year}',
                   t.guideNumber ?? '-',
                   t.destination,
                   t.containerNumber ?? '-',
                   '${t.totalKm?.toInt() ?? 0}',
-                  t.client,
-                  t.billingType,
-                  currency.format(t.value),
+                  isNoRevenue && t.client.isEmpty ? 'Operación Interna' : t.client,
+                  tipoDesc,
+                  isNoRevenue ? '\$0' : currency.format(t.value),
                 ];
               }).toList(),
             ),

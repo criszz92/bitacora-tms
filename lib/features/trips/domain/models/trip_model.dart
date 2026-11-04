@@ -25,6 +25,12 @@ class TripModel {
   final DateTime? kmEditadoEn;  // Timestamp de la última edición de totalKm
   final String? hitoActual;     // Hito operativo actual (ej: "En Antepuerto", "En Cliente", etc.)
   final List<Map<String, dynamic>>? hitos; // Historial de hitos registrados con timestamp
+  final String tipoMovimiento;  // 'operativo' (default) | 'retiro_anticipado' | 'traslado_mantenimiento'
+
+  bool get isOperativo => tipoMovimiento == 'operativo';
+  bool get isRetiroAnticipado => tipoMovimiento == 'retiro_anticipado';
+  bool get isMantenimiento => tipoMovimiento == 'traslado_mantenimiento';
+  bool get generaGanancia => isOperativo;
 
   TripModel({
     required this.id,
@@ -53,6 +59,7 @@ class TripModel {
     this.kmEditadoEn,
     this.hitoActual,
     this.hitos,
+    this.tipoMovimiento = 'operativo',
   });
 
   Map<String, dynamic> toMap() {
@@ -78,6 +85,7 @@ class TripModel {
       'comments': comments,
       'extraCostos': extraCostos,
       'sobreEstadia': sobreEstadia,
+      'tipoMovimiento': tipoMovimiento,
       if (kmEditadoPor != null) 'kmEditadoPor': kmEditadoPor,
       if (kmEditadoEn != null) 'kmEditadoEn': kmEditadoEn!.toIso8601String(),
       if (hitoActual != null) 'hitoActual': hitoActual,
@@ -113,6 +121,7 @@ class TripModel {
       kmEditadoEn: map['kmEditadoEn'] != null ? DateTime.parse(map['kmEditadoEn']) : null,
       hitoActual: map['hitoActual'],
       hitos: map['hitos'] != null ? List<Map<String, dynamic>>.from(map['hitos']) : null,
+      tipoMovimiento: map['tipoMovimiento'] ?? 'operativo',
     );
   }
 
@@ -143,6 +152,7 @@ class TripModel {
     DateTime? kmEditadoEn,
     String? hitoActual,
     List<Map<String, dynamic>>? hitos,
+    String? tipoMovimiento,
   }) {
     return TripModel(
       id: id ?? this.id,
@@ -171,6 +181,7 @@ class TripModel {
       kmEditadoEn: kmEditadoEn ?? this.kmEditadoEn,
       hitoActual: hitoActual ?? this.hitoActual,
       hitos: hitos ?? this.hitos,
+      tipoMovimiento: tipoMovimiento ?? this.tipoMovimiento,
     );
   }
 }

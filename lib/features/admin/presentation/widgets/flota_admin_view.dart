@@ -65,7 +65,7 @@ class FlotaAdminView extends ConsumerWidget {
     return GridView.builder(
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
         maxCrossAxisExtent: 380,
-        childAspectRatio: 1.4,
+        childAspectRatio: 1.25,
         crossAxisSpacing: 16,
         mainAxisSpacing: 16,
       ),
@@ -144,6 +144,17 @@ class FlotaAdminView extends ConsumerWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  const Icon(Icons.timer_outlined, size: 14, color: Colors.orangeAccent),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Ralentí: ${v.consumoRalentiLitrosHora.toStringAsFixed(1)} L/h (Alerta >${v.maxMinutosRalentiAlerta} min)',
+                    style: const TextStyle(color: Colors.orangeAccent, fontSize: 12),
+                  ),
+                ],
+              ),
               if (v.tieneEquipoAuxiliar) ...[
                 const SizedBox(height: 4),
                 Row(
@@ -171,6 +182,11 @@ class FlotaAdminView extends ConsumerWidget {
     final anioCtrl = TextEditingController(text: vehiculoAEditar?.anio?.toString());
     final estanqueCtrl = TextEditingController(text: (vehiculoAEditar?.capacidadEstanqueLitros ?? 600.0).toStringAsFixed(0));
     final rendimientoCtrl = TextEditingController(text: (vehiculoAEditar?.rendimientoKmPorLitro ?? 2.5).toStringAsFixed(1));
+    final costoMantenimientoCtrl = TextEditingController(
+      text: vehiculoAEditar?.costoMantenimientoPorKm != null ? vehiculoAEditar!.costoMantenimientoPorKm!.toStringAsFixed(0) : '',
+    );
+    final ralentiConsumoCtrl = TextEditingController(text: (vehiculoAEditar?.consumoRalentiLitrosHora ?? 2.0).toStringAsFixed(1));
+    final ralentiAlertaCtrl = TextEditingController(text: (vehiculoAEditar?.maxMinutosRalentiAlerta ?? 20).toString());
     
     // Auxiliar
     bool tieneAuxiliar = vehiculoAEditar?.tieneEquipoAuxiliar ?? false;
@@ -252,6 +268,35 @@ class FlotaAdminView extends ConsumerWidget {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 12),
+                      _dialogField(
+                        costoMantenimientoCtrl,
+                        'Costo Desgaste (\$ / KM) - Opcional',
+                        TextCapitalization.none,
+                        false,
+                        inputType: TextInputType.number,
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.only(left: 4, top: 2),
+                        child: Text(
+                          'Dejar vacío para usar la regla global de la empresa (CLP por km). Si se especifica, tendrá prioridad en el cotizador y provisión.',
+                          style: TextStyle(color: Colors.grey, fontSize: 10),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text('Consumo en Ralentí & Cuidado de Turbo', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orangeAccent, fontSize: 13)),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _dialogField(ralentiConsumoCtrl, 'Consumo Ralentí (Lts/Hr)', TextCapitalization.none, true, inputType: const TextInputType.numberWithOptions(decimal: true)),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _dialogField(ralentiAlertaCtrl, 'Alerta Ralentí Excesivo (Min)', TextCapitalization.none, true, inputType: TextInputType.number),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 16),
                       // SECCIÓN EQUIPO DE FRÍO AUXILIAR
                       Container(
@@ -321,6 +366,8 @@ class FlotaAdminView extends ConsumerWidget {
               if (!formKey.currentState!.validate()) return;
               final capEstanque = double.tryParse(estanqueCtrl.text.trim()) ?? 600.0;
               final rendKm = double.tryParse(rendimientoCtrl.text.trim()) ?? 2.5;
+              final ralentiConsumo = double.tryParse(ralentiConsumoCtrl.text.trim()) ?? 2.0;
+              final ralentiAlerta = int.tryParse(ralentiAlertaCtrl.text.trim()) ?? 20;
               final capAux = tieneAuxiliar ? double.tryParse(capAuxiliarCtrl.text.trim()) : null;
               final consumoAux = tieneAuxiliar ? (double.tryParse(consumoAuxCtrl.text.trim()) ?? 2.5) : 2.5;
 
@@ -338,6 +385,7 @@ class FlotaAdminView extends ConsumerWidget {
                 soapExpirationDate: vehiculoAEditar?.soapExpirationDate,
                 permisoExpirationDate: vehiculoAEditar?.permisoExpirationDate,
                 rendimientoKmPorLitro: rendKm,
+                costoMantenimientoPorKm: double.tryParse(costoMantenimientoCtrl.text.trim()),
                 capacidadEstanqueLitros: capEstanque,
                 tanqueCalibrado: vehiculoAEditar?.tanqueCalibrado ?? false,
                 ultimoLlenadoKm: vehiculoAEditar?.ultimoLlenadoKm,
@@ -349,6 +397,8 @@ class FlotaAdminView extends ConsumerWidget {
                 consumoHoraAuxiliar: consumoAux,
                 horometroActualAuxiliar: vehiculoAEditar?.horometroActualAuxiliar,
                 ultimoLlenadoHorometroAux: vehiculoAEditar?.ultimoLlenadoHorometroAux,
+                consumoRalentiLitrosHora: ralentiConsumo,
+                maxMinutosRalentiAlerta: ralentiAlerta,
               );
 
               if (vehiculoAEditar == null) {
@@ -370,6 +420,8 @@ class FlotaAdminView extends ConsumerWidget {
     anioCtrl.dispose();
     estanqueCtrl.dispose();
     rendimientoCtrl.dispose();
+    ralentiConsumoCtrl.dispose();
+    ralentiAlertaCtrl.dispose();
     idAuxiliarCtrl.dispose();
     capAuxiliarCtrl.dispose();
     consumoAuxCtrl.dispose();

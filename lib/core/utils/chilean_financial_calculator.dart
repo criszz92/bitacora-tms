@@ -20,7 +20,7 @@ class ChileanFinancialCalculator {
     // 1. Comisión por Facturación
     double comision = 0;
     for (final trip in monthlyTrips) {
-      if (trip.idChofer == driver.uid) {
+      if (trip.idChofer == driver.uid && trip.isOperativo) {
         final facturable = trip.value + (trip.extraCostos ?? 0) + (trip.sobreEstadia ?? 0);
         comision += facturable * (config.porcentajeComision / 100);
       }
@@ -59,11 +59,11 @@ class ChileanFinancialCalculator {
       cesantia = baseParaLeyesSociales * tasa;
     }
 
-    // 5. Viáticos
+    // 5. Viáticos (solo para viajes con ganancia/operativos)
     double viaticosTotales = 0;
     if (config.tipoViatico == 'POR_VIAJE') {
       for (final trip in monthlyTrips) {
-        if (trip.idChofer == driver.uid) {
+        if (trip.idChofer == driver.uid && trip.isOperativo) {
           final threshold = config.umbralKilometrosViatico;
           final isLongTrip = (trip.totalKm ?? 0) >= threshold;
           viaticosTotales += isLongTrip 
@@ -74,7 +74,7 @@ class ChileanFinancialCalculator {
     } else {
       final Map<String, List<TripModel>> tripsByDay = {};
       for (final trip in monthlyTrips) {
-        if (trip.idChofer == driver.uid) {
+        if (trip.idChofer == driver.uid && trip.isOperativo) {
           final dayKey = '${trip.startDate.year}-${trip.startDate.month}-${trip.startDate.day}';
           tripsByDay.putIfAbsent(dayKey, () => []).add(trip);
         }
@@ -125,7 +125,7 @@ class ChileanFinancialCalculator {
     // 1. Comisión
     double comision = 0;
     for (final trip in monthlyTrips) {
-      if (trip.idChofer == driver.uid) {
+      if (trip.idChofer == driver.uid && trip.isOperativo) {
         comision += trip.value * (config.porcentajeComision / 100);
       }
     }
@@ -151,7 +151,7 @@ class ChileanFinancialCalculator {
     } else {
       if (config.tipoViatico == 'POR_VIAJE') {
         for (final trip in monthlyTrips) {
-          if (trip.idChofer == driver.uid) {
+          if (trip.idChofer == driver.uid && trip.isOperativo) {
             final threshold = config.umbralKilometrosViatico;
             final isLongTrip = (trip.totalKm ?? 0) >= threshold;
             viaticosTotales += isLongTrip 
@@ -162,7 +162,7 @@ class ChileanFinancialCalculator {
       } else {
         final Map<String, List<TripModel>> tripsByDay = {};
         for (final trip in monthlyTrips) {
-          if (trip.idChofer == driver.uid) {
+          if (trip.idChofer == driver.uid && trip.isOperativo) {
             final dayKey = '${trip.startDate.year}-${trip.startDate.month}-${trip.startDate.day}';
             tripsByDay.putIfAbsent(dayKey, () => []).add(trip);
           }
@@ -219,82 +219,98 @@ class ChileanFinancialCalculator {
     };
   }
 
-  /// Calcula el resumen financiero consolidado para la empresa con análisis tributario F29.
+  /// Calcula el resumen financiero consolidado para la empresa con análisis tributario F29 y Fuente de Verdad.
   static Map<String, double> calculateCompanySummary({
     required List<UserModel> allDrivers,
     required List<TripModel> monthlyTrips,
     required List<dynamic> directExpenses,
     required CompanyConfigModel config,
+    List<VehicleModel>? vehicles,
     double? customUtmValue,
     double? customDieselValue,
   }) {
-    double totalMontoDieselBruto = 0;
-    double litrosDieselTotal = 0;
-    for (final expense in directExpenses) {
-      if (expense.type.toLowerCase() == 'combustible') {
-        totalMontoDieselBruto += expense.amount;
-        litrosDieselTotal += (expense.litros ?? 0.0);
-      }
-    }
-    
-    double precioDieselNetoCalculado = litrosDieselTotal > 0 
-        ? (totalMontoDieselBruto / 1.19) / litrosDieselTotal 
-        : config.precioDieselNeto;
-
-    final precioDieselNetoFinal = customDieselValue ?? precioDieselNetoCalculado;
-
+    // 1. Ingresos Operacionales Netos (Facturación pura de viajes, sin IVA)
     double totalIngresosNetos = 0;
     double totalKmFlota = 0;
-    for (final trip in monthlyTrips) {
-      totalIngresosNetos += trip.value + (trip.extraCostos ?? 0) + (trip.sobreEstadia ?? 0);
-      totalKmFlota += (trip.totalKm ?? 0);
-    }
-    double ivaDebito = totalIngresosNetos * 0.19;
+    final Map<String, double> kmPorVehiculo = {};
 
-    double costoMantenimientoPorKm = 0.0;
+    for (final trip in monthlyTrips) {
+      if (trip.isOperativo) {
+        totalIngresosNetos += trip.value + (trip.extraCostos ?? 0) + (trip.sobreEstadia ?? 0);
+      }
+      final km = (trip.totalKm ?? 0);
+      totalKmFlota += km;
+      if (trip.vehicleId != null) {
+        kmPorVehiculo[trip.vehicleId!] = (kmPorVehiculo[trip.vehicleId!] ?? 0) + km;
+      }
+    }
+
+    final double ivaDebito = totalIngresosNetos * 0.19;
+
+    // 2. Mantenimiento Teórico según KM (Personalizado por camión o global)
+    double costoGlobalMantenimientoPorKm = 0.0;
     for (var rule in config.maintenanceRules) {
       final cost = (rule['cost'] as num?)?.toDouble() ?? 0;
       final km = (rule['km'] as num?)?.toDouble() ?? 1;
-      if (km > 0) costoMantenimientoPorKm += (cost / km);
+      if (km > 0) costoGlobalMantenimientoPorKm += (cost / km);
     }
-    double provisionMantenimiento = totalKmFlota * costoMantenimientoPorKm;
 
-    double totalGastosBrutos = 0;
-    double totalGastosNetos = 0;
-    double totalIvaCredito = 0;
+    double provisionMantenimientoTeorica = 0.0;
+    if (vehicles != null && vehicles.isNotEmpty) {
+      for (final v in vehicles) {
+        final kmUnidad = kmPorVehiculo[v.id] ?? kmPorVehiculo[v.patente] ?? 0.0;
+        final costoKm = v.costoMantenimientoPorKm ?? costoGlobalMantenimientoPorKm;
+        provisionMantenimientoTeorica += (kmUnidad * costoKm);
+      }
+    } else {
+      provisionMantenimientoTeorica = totalKmFlota * costoGlobalMantenimientoPorKm;
+    }
+
+    // 3. Gastos Reales Pagados y Desglose Tributario Quirúrgico
+    double totalDesembolsoGastosBrutos = 0;
+    double totalGastosOperativosNetos = 0;
+    double totalIvaCreditoGastos = 0;
     double litrosDieselReales = 0;
+    double totalGastosRealesMantenimiento = 0;
+    double totalPeajesExentos = 0;
 
     for (final expense in directExpenses) {
-      final typeLower = expense.type.toLowerCase();
-      final isMaintenance = typeLower.contains('manten');
+      final amount = (expense.amount as num).toDouble();
+      final typeLower = (expense.type as String).toLowerCase();
+      final bool isExento = (expense.isExento as bool?) ?? (typeLower == 'peaje');
+      final isMaintenance = typeLower.contains('manten') || typeLower.contains('taller') || typeLower.contains('repuesto');
 
-      double neto = expense.amount / 1.19;
-      double iva = expense.amount - neto;
-      
-      if (typeLower == 'peaje') {
-        neto = expense.amount;
-        iva = 0;
-      }
-      
-      // El IVA siempre se recupera, sin importar si es mantención real o no.
-      totalIvaCredito += iva;
+      totalDesembolsoGastosBrutos += amount;
 
-      // Solo los gastos NO relacionados a mantenimiento suman al flujo operativo directo, 
-      // porque el mantenimiento se manejará por provisión.
-      if (!isMaintenance) {
-        totalGastosBrutos += expense.amount;
-        totalGastosNetos += neto;
+      if (isMaintenance) {
+        totalGastosRealesMantenimiento += amount;
       }
 
-      if (typeLower == 'combustible') {
-        litrosDieselReales += (expense.litros ?? 0.0);
+      if (typeLower == 'peaje' || isExento) {
+        totalGastosOperativosNetos += amount;
+        if (typeLower == 'peaje') totalPeajesExentos += amount;
+      } else if (typeLower == 'combustible') {
+        final lts = (expense.litros as num?)?.toDouble() ?? 0.0;
+        litrosDieselReales += lts;
+
+        double ivaRealCombustible = (expense.customIva as num?)?.toDouble() ?? 0.0;
+        if (ivaRealCombustible <= 0) {
+          final netoEst = amount / 1.19;
+          ivaRealCombustible = amount - netoEst;
+          totalGastosOperativosNetos += netoEst;
+        } else {
+          totalGastosOperativosNetos += (amount - ivaRealCombustible);
+        }
+        totalIvaCreditoGastos += ivaRealCombustible;
+      } else {
+        final neto = amount / 1.19;
+        final iva = amount - neto;
+        totalGastosOperativosNetos += neto;
+        totalIvaCreditoGastos += iva;
       }
     }
 
-    // Integramos la Provisión de Mantenimiento al Gasto Operativo (Ahorro Inconsciente)
-    totalGastosNetos += provisionMantenimiento;
-    totalGastosBrutos += provisionMantenimiento;
-
+    // 4. Costos de Personal
     double totalCostosPersonal = 0;
     for (final driver in allDrivers) {
       if (driver.rol == 'CHOFER') {
@@ -307,35 +323,68 @@ class ChileanFinancialCalculator {
       }
     }
 
+    // 5. Ley 19.764: Beneficio Diésel
     final utmToUse = customUtmValue ?? config.valorUTM;
-    final recuperacionDiesel = litrosDieselReales * (1.5 * utmToUse / 1000);
+    final porcentajeRecup = config.porcentajeRecuperacionIepd > 0 ? (config.porcentajeRecuperacionIepd / 100.0) : 0.80;
+    final recuperacionDiesel = litrosDieselReales * (1.5 * utmToUse / 1000.0) * porcentajeRecup;
 
-    final ivaNetoPagar = ivaDebito - totalIvaCredito - recuperacionDiesel;
+    // 6. Liquidación Tributaria F29 (Fuente de Verdad SII)
+    final double ppmObligatorio = totalIngresosNetos * (config.tasaPPM / 100.0);
+    final double remanenteAnterior = config.remanenteCreditoFiscalAcumulado;
+    final double balanceIva = ivaDebito - totalIvaCreditoGastos - recuperacionDiesel - remanenteAnterior;
 
-    final resultadoOperacional = totalIngresosNetos - totalGastosNetos - totalCostosPersonal;
-    final flujoCajaReal = resultadoOperacional - ivaNetoPagar;
-    final margenOperacional = totalIngresosNetos > 0 ? (resultadoOperacional / totalIngresosNetos) * 100 : 0.0;
-    final margenNetoCaja = totalIngresosNetos > 0 ? (flujoCajaReal / totalIngresosNetos) * 100 : 0.0;
+    double ivaAPagarFinal = 0.0;
+    double nuevoRemanenteFavor = 0.0;
+
+    if (balanceIva > 0) {
+      ivaAPagarFinal = balanceIva;
+      nuevoRemanenteFavor = 0.0;
+    } else {
+      ivaAPagarFinal = 0.0;
+      nuevoRemanenteFavor = balanceIva.abs();
+    }
+
+    final double totalF29Pagar = ivaAPagarFinal + ppmObligatorio;
+
+    // 7. Bloques Ejecutivos
+    final double resultadoOperacionalNeto = totalIngresosNetos - totalGastosOperativosNetos - totalCostosPersonal;
+    final double margenOperacionalPct = totalIngresosNetos > 0 ? (resultadoOperacionalNeto / totalIngresosNetos) * 100 : 0.0;
+
+    final double totalIngresosBrutosCobrados = totalIngresosNetos * 1.19;
+    final double flujoCajaRealBolsillo = totalIngresosBrutosCobrados - totalDesembolsoGastosBrutos - totalCostosPersonal - totalF29Pagar;
+    final double margenNetoCajaPct = totalIngresosBrutosCobrados > 0 ? (flujoCajaRealBolsillo / totalIngresosBrutosCobrados) * 100 : 0.0;
+
+    final double saldoFondoMantenimiento = provisionMantenimientoTeorica - totalGastosRealesMantenimiento;
 
     return {
       'ingresosNetos': totalIngresosNetos,
-      'ivaDebito': ivaDebito,
-      'gastosBrutos': totalGastosBrutos,
-      'gastosNetos': totalGastosNetos,
-      'ivaCredito': totalIvaCredito,
-      'litrosDiesel': litrosDieselReales,
-      'recuperacionDiesel': recuperacionDiesel,
+      'gastosNetos': totalGastosOperativosNetos,
       'costosPersonal': totalCostosPersonal,
-      'ivaNetoPagar': ivaNetoPagar,
-      'resultadoOperacional': resultadoOperacional,
-      'flujoCajaReal': flujoCajaReal,
-      'margenOperacional': margenOperacional,
-      'margenNetoCaja': margenNetoCaja,
-      'precioDieselNeto': precioDieselNetoFinal,
-      'precioDieselCalculado': precioDieselNetoCalculado,
+      'resultadoOperacional': resultadoOperacionalNeto,
+      'margenOperacional': margenOperacionalPct,
+      'ivaDebito': ivaDebito,
+      'ivaCredito': totalIvaCreditoGastos,
+      'recuperacionDiesel': recuperacionDiesel,
+      'remanenteAnterior': remanenteAnterior,
+      'nuevoRemanenteFavor': nuevoRemanenteFavor,
+      'ppmObligatorio': ppmObligatorio,
+      'ivaNetoPagar': ivaAPagarFinal,
+      'totalF29Pagar': totalF29Pagar,
+      'ingresosBrutos': totalIngresosBrutosCobrados,
+      'gastosBrutos': totalDesembolsoGastosBrutos,
+      'flujoCajaReal': flujoCajaRealBolsillo,
+      'margenNetoCaja': margenNetoCajaPct,
+      'mantenimientoTeoricoKm': provisionMantenimientoTeorica,
+      'mantenimientoRealEjecutado': totalGastosRealesMantenimiento,
+      'saldoFondoMantenimiento': saldoFondoMantenimiento,
+      'costoMantenimientoPorKmGlobal': costoGlobalMantenimientoPorKm,
+      'litrosDiesel': litrosDieselReales,
+      'totalPeajesExentos': totalPeajesExentos,
+      'totalKmFlota': totalKmFlota,
+      'precioDieselNeto': customDieselValue ?? config.precioDieselNeto,
       'ingresos': totalIngresosNetos,
-      'gastoTotalReal': totalGastosBrutos + totalCostosPersonal,
-      'utilidadReal': resultadoOperacional,
+      'gastoTotalReal': totalDesembolsoGastosBrutos + totalCostosPersonal,
+      'utilidadReal': resultadoOperacionalNeto,
     };
   }
 
@@ -397,15 +446,23 @@ class ChileanFinancialCalculator {
         double totalViaticos = 0;
         if (config.tipoViatico == 'POR_VIAJE') {
           for (final t in driverTrips) {
-            final v = ((t.totalKm ?? 0) >= config.umbralKilometrosViatico) ? (driver.montoViaticoLargo ?? 10000) : (driver.montoViaticoLocal ?? 6500);
-            tripViaticos[t.id] = v;
-            totalViaticos += v;
+            if (t.isOperativo) {
+              final v = ((t.totalKm ?? 0) >= config.umbralKilometrosViatico) ? (driver.montoViaticoLargo ?? 10000) : (driver.montoViaticoLocal ?? 6500);
+              tripViaticos[t.id] = v;
+              totalViaticos += v;
+            } else {
+              tripViaticos[t.id] = 0.0;
+            }
           }
         } else {
           final Map<String, List<TripModel>> tripsByDay = {};
           for (final t in driverTrips) {
-            final dayKey = '${t.startDate.year}-${t.startDate.month}-${t.startDate.day}';
-            tripsByDay.putIfAbsent(dayKey, () => []).add(t);
+            if (t.isOperativo) {
+              final dayKey = '${t.startDate.year}-${t.startDate.month}-${t.startDate.day}';
+              tripsByDay.putIfAbsent(dayKey, () => []).add(t);
+            } else {
+              tripViaticos[t.id] = 0.0;
+            }
           }
           for (final dayTrips in tripsByDay.values) {
             bool existsLongTrip = dayTrips.any((t) => (t.totalKm ?? 0.0) >= config.umbralKilometrosViatico);
@@ -422,8 +479,10 @@ class ChileanFinancialCalculator {
         
         double totalComisiones = 0;
         for (final t in driverTrips) {
-          final facturable = t.value + (t.extraCostos ?? 0) + (t.sobreEstadia ?? 0);
-          totalComisiones += facturable * (config.porcentajeComision / 100);
+          if (t.isOperativo) {
+            final facturable = t.value + (t.extraCostos ?? 0) + (t.sobreEstadia ?? 0);
+            totalComisiones += facturable * (config.porcentajeComision / 100);
+          }
         }
         
         double fixedCost = dMonthlyCost - totalComisiones - totalViaticos;
@@ -471,17 +530,17 @@ class ChileanFinancialCalculator {
         current = current.add(const Duration(days: 1));
       }
 
-      // B) Costo Variable (Comisión por Facturación)
-      final facturable = trip.value + (trip.extraCostos ?? 0) + (trip.sobreEstadia ?? 0);
+      // B) Costo Variable (Comisión por Facturación - 0 si no es operativo)
+      final facturable = trip.isOperativo ? (trip.value + (trip.extraCostos ?? 0) + (trip.sobreEstadia ?? 0)) : 0.0;
       double commissionCost = facturable * (config.porcentajeComision / 100);
 
-      // C) Viáticos
+      // C) Viáticos (0 si no es operativo)
       double viatico = tripViaticos[trip.id] ?? 0.0;
 
       double personalCost = baseSalaryCost + commissionCost;
       double maintenanceCost = tripKm * costoMantenimientoPorKm;
 
-      final facturableTotal = trip.value + (trip.extraCostos ?? 0) + (trip.sobreEstadia ?? 0);
+      final facturableTotal = trip.isOperativo ? (trip.value + (trip.extraCostos ?? 0) + (trip.sobreEstadia ?? 0)) : 0.0;
       routeStats.putIfAbsent(routeKey, () => []).add({
         'income': facturableTotal,
         'fuel': fuelCost / 1.19,
@@ -572,12 +631,14 @@ class ChileanFinancialCalculator {
     // 4. Comisión del chofer
     final double comision = tarifaPropuesta * (config.porcentajeComision / 100);
 
-    // 5. Mantenimiento
-    double costoMantenimientoPorKm = 0.0;
-    for (var rule in config.maintenanceRules) {
-      final cost = (rule['cost'] as num?)?.toDouble() ?? 0;
-      final km = (rule['km'] as num?)?.toDouble() ?? 1;
-      if (km > 0) costoMantenimientoPorKm += (cost / km);
+    // 5. Mantenimiento (Usa el costo personalizado del camión si existe, sino el global)
+    double costoMantenimientoPorKm = vehicle.costoMantenimientoPorKm ?? 0.0;
+    if (costoMantenimientoPorKm <= 0) {
+      for (var rule in config.maintenanceRules) {
+        final cost = (rule['cost'] as num?)?.toDouble() ?? 0;
+        final km = (rule['km'] as num?)?.toDouble() ?? 1;
+        if (km > 0) costoMantenimientoPorKm += (cost / km);
+      }
     }
     final double mantenimiento = kmTotal * costoMantenimientoPorKm;
 

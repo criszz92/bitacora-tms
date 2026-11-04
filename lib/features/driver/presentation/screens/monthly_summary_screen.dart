@@ -60,20 +60,24 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
                 
                 final trips = snapshot.data!.where((t) => t.idChofer == driver.uid).toList();
                 
-                // Comisión:
+                // Comisión: solo viajes operativos
                 double totalFacturacion = 0;
                 for(var t in trips) {
-                  totalFacturacion += t.value;
+                  if (t.isOperativo) {
+                    totalFacturacion += t.value;
+                  }
                 }
                 final comision = totalFacturacion * ((config?.porcentajeComision ?? 0) / 100);
                 
-                // Viáticos: Siempre Por Jornada
+                // Viáticos: Solo se generan por viajes operativos
                 double viaticos = 0;
                 
                 final Map<String, List<TripModel>> tripsByDay = {};
                 for (var t in trips) {
-                  final dayKey = "${t.startDate.year}-${t.startDate.month}-${t.startDate.day}";
-                  tripsByDay.putIfAbsent(dayKey, () => []).add(t);
+                  if (t.isOperativo) {
+                    final dayKey = "${t.startDate.year}-${t.startDate.month}-${t.startDate.day}";
+                    tripsByDay.putIfAbsent(dayKey, () => []).add(t);
+                  }
                 }
 
                 tripsByDay.forEach((day, dayTrips) {
@@ -84,8 +88,8 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
                 // Helper para saber qué viaje "paga" el viático en modo jornada
                 final List<String> primaryTripIds = [];
                 final Map<String, String> dayToPrimaryId = {};
-                // Ordenamos para que el viaje "Largo" sea el primario si existe
-                final sortedTrips = List<TripModel>.from(trips)..sort((a, b) => (b.totalKm ?? 0).compareTo(a.totalKm ?? 0));
+                // Ordenamos para que el viaje "Largo" sea el primario si existe (solo operativos)
+                final sortedTrips = List<TripModel>.from(trips.where((t) => t.isOperativo))..sort((a, b) => (b.totalKm ?? 0).compareTo(a.totalKm ?? 0));
                 for (var t in sortedTrips) {
                   final dayKey = "${t.startDate.year}-${t.startDate.month}-${t.startDate.day}";
                   if (!dayToPrimaryId.containsKey(dayKey)) {
@@ -94,12 +98,12 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
                 }
                 primaryTripIds.addAll(dayToPrimaryId.values);
 
-                // Nuevas métricas
+                // Nuevas métricas: todos los movimientos suman KM al odómetro
                 int totalKm = 0;
                 final Map<String, double> facturacionPorCliente = {};
                 for (var t in trips) {
                    totalKm += (t.totalKm ?? 0).toInt();
-                   if (t.client.isNotEmpty) {
+                   if (t.isOperativo && t.client.isNotEmpty) {
                       facturacionPorCliente[t.client] = (facturacionPorCliente[t.client] ?? 0) + t.value;
                    }
                 }
@@ -263,6 +267,7 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
     final km = t.totalKm ?? 0;
     final isLong = km >= config.umbralKilometrosViatico;
     final viatico = isLong ? (driver.montoViaticoLargo ?? 10000) : (driver.montoViaticoLocal ?? 6500);
+    final isNoRevenue = !t.isOperativo;
 
     return InkWell(
       borderRadius: BorderRadius.circular(12),
@@ -283,6 +288,25 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
                 Row(
                   children: [
                     Text('${t.startDate.day}/${t.startDate.month}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                    if (isNoRevenue) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: (t.isRetiroAnticipado ? Colors.amber : Colors.cyan).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: (t.isRetiroAnticipado ? Colors.amber : Colors.cyan).withValues(alpha: 0.4), width: 0.8),
+                        ),
+                        child: Text(
+                          t.isRetiroAnticipado ? 'RETIRO ANTICIPADO' : (t.isMantenimiento ? 'MANTENIMIENTO' : 'MOVIMIENTO INTERNO'),
+                          style: TextStyle(
+                            color: t.isRetiroAnticipado ? Colors.amberAccent : Colors.cyanAccent,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                     if (t.guideNumber != null && t.guideNumber!.isNotEmpty) ...[
                       const SizedBox(width: 8),
                       Text('Guía: ${t.guideNumber}', style: const TextStyle(color: Colors.white38, fontSize: 10)),
@@ -309,7 +333,9 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
                   ],
                 ),
                 const SizedBox(height: 4),
-                if (isPrimary)
+                if (isNoRevenue)
+                  const Text('\$0 (Sin Viático)', style: TextStyle(color: Colors.white38, fontSize: 11, fontStyle: FontStyle.italic))
+                else if (isPrimary)
                   Text(_fmt(viatico.toDouble()), style: const TextStyle(color: Colors.greenAccent, fontSize: 13, fontWeight: FontWeight.bold))
                 else
                   const Text('Incluido en jornada', style: TextStyle(color: Colors.grey, fontSize: 10, fontStyle: FontStyle.italic)),

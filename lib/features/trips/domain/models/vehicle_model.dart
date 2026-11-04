@@ -32,6 +32,13 @@ class VehicleModel {
   final double? horometroActualAuxiliar;    // Horas acumuladas de motor del equipo de frío
   final double? ultimoLlenadoHorometroAux;  // Horómetro del último Full Tank del auxiliar
 
+  // Soporte Ralentí & Cuidado de Turbo
+  final double consumoRalentiLitrosHora;    // Consumo estimado con motor encendido detenido (default: 2.0 L/h)
+  final int maxMinutosRalentiAlerta;        // Minutos máximos antes de encender alerta de ralentí excesivo (default: 20 min)
+
+  // Costo de Desgaste de Mantenimiento por KM (Opcional, override por camión)
+  final double? costoMantenimientoPorKm;    // Si es null, usa el valor global de la empresa ($49/km)
+
   VehicleModel({
     required this.id,
     required this.idEmpresa,
@@ -59,6 +66,9 @@ class VehicleModel {
     this.consumoHoraAuxiliar = 2.5,
     this.horometroActualAuxiliar,
     this.ultimoLlenadoHorometroAux,
+    this.consumoRalentiLitrosHora = 2.0,
+    this.maxMinutosRalentiAlerta = 20,
+    this.costoMantenimientoPorKm,
   });
 
   Map<String, dynamic> toMap() {
@@ -88,6 +98,9 @@ class VehicleModel {
       'consumoHoraAuxiliar': consumoHoraAuxiliar,
       'horometroActualAuxiliar': horometroActualAuxiliar,
       'ultimoLlenadoHorometroAux': ultimoLlenadoHorometroAux,
+      'consumoRalentiLitrosHora': consumoRalentiLitrosHora,
+      'maxMinutosRalentiAlerta': maxMinutosRalentiAlerta,
+      'costoMantenimientoPorKm': costoMantenimientoPorKm,
     };
   }
 
@@ -119,6 +132,9 @@ class VehicleModel {
       consumoHoraAuxiliar: (map['consumoHoraAuxiliar'] as num?)?.toDouble() ?? 2.5,
       horometroActualAuxiliar: (map['horometroActualAuxiliar'] as num?)?.toDouble(),
       ultimoLlenadoHorometroAux: (map['ultimoLlenadoHorometroAux'] as num?)?.toDouble(),
+      consumoRalentiLitrosHora: (map['consumoRalentiLitrosHora'] as num?)?.toDouble() ?? 2.0,
+      maxMinutosRalentiAlerta: (map['maxMinutosRalentiAlerta'] as num?)?.toInt() ?? 20,
+      costoMantenimientoPorKm: (map['costoMantenimientoPorKm'] as num?)?.toDouble(),
     );
   }
 
@@ -149,6 +165,9 @@ class VehicleModel {
     double? consumoHoraAuxiliar,
     double? horometroActualAuxiliar,
     double? ultimoLlenadoHorometroAux,
+    double? consumoRalentiLitrosHora,
+    int? maxMinutosRalentiAlerta,
+    double? costoMantenimientoPorKm,
   }) {
     return VehicleModel(
       id: id ?? this.id,
@@ -177,6 +196,9 @@ class VehicleModel {
       consumoHoraAuxiliar: consumoHoraAuxiliar ?? this.consumoHoraAuxiliar,
       horometroActualAuxiliar: horometroActualAuxiliar ?? this.horometroActualAuxiliar,
       ultimoLlenadoHorometroAux: ultimoLlenadoHorometroAux ?? this.ultimoLlenadoHorometroAux,
+      consumoRalentiLitrosHora: consumoRalentiLitrosHora ?? this.consumoRalentiLitrosHora,
+      maxMinutosRalentiAlerta: maxMinutosRalentiAlerta ?? this.maxMinutosRalentiAlerta,
+      costoMantenimientoPorKm: costoMantenimientoPorKm ?? this.costoMantenimientoPorKm,
     );
   }
 

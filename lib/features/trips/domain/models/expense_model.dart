@@ -20,6 +20,10 @@ class ExpenseModel {
   final double? kmRecorridosTramo;  // KM recorridos desde el último Full Tank (calculado)
   final double? rendimientoTramo;   // Km/L real obtenido en este ciclo (calculado)
 
+  // --- TRATAMIENTO TRIBUTARIO CHILENO (EXENTO VS AFECTO) ---
+  final bool isExento;              // True si el documento es Exento (ej. Peajes, arriendos s/IVA, romanas)
+  final double? customIva;          // IVA específico informado en factura (útil para diésel con MEPCO)
+
   ExpenseModel({
     required this.id,
     required this.idEmpresa,
@@ -39,6 +43,8 @@ class ExpenseModel {
     this.horometroAtFill,
     this.kmRecorridosTramo,
     this.rendimientoTramo,
+    this.isExento = false,
+    this.customIva,
   });
 
   Map<String, dynamic> toMap() {
@@ -60,6 +66,8 @@ class ExpenseModel {
       'horometroAtFill': horometroAtFill,
       'kmRecorridosTramo': kmRecorridosTramo,
       'rendimientoTramo': rendimientoTramo,
+      'isExento': isExento,
+      'customIva': customIva,
     };
   }
 
@@ -83,6 +91,8 @@ class ExpenseModel {
       horometroAtFill: (map['horometroAtFill'] as num?)?.toDouble(),
       kmRecorridosTramo: (map['kmRecorridosTramo'] as num?)?.toDouble(),
       rendimientoTramo: (map['rendimientoTramo'] as num?)?.toDouble(),
+      isExento: map['isExento'] as bool? ?? (map['type']?.toString().toLowerCase() == 'peaje'),
+      customIva: (map['customIva'] as num?)?.toDouble(),
     );
   }
 }

@@ -17,6 +17,12 @@ class CompanyConfigModel {
   final double margenObjetivoCotizacion; // default: 25.0 (porcentaje)
   final List<RecurringExpenseModel> gastosRecurrentes; // Gastos fijos mensuales preestablecidos
   final List<String> mesesGastosFijosAplicados; // Meses donde ya se aplicaron ("2026-09")
+  
+  // ─── Parámetros Tributarios F29 Avanzados (Fuente de Verdad SII) ───────────
+  final double tasaPPM; // % de Pago Provisional Mensual sobre ventas netas (default: 1.5%)
+  final double porcentajeRecuperacionIepd; // % según Ley 19.764 (default: 80% para ventas <= 2400 UF)
+  final double remanenteCreditoFiscalAcumulado; // Saldo de IVA crédito arrastrado (ej. por compra de camión)
+
   final Map<String, dynamic> extras;
 
   // ─── Datos del Emisor (para PDF de cotizaciones) ─────────────────────────
@@ -45,6 +51,9 @@ class CompanyConfigModel {
     this.margenObjetivoCotizacion = 25.0,
     this.gastosRecurrentes = const [],
     this.mesesGastosFijosAplicados = const [],
+    this.tasaPPM = 1.5,
+    this.porcentajeRecuperacionIepd = 80.0,
+    this.remanenteCreditoFiscalAcumulado = 0.0,
     this.extras = const {},
     this.emisorRazonSocial = '',
     this.emisorRut = '',
@@ -113,6 +122,9 @@ class CompanyConfigModel {
       margenObjetivoCotizacion: (map['margenObjetivoCotizacion'] as num?)?.toDouble() ?? 25.0,
       gastosRecurrentes: gRecurrentes,
       mesesGastosFijosAplicados: mesesAplicados,
+      tasaPPM: (map['tasaPPM'] as num?)?.toDouble() ?? 1.5,
+      porcentajeRecuperacionIepd: (map['porcentajeRecuperacionIepd'] as num?)?.toDouble() ?? 80.0,
+      remanenteCreditoFiscalAcumulado: (map['remanenteCreditoFiscalAcumulado'] as num?)?.toDouble() ?? 0.0,
       extras: map['extras'] ?? {},
       emisorRazonSocial: map['emisorRazonSocial'] ?? '',
       emisorRut: map['emisorRut'] ?? '',
@@ -141,6 +153,9 @@ class CompanyConfigModel {
       'margenObjetivoCotizacion': margenObjetivoCotizacion,
       'gastosRecurrentes': gastosRecurrentes.map((g) => g.toMap()).toList(),
       'mesesGastosFijosAplicados': mesesGastosFijosAplicados,
+      'tasaPPM': tasaPPM,
+      'porcentajeRecuperacionIepd': porcentajeRecuperacionIepd,
+      'remanenteCreditoFiscalAcumulado': remanenteCreditoFiscalAcumulado,
       'extras': extras,
       'emisorRazonSocial': emisorRazonSocial,
       'emisorRut': emisorRut,
@@ -169,6 +184,9 @@ class CompanyConfigModel {
     double? margenObjetivoCotizacion,
     List<RecurringExpenseModel>? gastosRecurrentes,
     List<String>? mesesGastosFijosAplicados,
+    double? tasaPPM,
+    double? porcentajeRecuperacionIepd,
+    double? remanenteCreditoFiscalAcumulado,
     Map<String, dynamic>? extras,
     String? emisorRazonSocial,
     String? emisorRut,
@@ -195,6 +213,9 @@ class CompanyConfigModel {
       margenObjetivoCotizacion: margenObjetivoCotizacion ?? this.margenObjetivoCotizacion,
       gastosRecurrentes: gastosRecurrentes ?? this.gastosRecurrentes,
       mesesGastosFijosAplicados: mesesGastosFijosAplicados ?? this.mesesGastosFijosAplicados,
+      tasaPPM: tasaPPM ?? this.tasaPPM,
+      porcentajeRecuperacionIepd: porcentajeRecuperacionIepd ?? this.porcentajeRecuperacionIepd,
+      remanenteCreditoFiscalAcumulado: remanenteCreditoFiscalAcumulado ?? this.remanenteCreditoFiscalAcumulado,
       extras: extras ?? this.extras,
       emisorRazonSocial: emisorRazonSocial ?? this.emisorRazonSocial,
       emisorRut: emisorRut ?? this.emisorRut,

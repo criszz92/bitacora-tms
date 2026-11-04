@@ -7,6 +7,7 @@ import '../../../trips/domain/models/trip_model.dart';
 import '../../../trips/domain/models/expense_model.dart';
 import '../../../trips/domain/models/vehicle_model.dart';
 import '../../domain/models/recurring_expense_model.dart';
+import '../../domain/models/company_config_model.dart';
 import '../../../../core/utils/number_utils.dart';
 import '../../domain/services/modogps_service.dart';
 
@@ -49,7 +50,7 @@ class KpiDashboardView extends ConsumerWidget {
               children: [
                 _buildOperationalKpis(kpi),
                 const SizedBox(height: 24),
-                _buildTaxAnalysisPanel(kpi, utmUsed, dieselUsed),
+                _buildTaxAnalysisPanel(kpi, utmUsed, dieselUsed, config),
               ],
             ),
           ),
@@ -184,7 +185,7 @@ class KpiDashboardView extends ConsumerWidget {
     );
   }
 
-  Widget _buildTaxAnalysisPanel(KpiData kpi, double utmUsed, double dieselUsed) {
+  Widget _buildTaxAnalysisPanel(KpiData kpi, double utmUsed, double dieselUsed, CompanyConfigModel? config) {
     return Container(
       padding: const EdgeInsets.all(32),
       decoration: BoxDecoration(
@@ -197,73 +198,236 @@ class KpiDashboardView extends ConsumerWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.analytics_outlined, color: Colors.orange, size: 22),
+              const Icon(Icons.account_balance_outlined, color: Colors.greenAccent, size: 24),
               const SizedBox(width: 12),
-              const Text('Análisis Tributario F29 & Flujo de Caja Real',
+              const Text('Análisis Financiero, F29 & Fuente de Verdad',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
               const Spacer(),
               _infoBadge('Diesel Neto: \$${dieselUsed.toStringAsFixed(0)}', Colors.blueAccent),
               const SizedBox(width: 8),
               _infoBadge('UTM Mes: ${_fmt(utmUsed)}', Colors.orange),
               const SizedBox(width: 8),
-              _infoBadge('Recuperación Diésel Activa', Colors.greenAccent),
+              _infoBadge('Recuperación IEPD ${(config?.porcentajeRecuperacionIepd ?? 80.0).toStringAsFixed(0)}% Activa', Colors.greenAccent),
             ],
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 28),
+
+          // ─── 3 BLOQUES EJECUTIVOS CONEXOS ───
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // BLOQUE 1: P&L OPERACIONAL NETO
               Expanded(
-                flex: 2,
-                child: _taxSubSection(
-                  title: 'DETALLE IVA MES',
-                  items: [
-                    _taxRow('IVA Débito (Ventas)', kpi.ivaDebito, isNegative: false),
-                    _taxRow('IVA Crédito (Gastos)', -kpi.ivaCredito, isNegative: true),
-                    _taxRow('Ley 19.764 (Diésel)', -kpi.recuperacionDiesel, isNegative: true, isHighlight: true),
-                    const Divider(color: Colors.white10, height: 24),
-                    _taxRow('ESTIMADO F29 A PAGAR', kpi.ivaNetoPagar, isBold: true, 
-                        customColor: kpi.ivaNetoPagar > 0 ? Colors.orange : Colors.greenAccent),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 40),
-              Expanded(
-                flex: 1,
-                child: _taxSubSection(
-                  title: 'INDICADORES LEY 19.764',
-                  items: [
-                    _infoRow('Lts Reales Mes', '${kpi.litrosDiesel.toStringAsFixed(1)} Lts'),
-                    _infoRow('Total Beneficio', _fmt(kpi.recuperacionDiesel)),
-                    const SizedBox(height: 12),
-                    const Text('Datos basados en cargas reales.', style: TextStyle(color: Colors.white24, fontSize: 9)),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 40),
-              Expanded(
-                flex: 2,
+                flex: 3,
                 child: Container(
-                  padding: const EdgeInsets.all(24),
+                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.03),
+                    color: Colors.white.withValues(alpha: 0.02),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+                  ),
+                  child: _taxSubSection(
+                    title: '1. RESULTADO OPERATIVO (P&L NETO)',
+                    items: [
+                      _taxRow('Facturación Fletes (Neto)', kpi.totalIngresosNetos, isBold: true),
+                      _taxRow('(-) Gastos Operativos (Netos)', -kpi.gastosNetos, isNegative: true),
+                      if (kpi.totalPeajesExentos > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 12, bottom: 4),
+                          child: Text('• Incluye Peajes Exentos: ${_fmt(kpi.totalPeajesExentos)}',
+                              style: const TextStyle(color: Colors.grey, fontSize: 10)),
+                        ),
+                      _taxRow('(-) Costos de Personal (Haberes+SIS)', -kpi.totalPersonal, isNegative: true),
+                      const Divider(color: Colors.white12, height: 20),
+                      _taxRow('MARGEN OPERATIVO (EBITDA)', kpi.resultadoOperacional,
+                          isBold: true, customColor: kpi.resultadoOperacional >= 0 ? Colors.greenAccent : Colors.redAccent),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Text('Rentabilidad Op: ${kpi.margenOperacional.toStringAsFixed(1)}%',
+                              style: TextStyle(
+                                  color: kpi.margenOperacional >= 0 ? Colors.greenAccent : Colors.redAccent,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: 20),
+
+              // BLOQUE 2: RADIOGRAFÍA DEL F29
+              Expanded(
+                flex: 3,
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.02),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+                  ),
+                  child: _taxSubSection(
+                    title: '2. RADIOGRAFÍA TRIBUTARIA F29',
+                    items: [
+                      _taxRow('IVA Débito Fiscal (19%)', kpi.ivaDebito),
+                      _taxRow('(-) IVA Crédito (Compras/Diésel)', -kpi.ivaCredito, isNegative: true),
+                      _taxRow('(-) Beneficio Ley 19.764', -kpi.recuperacionDiesel, isNegative: true, isHighlight: true),
+                      if (kpi.remanenteAnterior > 0)
+                        _taxRow('(-) Remanente IVA Anterior', -kpi.remanenteAnterior, isNegative: true, isHighlight: true),
+                      _taxRow('(+) PPM Obligatorio (${(config?.tasaPPM ?? 1.5).toStringAsFixed(1)}%)', kpi.ppmObligatorio, isHighlight: true),
+                      const Divider(color: Colors.white12, height: 20),
+                      if (kpi.nuevoRemanenteFavor > 0) ...[
+                        _taxRow('IVA NETO A PAGAR', 0.0, isBold: true, customColor: Colors.greenAccent),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('⭐ Remanente a Favor Mes Sig:',
+                                  style: TextStyle(color: Colors.cyanAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                              Text(_fmt(kpi.nuevoRemanenteFavor),
+                                  style: const TextStyle(color: Colors.cyanAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                      ] else ...[
+                        _taxRow('IVA NETO A PAGAR', kpi.ivaNetoPagar, isBold: true, customColor: Colors.orangeAccent),
+                      ],
+                      _taxRow('TOTAL A PAGAR F29 (DÍA 20)', kpi.totalF29Pagar,
+                          isBold: true, customColor: kpi.totalF29Pagar > 0 ? Colors.orange : Colors.greenAccent),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: 20),
+
+              // BLOQUE 3: FLUJO DE CAJA LIBRE EN BANCO
+              Expanded(
+                flex: 3,
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.02),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
                   ),
                   child: Column(
                     children: [
-                      const Text('DINERO REAL EN BOLSILLO', style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold)),
+                      _taxSubSection(
+                        title: '3. CAJA BANCARIA ("EN BOLSILLO")',
+                        items: [
+                          _taxRow('Cobrado Clientes (Bruto)', kpi.ingresosBrutos),
+                          _taxRow('(-) Gastos Desembolsados', -kpi.totalGastosBrutos, isNegative: true),
+                          _taxRow('(-) Sueldos y Leyes Sociales', -kpi.totalPersonal, isNegative: true),
+                          _taxRow('(-) Cargo F29 día 20', -kpi.totalF29Pagar, isNegative: true),
+                        ],
+                      ),
                       const SizedBox(height: 12),
-                      Text(_fmt(kpi.flujoCajaReal), 
-                          style: TextStyle(color: kpi.flujoCajaReal >= 0 ? Colors.white : Colors.redAccent, fontSize: 32, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 8),
-                      Text('Margen Neto: ${kpi.margenNetoCaja.toStringAsFixed(1)}%', 
-                          style: TextStyle(color: kpi.margenNetoCaja >= 0 ? Colors.greenAccent : Colors.redAccent, fontSize: 12, fontWeight: FontWeight.w500)),
+                      Container(
+                        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: kpi.flujoCajaReal >= 0
+                              ? Colors.greenAccent.withValues(alpha: 0.06)
+                              : Colors.redAccent.withValues(alpha: 0.06),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: kpi.flujoCajaReal >= 0
+                                ? Colors.greenAccent.withValues(alpha: 0.2)
+                                : Colors.redAccent.withValues(alpha: 0.2),
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            const Text('DISPONIBLE LIBRE EN BANCO',
+                                style: TextStyle(color: Colors.grey, fontSize: 10, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 6),
+                            Text(_fmt(kpi.flujoCajaReal),
+                                style: TextStyle(
+                                    color: kpi.flujoCajaReal >= 0 ? Colors.white : Colors.redAccent,
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 4),
+                            Text('Margen Neto Caja: ${kpi.margenNetoCaja.toStringAsFixed(1)}%',
+                                style: TextStyle(
+                                    color: kpi.margenNetoCaja >= 0 ? Colors.greenAccent : Colors.redAccent,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
               ),
             ],
+          ),
+
+          const SizedBox(height: 24),
+
+          // ─── BLOQUE 4: COMPARADOR DE MANTENIMIENTO: TEÓRICO SEGÚN KM vs. FACTURAS TALLER ───
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.02),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.build_circle_outlined, color: Colors.amberAccent, size: 26),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('CONTROL DE MANTENIMIENTO: DESGASTE TEÓRICO vs. GASTO EJECUTADO EN TALLER',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Desgaste presupuestado por KM recorridos: ${_fmt(kpi.mantenimientoTeoricoKm)}  |  Facturas reales pagadas en taller: ${_fmt(kpi.mantenimientoRealEjecutado)}',
+                        style: const TextStyle(color: Colors.grey, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: kpi.saldoFondoMantenimiento >= 0
+                        ? Colors.greenAccent.withValues(alpha: 0.1)
+                        : Colors.orangeAccent.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: kpi.saldoFondoMantenimiento >= 0 ? Colors.greenAccent : Colors.orangeAccent,
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        kpi.saldoFondoMantenimiento >= 0 ? Icons.check_circle_outline : Icons.warning_amber_rounded,
+                        color: kpi.saldoFondoMantenimiento >= 0 ? Colors.greenAccent : Colors.orangeAccent,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        (kpi.saldoFondoMantenimiento >= 0 ? 'Fondo Reserva: +' : 'Sobregasto Taller: ') +
+                            _fmt(kpi.saldoFondoMantenimiento),
+                        style: TextStyle(
+                          color: kpi.saldoFondoMantenimiento >= 0 ? Colors.greenAccent : Colors.orangeAccent,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -296,7 +460,7 @@ class KpiDashboardView extends ConsumerWidget {
     ]),
   );
 
-  Widget _infoRow(String label, String value) => Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)), Text(value, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold))]));
+
 
   Widget _infoBadge(String text, Color color) => Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: color.withValues(alpha: 0.2))), child: Text(text, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)));
 

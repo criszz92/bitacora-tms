@@ -104,9 +104,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/add-trip',
-        builder: (context, state) => TripFormScreen(
-          preAssignment: state.extra is ServiceRequest ? state.extra as ServiceRequest : null,
-        ),
+        builder: (context, state) {
+          final tipo = state.uri.queryParameters['tipo'] ?? 'operativo';
+          return TripFormScreen(
+            preAssignment: state.extra is ServiceRequest ? state.extra as ServiceRequest : null,
+            initialTipoMovimiento: tipo,
+          );
+        },
       ),
       GoRoute(
         path: '/start-shift',

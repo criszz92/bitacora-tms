@@ -26,8 +26,9 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
   String _selectedType = 'Peaje';
   String _destinoCombustible = 'CAMION'; // 'CAMION' | 'AUXILIAR'
   bool _isFullTank = false; // Evento de calibración / llenado a tope
+  bool _isExento = true; // Por defecto Peaje es exento
 
-  final List<String> _expenseTypes = ['Peaje', 'Combustible'];
+  final List<String> _expenseTypes = ['Peaje', 'Combustible', 'Mantenimiento / Taller', 'Repuesto / Insumo', 'Otros'];
 
   bool get _isCombustible => _selectedType == 'Combustible';
 
@@ -112,6 +113,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
         horometroAtFill: horoValue,
         kmRecorridosTramo: kmRecorridos,
         rendimientoTramo: rendimientoTramo,
+        isExento: _isExento,
       );
 
       await ref.read(tripRepositoryProvider).addExpense(newExpense);
@@ -210,10 +212,69 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                         if (newValue != null) {
                           setState(() {
                             _selectedType = newValue;
+                            // Peaje es exento por defecto, otros con IVA
+                            if (_selectedType == 'Peaje') {
+                              _isExento = true;
+                            } else {
+                              _isExento = false;
+                            }
                           });
                         }
                       },
                     ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // REGIMEN TRIBUTARIO (EXENTO VS CON IVA)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E1E1E),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _isExento ? Colors.blueGrey : Colors.greenAccent.withValues(alpha: 0.5),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _isExento ? Icons.receipt_long : Icons.verified,
+                        color: _isExento ? Colors.grey : Colors.greenAccent,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _isExento ? 'Documento Exento de IVA' : 'Factura / Boleta Afecta a IVA (19%)',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: _isExento ? Colors.white70 : Colors.white,
+                                fontSize: 14,
+                              ),
+                            ),
+                            Text(
+                              _isExento
+                                  ? '100% costo puro, sin crédito fiscal (Peajes, romanas, etc.)'
+                                  : 'El sistema separará el neto y recuperará el IVA crédito',
+                              style: const TextStyle(color: Colors.grey, fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Switch(
+                        value: !_isExento,
+                        activeThumbColor: Colors.greenAccent,
+                        inactiveThumbColor: Colors.grey,
+                        onChanged: (conIva) {
+                          setState(() => _isExento = !conIva);
+                        },
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 24),

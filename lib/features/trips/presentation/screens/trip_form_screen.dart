@@ -25,7 +25,12 @@ enum CargoType {
 // ─── Screen ───────────────────────────────────────────────────────────────────
 class TripFormScreen extends ConsumerStatefulWidget {
   final ServiceRequest? preAssignment;
-  const TripFormScreen({super.key, this.preAssignment});
+  final String initialTipoMovimiento;
+  const TripFormScreen({
+    super.key,
+    this.preAssignment,
+    this.initialTipoMovimiento = 'operativo',
+  });
 
   @override
   ConsumerState<TripFormScreen> createState() => _TripFormScreenState();
@@ -43,6 +48,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
   final _valueCtrl = TextEditingController();
 
   // Estado de la pantalla
+  late String _tipoMovimiento = widget.initialTipoMovimiento;
   bool _isZiyu = true;              // true = OS (Ziyu), false = OT (Manual)
   CargoType _cargoType = CargoType.completo;
   bool _isLoading = false;
@@ -173,8 +179,20 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
         throw Exception('No se detectó patente para este viaje. Por favor verifique su perfil o jornada.');
       }
 
-      // Parsea el valor eliminando separadores de miles
-      final value = double.tryParse(_valueCtrl.text.replaceAll('.', '')) ?? 0.0;
+      final isOperativo = _tipoMovimiento == 'operativo';
+      final isRetiro = _tipoMovimiento == 'retiro_anticipado';
+      final isMantenimiento = _tipoMovimiento == 'traslado_mantenimiento';
+
+      // Parsea el valor eliminando separadores de miles (0 para movimientos no operativos)
+      final value = isOperativo ? (double.tryParse(_valueCtrl.text.replaceAll('.', '')) ?? 0.0) : 0.0;
+      final client = isOperativo
+          ? _clientCtrl.text.trim()
+          : (_clientCtrl.text.trim().isNotEmpty
+              ? _clientCtrl.text.trim()
+              : (isRetiro ? 'Retiro Anticipado' : 'Mantenimiento'));
+      final mandante = isOperativo
+          ? _mandanteCtrl.text.trim()
+          : (isRetiro ? 'MEDLOG TRUCK' : 'MANTENIMIENTO');
 
       final newTripId = 'VIAJE-${DateTime.now().millisecondsSinceEpoch}';
       final newTrip = TripModel(
@@ -184,8 +202,8 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
         idJornada: shift.id,
         origin: _originCtrl.text.trim(),
         destination: _destCtrl.text.trim(),
-        cargoType: _cargoType.name,
-        containerNumber: _cargoType != CargoType.suelta
+        cargoType: isMantenimiento ? 'suelta' : _cargoType.name,
+        containerNumber: (isRetiro || (isOperativo && _cargoType != CargoType.suelta))
             ? (_containerCtrl.text.trim().isEmpty 
                 ? null 
                 : ContainerValidator.format(_containerCtrl.text))
@@ -193,12 +211,13 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
         guideNumber: null, // Se solicitará al CERRAR el viaje
         startDate: DateTime.now(),
         status: 'En Ruta',
-        client: _clientCtrl.text.trim(),
-        mandante: _mandanteCtrl.text.trim(),
+        client: client,
+        mandante: mandante,
         value: value,
         billingType: _isZiyu ? 'OS' : 'OT',
         vehicleId: vehicleId, // USAMOS EL RESPALDO
         comments: '',
+        tipoMovimiento: _tipoMovimiento,
       );
 
       await ref.read(tripRepositoryProvider).startTrip(newTrip);
@@ -212,10 +231,13 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
       await ref.read(tripDraftProvider.notifier).clearDraft();
 
       if (mounted) {
+        final labelExito = isRetiro 
+            ? '✓ Retiro anticipado iniciado (Sin ganancias)' 
+            : (isMantenimiento ? '✓ Traslado a mantenimiento iniciado' : '✓ Viaje iniciado correctamente');
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✓ Viaje iniciado correctamente'),
-            backgroundColor: Color(0xFF2E7D32),
+          SnackBar(
+            content: Text(labelExito),
+            backgroundColor: const Color(0xFF2E7D32),
           ),
         );
         context.pop();
@@ -235,9 +257,18 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isOperativo = _tipoMovimiento == 'operativo';
+    final isRetiro = _tipoMovimiento == 'retiro_anticipado';
+    final isMantenimiento = _tipoMovimiento == 'traslado_mantenimiento';
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Registrar Viaje', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(
+          isRetiro 
+              ? 'Retiro Anticipado' 
+              : (isMantenimiento ? 'Traslado a Mantenimiento' : 'Registrar Viaje'),
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -247,20 +278,32 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
           children: [
 
-            // ── 1. TIPO DE SERVICIO (Ziyu / OT) ──────────────────────────
-            _sectionHeader('Tipo de Servicio', Icons.business_center_outlined),
+            // ── 0. TIPO DE ACTIVIDAD / MOVIMIENTO ──────────────────────────
+            _sectionHeader('Tipo de Movimiento', Icons.alt_route),
             const SizedBox(height: 12),
-            _buildZiyuToggle(),
-            const SizedBox(height: 28),
+            _buildTipoMovimientoSelector(),
+            const SizedBox(height: 14),
+            _buildTipoMovimientoBanner(),
+            const SizedBox(height: 24),
 
-            // ── 2. TIPO DE CARGA ──────────────────────────────────────────
-            _sectionHeader('Tipo de Carga', Icons.inventory_2_outlined),
-            const SizedBox(height: 12),
-            _buildCargoTypeSelector(),
-            const SizedBox(height: 28),
+            // ── 1. TIPO DE SERVICIO (Ziyu / OT) (Solo operativo) ───────────
+            if (isOperativo) ...[
+              _sectionHeader('Tipo de Servicio', Icons.business_center_outlined),
+              const SizedBox(height: 12),
+              _buildZiyuToggle(),
+              const SizedBox(height: 28),
+            ],
+
+            // ── 2. TIPO DE CARGA (Operativo o Retiro) ─────────────────────
+            if (!isMantenimiento) ...[
+              _sectionHeader('Tipo de Carga', Icons.inventory_2_outlined),
+              const SizedBox(height: 12),
+              _buildCargoTypeSelector(),
+              const SizedBox(height: 28),
+            ],
 
             // ── 3. RUTA ───────────────────────────────────────────────────
-            _sectionHeader('Ruta', Icons.route_outlined),
+            _sectionHeader('Ruta del Desplazamiento', Icons.route_outlined),
             const SizedBox(height: 12),
             _buildFuzzyField(
               label: 'Origen',
@@ -277,12 +320,10 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
             ),
             const SizedBox(height: 28),
 
-            // ── 4. DOCUMENTACIÓN ──────────────────────────────────────────
-            _sectionHeader('Documentación de Carga', Icons.description_outlined),
-            const SizedBox(height: 12),
-
-            // Contenedor: oculto en Carga Suelta, obligatorio en los demás
-            if (_cargoType != CargoType.suelta) ...[
+            // ── 4. DOCUMENTACIÓN DE CARGA (Si aplica contenedor) ──────────
+            if (!isMantenimiento && _cargoType != CargoType.suelta) ...[
+              _sectionHeader('Documentación de Carga', Icons.description_outlined),
+              const SizedBox(height: 12),
               _buildContainerField(),
               const SizedBox(height: 14),
             ],
@@ -301,7 +342,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
                   SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'La Guía de Despacho se ingresará al finalizar el viaje, cuando ya la tengas en mano.',
+                      'Los peajes y kilometraje real se detectarán automáticamente y se conciliarán al finalizar.',
                       style: TextStyle(color: Colors.grey, fontSize: 12),
                     ),
                   ),
@@ -310,26 +351,41 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
             ),
             const SizedBox(height: 28),
 
-            // ── 5. DATOS COMERCIALES ──────────────────────────────────────
-            _sectionHeader('Datos Comerciales', Icons.attach_money),
-            const SizedBox(height: 12),
-            _buildFuzzyField(
-              label: 'Cliente',
-              controller: _clientCtrl,
-              icon: Icons.business_outlined,
-              isRequired: true,
-            ),
-            const SizedBox(height: 14),
-            _buildFuzzyField(
-              label: 'Mandante',
-              controller: _mandanteCtrl,
-              icon: Icons.account_tree_outlined,
-              isRequired: true,
-              alwaysPinMedlog: true, // Medlog Truck siempre es la primera opción
-            ),
-            const SizedBox(height: 14),
-            _buildValueField(),
-            const SizedBox(height: 40),
+            // ── 5. DATOS COMERCIALES (Solo para viajes operativos) ────────
+            if (isOperativo) ...[
+              _sectionHeader('Datos Comerciales', Icons.attach_money),
+              const SizedBox(height: 12),
+              _buildFuzzyField(
+                label: 'Cliente',
+                controller: _clientCtrl,
+                icon: Icons.business_outlined,
+                isRequired: true,
+              ),
+              const SizedBox(height: 14),
+              _buildFuzzyField(
+                label: 'Mandante',
+                controller: _mandanteCtrl,
+                icon: Icons.account_tree_outlined,
+                isRequired: true,
+                alwaysPinMedlog: true,
+              ),
+              const SizedBox(height: 14),
+              _buildValueField(),
+              const SizedBox(height: 40),
+            ] else if (isRetiro) ...[
+              // Para retiro anticipado, cliente es opcional
+              _sectionHeader('Referencia de Operación (Opcional)', Icons.business_outlined),
+              const SizedBox(height: 12),
+              _buildFuzzyField(
+                label: 'Cliente / Faena a la que corresponde (opcional)',
+                controller: _clientCtrl,
+                icon: Icons.business_outlined,
+                isRequired: false,
+              ),
+              const SizedBox(height: 40),
+            ] else ...[
+              const SizedBox(height: 20),
+            ],
 
             // ── BOTÓN INICIAR ─────────────────────────────────────────────
             SizedBox(
@@ -348,8 +404,10 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
                       )
                     : const Icon(Icons.play_circle_fill, size: 26),
                 label: Text(
-                  _isLoading ? 'Guardando...' : 'INICIAR VIAJE',
-                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, letterSpacing: 1),
+                  _isLoading 
+                      ? 'Guardando...' 
+                      : (isRetiro ? 'INICIAR RETIRO ANTICIPADO' : (isMantenimiento ? 'INICIAR MANTENIMIENTO' : 'INICIAR VIAJE')),
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.8),
                 ),
               ),
             ),
@@ -357,6 +415,110 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildTipoMovimientoSelector() {
+    final options = [
+      {'tipo': 'operativo', 'label': 'Viaje Operativo', 'icon': Icons.local_shipping_outlined},
+      {'tipo': 'retiro_anticipado', 'label': 'Retiro Anticipado', 'icon': Icons.inventory_2_outlined},
+      {'tipo': 'traslado_mantenimiento', 'label': 'Mantenimiento', 'icon': Icons.build_circle_outlined},
+    ];
+
+    return Row(
+      children: options.map((opt) {
+        final isSelected = _tipoMovimiento == opt['tipo'];
+        return Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: InkWell(
+              onTap: () => setState(() => _tipoMovimiento = opt['tipo'] as String),
+              borderRadius: BorderRadius.circular(12),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+                decoration: BoxDecoration(
+                  color: isSelected ? const Color(0xFFFFFFFF) : const Color(0xFF1E1E1E),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isSelected ? Colors.white : Colors.white12,
+                    width: isSelected ? 1.5 : 1,
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      opt['icon'] as IconData,
+                      color: isSelected ? Colors.black : Colors.white70,
+                      size: 20,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      opt['label'] as String,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: isSelected ? Colors.black : Colors.white70,
+                        fontSize: 11,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildTipoMovimientoBanner() {
+    if (_tipoMovimiento == 'retiro_anticipado') {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.amber.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.amber.withValues(alpha: 0.4), width: 0.8),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.inventory_2_outlined, color: Colors.amberAccent, size: 20),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Retiro Anticipado: Registra el desplazamiento del camión, odómetro y peajes. No suma comisión ni viáticos al chofer (\$0 en liquidación).',
+                style: TextStyle(color: Colors.white70, fontSize: 11.5),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else if (_tipoMovimiento == 'traslado_mantenimiento') {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.cyan.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.cyan.withValues(alpha: 0.4), width: 0.8),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.build_circle_outlined, color: Colors.cyanAccent, size: 20),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Traslado a Mantenimiento: Movimiento a taller o revisión técnica. Odómetro y costos registrados sin ganancia de flete ni viático.',
+                style: TextStyle(color: Colors.white70, fontSize: 11.5),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return const SizedBox.shrink();
   }
 
   // ─── Toggle Ziyu / OT ─────────────────────────────────────────────────────

@@ -353,9 +353,9 @@ class DriverDashboardScreen extends ConsumerWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       visualDensity: VisualDensity.compact,
                     ),
-                    onPressed: () => context.push('/add-trip'),
+                    onPressed: () => _showStartMovementOptions(context),
                     icon: const Icon(Icons.add, size: 16, color: Colors.blueAccent),
-                    label: const Text('Nuevo Viaje', style: TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                    label: const Text('Nuevo Movimiento', style: TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.bold)),
                   );
                 },
                 orElse: () => const SizedBox.shrink(),
@@ -403,9 +403,9 @@ class DriverDashboardScreen extends ConsumerWidget {
                       foregroundColor: Colors.black,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                     ),
-                    onPressed: () => context.push('/add-trip'),
+                    onPressed: () => _showStartMovementOptions(context),
                     icon: const Icon(Icons.add_box, color: Colors.black, size: 20),
-                    label: const Text('INICIAR NUEVO VIAJE', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                    label: const Text('INICIAR NUEVA ACTIVIDAD', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5)),
                   ),
                 ),
               );
@@ -413,6 +413,129 @@ class DriverDashboardScreen extends ConsumerWidget {
             orElse: () => const SizedBox.shrink(),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showStartMovementOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E222B),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Selecciona el Tipo de Movimiento',
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Elige si inicias un servicio comercial o un desplazamiento sin ganancias.',
+                style: TextStyle(color: Colors.white60, fontSize: 13),
+              ),
+              const SizedBox(height: 20),
+              _buildMovementOptionTile(
+                ctx,
+                icon: Icons.local_shipping,
+                color: Colors.greenAccent,
+                title: 'Viaje Operativo (Comercial)',
+                subtitle: 'Flete con cliente y tarifa. Suma comisión y viáticos según corresponda.',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.push('/add-trip?tipo=operativo');
+                },
+              ),
+              const SizedBox(height: 12),
+              _buildMovementOptionTile(
+                ctx,
+                icon: Icons.inventory_2_outlined,
+                color: Colors.amberAccent,
+                title: 'Retiro Anticipado (Sin Ganancia)',
+                subtitle: 'Desplazamiento previo a faena o depósito. Registra KM y peajes sin comisión ni viático.',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.push('/add-trip?tipo=retiro_anticipado');
+                },
+              ),
+              const SizedBox(height: 12),
+              _buildMovementOptionTile(
+                ctx,
+                icon: Icons.build_circle_outlined,
+                color: Colors.cyanAccent,
+                title: 'Traslado a Mantenimiento',
+                subtitle: 'Movimiento de camión a taller o revisión técnica. Sin ganancias (\$0).',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.push('/add-trip?tipo=traslado_mantenimiento');
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMovementOptionTile(
+    BuildContext context, {
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFF161A22),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 3),
+                  Text(subtitle, style: const TextStyle(color: Colors.white60, fontSize: 11)),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios, color: Colors.white24, size: 14),
+          ],
+        ),
       ),
     );
   }
@@ -710,21 +833,39 @@ class DriverDashboardScreen extends ConsumerWidget {
                 Container(
                   width: 8,
                   height: 8,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF22C55E),
+                  decoration: BoxDecoration(
+                    color: trip.isRetiroAnticipado 
+                        ? const Color(0xFFFBBF24) 
+                        : (trip.isMantenimiento ? const Color(0xFF38BDF8) : const Color(0xFF22C55E)),
                     shape: BoxShape.circle,
                   ),
                 ),
                 const SizedBox(width: 7),
-                const Text(
-                  'VIAJE EN CURSO',
+                Text(
+                  trip.isRetiroAnticipado
+                      ? 'RETIRO ANTICIPADO'
+                      : (trip.isMantenimiento ? 'MANTENIMIENTO' : 'VIAJE EN CURSO'),
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: Color(0xFF4ADE80),
+                    color: trip.isRetiroAnticipado 
+                        ? const Color(0xFFFBBF24) 
+                        : (trip.isMantenimiento ? const Color(0xFF38BDF8) : const Color(0xFF4ADE80)),
                     fontSize: 12,
                     letterSpacing: 0.8,
                   ),
                 ),
+                if (!trip.isOperativo) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.amber.withValues(alpha: 0.4), width: 0.8),
+                    ),
+                    child: const Text('SIN GANANCIAS', style: TextStyle(color: Colors.amberAccent, fontSize: 9, fontWeight: FontWeight.bold)),
+                  ),
+                ],
                 const Spacer(),
                 if (trip.containerNumber != null && trip.containerNumber!.isNotEmpty)
                   Container(
@@ -779,7 +920,33 @@ class DriverDashboardScreen extends ConsumerWidget {
                 }
 
                 final inGeofence = unit.currentGeofence != null && unit.currentGeofence!.isNotEmpty;
-                if (inGeofence) {
+                final isIdle = (unit.isIgnitionOn == true) && unit.speed < 2;
+
+                if (isIdle) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.amber.withValues(alpha: 0.6), width: 0.8),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.pause_circle_outline, size: 14, color: Colors.amberAccent),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            inGeofence
+                                ? 'Motor en Ralentí • En ${unit.currentGeofence}'
+                                : 'Motor Encendido Detenido • Modo Ralentí (0 km/h)',
+                            style: const TextStyle(color: Colors.amberAccent, fontSize: 11.5, fontWeight: FontWeight.bold),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                } else if (inGeofence) {
                   return Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
@@ -802,23 +969,39 @@ class DriverDashboardScreen extends ConsumerWidget {
                     ),
                   );
                 } else {
+                  final isRalenti = (unit.isIgnitionOn == true) && unit.speed < 2;
                   return Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E3A8A).withValues(alpha: 0.25),
+                      color: isRalenti 
+                          ? Colors.orange.withValues(alpha: 0.2) 
+                          : const Color(0xFF1E3A8A).withValues(alpha: 0.25),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.4), width: 0.8),
+                      border: Border.all(
+                        color: isRalenti ? Colors.orangeAccent.withValues(alpha: 0.6) : Colors.blueAccent.withValues(alpha: 0.4), 
+                        width: 0.8,
+                      ),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.satellite_alt, size: 13, color: Colors.lightBlueAccent),
+                        Icon(
+                          isRalenti ? Icons.hourglass_top_rounded : Icons.satellite_alt, 
+                          size: 13, 
+                          color: isRalenti ? Colors.orangeAccent : Colors.lightBlueAccent,
+                        ),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            unit.status == 'online'
-                                ? 'GPS Conectado • En Ruta (${unit.speed.toStringAsFixed(0)} km/h)'
-                                : 'GPS Conectado • Detenido',
-                            style: const TextStyle(color: Color(0xFF93C5FD), fontSize: 11.5, fontWeight: FontWeight.bold),
+                            isRalenti
+                                ? 'Motor Encendido • Modo Ralentí (0 km/h) • Cuidado Turbo'
+                                : (unit.status == 'online'
+                                    ? 'GPS Conectado • En Ruta (${unit.speed.toStringAsFixed(0)} km/h)'
+                                    : 'GPS Conectado • Detenido'),
+                            style: TextStyle(
+                              color: isRalenti ? Colors.orangeAccent : const Color(0xFF93C5FD), 
+                              fontSize: 11.5, 
+                              fontWeight: FontWeight.bold,
+                            ),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -1026,20 +1209,42 @@ class DriverDashboardScreen extends ConsumerWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'VIAJE COMPLETADO',
-                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70, fontSize: 12),
+                Text(
+                  trip.isRetiroAnticipado
+                      ? 'RETIRO ANTICIPADO'
+                      : (trip.isMantenimiento ? 'MANTENIMIENTO' : 'VIAJE COMPLETADO'),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: trip.isRetiroAnticipado
+                        ? Colors.amberAccent
+                        : (trip.isMantenimiento ? Colors.cyanAccent : Colors.white70),
+                    fontSize: 12,
+                  ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    trip.status,
-                    style: const TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold),
-                  ),
+                Row(
+                  children: [
+                    if (!trip.isOperativo)
+                      Container(
+                        margin: const EdgeInsets.only(right: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.white10,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text('SIN GANANCIAS', style: TextStyle(color: Colors.white38, fontSize: 9, fontWeight: FontWeight.bold)),
+                      ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        trip.status,
+                        style: const TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
