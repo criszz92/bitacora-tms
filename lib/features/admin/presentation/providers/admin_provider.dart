@@ -147,6 +147,18 @@ final monthlyExpensesProvider = StreamProvider<List<ExpenseModel>>((ref) {
   return ref.read(adminRepositoryProvider).watchMonthlyExpenses(user.idEmpresa, month);
 });
 
+final allTripsProvider = StreamProvider<List<TripModel>>((ref) {
+  final user = ref.watch(currentUserProfileProvider).value;
+  if (user == null) return Stream.value([]);
+  return ref.read(adminRepositoryProvider).watchAllTrips(user.idEmpresa);
+});
+
+final allExpensesProvider = StreamProvider<List<ExpenseModel>>((ref) {
+  final user = ref.watch(currentUserProfileProvider).value;
+  if (user == null) return Stream.value([]);
+  return ref.read(adminRepositoryProvider).watchAllExpenses(user.idEmpresa);
+});
+
 final choferesProvider = StreamProvider<List<UserModel>>((ref) {
   final user = ref.watch(currentUserProfileProvider).value;
   if (user == null) return Stream.value([]);
@@ -218,6 +230,8 @@ class KpiData {
   double get mantenimientoRealEjecutado => summary['mantenimientoRealEjecutado'] ?? 0;
   double get saldoFondoMantenimiento => summary['saldoFondoMantenimiento'] ?? 0;
   double get totalPeajesExentos => summary['totalPeajesExentos'] ?? 0;
+  double get flujoCajaSinIva => summary['flujoCajaSinIva'] ?? 0;
+  double get margenCajaSinIva => summary['margenCajaSinIva'] ?? 0;
 
   const KpiData({required this.totalViajes, required this.summary});
 }
@@ -243,6 +257,58 @@ final financialSummaryProvider = Provider<AsyncValue<Map<String, double>>>((ref)
 
   final vehicles = ref.watch(adminVehiclesProvider).value ?? [];
 
+  // === CALCULO DE REMANENTE ACUMULADO DINAMICO HISTORICO ===
+  // Si hay compras o saldo anterior en meses previos, calculamos cuanto remanente llega a este mes
+  final allTrips = ref.watch(allTripsProvider).value ?? [];
+  final allExpenses = ref.watch(allExpensesProvider).value ?? [];
+
+  final startOfCurrentMonth = DateTime(month.year, month.month, 1);
+  final previousExpenses = allExpenses.where((e) => e.date.isBefore(startOfCurrentMonth)).toList();
+  final previousTrips = allTrips.where((t) => t.startDate.isBefore(startOfCurrentMonth)).toList();
+
+  double remanenteAcumuladoMes = config.remanenteCreditoFiscalAcumulado;
+
+  if (previousExpenses.isNotEmpty || previousTrips.isNotEmpty) {
+    final Set<String> previousMonthKeys = {};
+    for (final e in previousExpenses) {
+      final m = e.date.month.toString().padLeft(2, '0');
+      previousMonthKeys.add('${e.date.year}-$m');
+    }
+    for (final t in previousTrips) {
+      final m = t.startDate.month.toString().padLeft(2, '0');
+      previousMonthKeys.add('${t.startDate.year}-$m');
+    }
+
+    final sortedPreviousMonths = previousMonthKeys.toList()..sort();
+
+    for (final pKey in sortedPreviousMonths) {
+      final parts = pKey.split('-');
+      final pYear = int.parse(parts[0]);
+      final pMonth = int.parse(parts[1]);
+      final pMonthStart = DateTime(pYear, pMonth, 1);
+      final pMonthEnd = DateTime(pYear, pMonth + 1, 1);
+
+      final mTrips = previousTrips.where((t) => t.startDate.isAfter(pMonthStart.subtract(const Duration(seconds: 1))) && t.startDate.isBefore(pMonthEnd)).toList();
+      final mExpenses = previousExpenses.where((e) => e.date.isAfter(pMonthStart.subtract(const Duration(seconds: 1))) && e.date.isBefore(pMonthEnd)).toList();
+
+      final pUtm = config.utmHistory[pKey] ?? config.valorUTM;
+      final pDiesel = config.dieselHistory[pKey] ?? config.precioDieselNeto;
+
+      final mSummary = ChileanFinancialCalculator.calculateCompanySummary(
+        allDrivers: choferes,
+        monthlyTrips: mTrips,
+        directExpenses: mExpenses,
+        config: config,
+        vehicles: vehicles,
+        customUtmValue: pUtm,
+        customDieselValue: pDiesel,
+        customRemanenteAnterior: remanenteAcumuladoMes,
+      );
+
+      remanenteAcumuladoMes = mSummary['nuevoRemanenteFavor'] ?? 0.0;
+    }
+  }
+
   final summary = ChileanFinancialCalculator.calculateCompanySummary(
     allDrivers: choferes,
     monthlyTrips: filteredTrips,
@@ -251,6 +317,7 @@ final financialSummaryProvider = Provider<AsyncValue<Map<String, double>>>((ref)
     vehicles: vehicles,
     customUtmValue: utmValue,
     customDieselValue: dieselValue,
+    customRemanenteAnterior: remanenteAcumuladoMes,
   );
   return AsyncValue.data(summary);
 });

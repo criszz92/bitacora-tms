@@ -19,6 +19,24 @@ class AdminRepository {
 
   // ─── VIAJES (KPIs) ─────────────────────────────────────────────────────────
 
+  /// Escucha TODOS los viajes de la empresa (para cálculo histórico y acumulado de F29)
+  Stream<List<TripModel>> watchAllTrips(String idEmpresa) {
+    return _db
+        .collection('viajes')
+        .where('idEmpresa', isEqualTo: idEmpresa)
+        .snapshots()
+        .map((s) => s.docs.map((d) => TripModel.fromMap(d.data(), d.id)).toList());
+  }
+
+  /// Escucha TODOS los gastos de la empresa (para cálculo histórico y acumulado de F29)
+  Stream<List<ExpenseModel>> watchAllExpenses(String idEmpresa) {
+    return _db
+        .collection('gastos')
+        .where('idEmpresa', isEqualTo: idEmpresa)
+        .snapshots()
+        .map((s) => s.docs.map((d) => ExpenseModel.fromMap(d.data(), d.id)).toList());
+  }
+
   /// Retorna todos los viajes del mes indicado para la empresa.
   Stream<List<TripModel>> watchMonthlyTrips(String idEmpresa, DateTime month) {
     final monthStart = DateTime(month.year, month.month, 1).toIso8601String();
@@ -403,6 +421,28 @@ class AdminRepository {
   /// Actualiza los datos extendidos de un chofer (RUT, Licencias, Sueldo, etc.)
   Future<void> updateChoferProfile(UserModel user) async {
     await _db.collection('usuarios').doc(user.uid).update(user.toMap());
+  }
+
+  /// Obtiene todos los viajes hasta una fecha final (para cálculo de remanente acumulado)
+  Future<List<TripModel>> getTripsUntil(String idEmpresa, DateTime until) async {
+    final untilStr = until.toIso8601String();
+    final snap = await _db
+        .collection('viajes')
+        .where('idEmpresa', isEqualTo: idEmpresa)
+        .where('startDate', isLessThan: untilStr)
+        .get();
+    return snap.docs.map((d) => TripModel.fromMap(d.data(), d.id)).toList();
+  }
+
+  /// Obtiene todos los gastos hasta una fecha final (para cálculo de remanente acumulado)
+  Future<List<ExpenseModel>> getExpensesUntil(String idEmpresa, DateTime until) async {
+    final untilStr = until.toIso8601String();
+    final snap = await _db
+        .collection('gastos')
+        .where('idEmpresa', isEqualTo: idEmpresa)
+        .where('date', isLessThan: untilStr)
+        .get();
+    return snap.docs.map((d) => ExpenseModel.fromMap(d.data(), d.id)).toList();
   }
 
   // ─── CONFIGURACIÓN DE EMPRESA ──────────────────────────────────────────────

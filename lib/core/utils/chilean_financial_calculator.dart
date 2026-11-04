@@ -228,6 +228,7 @@ class ChileanFinancialCalculator {
     List<VehicleModel>? vehicles,
     double? customUtmValue,
     double? customDieselValue,
+    double? customRemanenteAnterior,
   }) {
     // 1. Ingresos Operacionales Netos (Facturación pura de viajes, sin IVA)
     double totalIngresosNetos = 0;
@@ -340,7 +341,7 @@ class ChileanFinancialCalculator {
 
     // 6. Liquidación Tributaria F29 (Fuente de Verdad SII)
     final double ppmObligatorio = totalIngresosNetos * (config.tasaPPM / 100.0);
-    final double remanenteAnterior = config.remanenteCreditoFiscalAcumulado;
+    final double remanenteAnterior = customRemanenteAnterior ?? config.remanenteCreditoFiscalAcumulado;
     final double balanceIva = ivaDebito - totalIvaCreditoGastos - recuperacionDiesel - remanenteAnterior;
 
     double ivaAPagarFinal = 0.0;
@@ -361,8 +362,14 @@ class ChileanFinancialCalculator {
     final double margenOperacionalPct = totalIngresosNetos > 0 ? (resultadoOperacionalNeto / totalIngresosNetos) * 100 : 0.0;
 
     final double totalIngresosBrutosCobrados = totalIngresosNetos * 1.19;
+    // Caja con IVA (Bruta): Se cobra con IVA y se paga F29 (incluye el IVA débito neto y PPM)
     final double flujoCajaRealBolsillo = totalIngresosBrutosCobrados - totalDesembolsoGastosBrutos - totalCostosPersonal - totalF29Pagar;
     final double margenNetoCajaPct = totalIngresosBrutosCobrados > 0 ? (flujoCajaRealBolsillo / totalIngresosBrutosCobrados) * 100 : 0.0;
+
+    // Caja SIN IVA (Pura Operación / Exenta de distorsión IVA):
+    // Ingresos Netos - Gastos Operacionales Netos - Costos Personal - PPM
+    final double flujoCajaSinIva = totalIngresosNetos - totalGastosOperativosNetos - totalCostosPersonal - ppmObligatorio;
+    final double margenCajaSinIvaPct = totalIngresosNetos > 0 ? (flujoCajaSinIva / totalIngresosNetos) * 100 : 0.0;
 
     final double saldoFondoMantenimiento = provisionMantenimientoTeorica - totalGastosRealesMantenimiento;
 
@@ -384,6 +391,8 @@ class ChileanFinancialCalculator {
       'gastosBrutos': totalDesembolsoGastosBrutos,
       'flujoCajaReal': flujoCajaRealBolsillo,
       'margenNetoCaja': margenNetoCajaPct,
+      'flujoCajaSinIva': flujoCajaSinIva,
+      'margenCajaSinIva': margenCajaSinIvaPct,
       'mantenimientoTeoricoKm': provisionMantenimientoTeorica,
       'mantenimientoRealEjecutado': totalGastosRealesMantenimiento,
       'saldoFondoMantenimiento': saldoFondoMantenimiento,

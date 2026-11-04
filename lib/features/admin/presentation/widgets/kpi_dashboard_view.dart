@@ -327,37 +327,84 @@ class KpiDashboardView extends ConsumerWidget {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-                        decoration: BoxDecoration(
-                          color: kpi.flujoCajaReal >= 0
-                              ? Colors.greenAccent.withValues(alpha: 0.06)
-                              : Colors.redAccent.withValues(alpha: 0.06),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: kpi.flujoCajaReal >= 0
-                                ? Colors.greenAccent.withValues(alpha: 0.2)
-                                : Colors.redAccent.withValues(alpha: 0.2),
+                      Row(
+                        children: [
+                          // TARJETA 1: DISPONIBLE CON RECUPERACIÓN DE IVA (CAJA BRUTA)
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                              decoration: BoxDecoration(
+                                color: kpi.flujoCajaReal >= 0
+                                    ? Colors.greenAccent.withValues(alpha: 0.06)
+                                    : Colors.redAccent.withValues(alpha: 0.06),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: kpi.flujoCajaReal >= 0
+                                      ? Colors.greenAccent.withValues(alpha: 0.25)
+                                      : Colors.redAccent.withValues(alpha: 0.25),
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  const Text('DISP. CON IVA',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(color: Colors.cyanAccent, fontSize: 9, fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 4),
+                                  Text(_fmt(kpi.flujoCajaReal),
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                          color: kpi.flujoCajaReal >= 0 ? Colors.white : Colors.redAccent,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 2),
+                                  Text('Margen: ${kpi.margenNetoCaja.toStringAsFixed(1)}%',
+                                      style: TextStyle(
+                                          color: kpi.margenNetoCaja >= 0 ? Colors.greenAccent : Colors.redAccent,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                            ),
                           ),
-                        ),
-                        child: Column(
-                          children: [
-                            const Text('DISPONIBLE LIBRE EN BANCO',
-                                style: TextStyle(color: Colors.grey, fontSize: 10, fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 6),
-                            Text(_fmt(kpi.flujoCajaReal),
-                                style: TextStyle(
-                                    color: kpi.flujoCajaReal >= 0 ? Colors.white : Colors.redAccent,
-                                    fontSize: 26,
-                                    fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 4),
-                            Text('Margen Neto Caja: ${kpi.margenNetoCaja.toStringAsFixed(1)}%',
-                                style: TextStyle(
-                                    color: kpi.margenNetoCaja >= 0 ? Colors.greenAccent : Colors.redAccent,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold)),
-                          ],
-                        ),
+                          const SizedBox(width: 8),
+                          // TARJETA 2: DISPONIBLE SIN IVA (OPERACIÓN PURA)
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                              decoration: BoxDecoration(
+                                color: kpi.flujoCajaSinIva >= 0
+                                    ? Colors.amberAccent.withValues(alpha: 0.06)
+                                    : Colors.redAccent.withValues(alpha: 0.06),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: kpi.flujoCajaSinIva >= 0
+                                      ? Colors.amberAccent.withValues(alpha: 0.25)
+                                      : Colors.redAccent.withValues(alpha: 0.25),
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  const Text('DISP. SIN IVA',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(color: Colors.amberAccent, fontSize: 9, fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 4),
+                                  Text(_fmt(kpi.flujoCajaSinIva),
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                          color: kpi.flujoCajaSinIva >= 0 ? Colors.white : Colors.redAccent,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 2),
+                                  Text('Margen: ${kpi.margenCajaSinIva.toStringAsFixed(1)}%',
+                                      style: TextStyle(
+                                          color: kpi.margenCajaSinIva >= 0 ? Colors.amberAccent : Colors.redAccent,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
