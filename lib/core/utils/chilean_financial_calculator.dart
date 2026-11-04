@@ -286,7 +286,17 @@ class ChileanFinancialCalculator {
         totalGastosRealesMantenimiento += amount;
       }
 
-      if (typeLower == 'peaje' || isExento) {
+      final isActivoFijo = typeLower.contains('activo') || typeLower.contains('inversión') || typeLower.contains('inversion') || typeLower.contains('equipo');
+
+      if (isActivoFijo) {
+        // ACTIVO FIJO (ej. Compra de Camión \):
+        // NO destruye el resultado operacional/EBITDA mensual, pero aporta el 100% de su IVA Crédito al F29.
+        if (!isExento) {
+          final neto = amount / 1.19;
+          final iva = amount - neto;
+          totalIvaCreditoGastos += iva;
+        }
+      } else if (typeLower == 'peaje' || isExento) {
         totalGastosOperativosNetos += amount;
         if (typeLower == 'peaje') totalPeajesExentos += amount;
       } else if (typeLower == 'combustible') {

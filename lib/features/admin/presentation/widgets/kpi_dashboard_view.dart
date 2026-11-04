@@ -549,6 +549,7 @@ class KpiDashboardView extends ConsumerWidget {
         ? now : DateTime(dashboardMonth.year, dashboardMonth.month, 1);
 
     String type = 'Otros';
+    bool isExento = false;
     String? selectedVehicle;
     String? selectedTripId;
     final trips = ref.read(monthlyTripsProvider).value ?? [];
@@ -578,7 +579,42 @@ class KpiDashboardView extends ConsumerWidget {
                       child: Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.05), border: Border.all(color: Colors.white12), borderRadius: BorderRadius.circular(12)), child: Row(children: [const Icon(Icons.calendar_today, color: Colors.orange, size: 16), const SizedBox(width: 12), Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Fecha del Gasto', style: TextStyle(color: Colors.grey, fontSize: 10)), Text('${selectedDate.day}/${selectedDate.month}/${selectedDate.year}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))])])),
                     ),
                     const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(initialValue: type, dropdownColor: const Color(0xFF1A1A1A), style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'Tipo de Gasto', labelStyle: TextStyle(color: Colors.grey)), items: ['Combustible', 'Peaje', 'Mantención', 'Seguro', 'Sueldo', 'Otros'].map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(), onChanged: (val) => setDialogState(() => type = val!)),
+                    DropdownButtonFormField<String>(initialValue: type, dropdownColor: const Color(0xFF1A1A1A), style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'Tipo de Gasto', labelStyle: TextStyle(color: Colors.grey)), items: [
+                      'Combustible',
+                      'Peaje',
+                      'Mantención',
+                      'Seguro',
+                      'Sueldo',
+                      'Compra Activo / Camión',
+                      'Otros'
+                    ].map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                    onChanged: (val) {
+                      setDialogState(() {
+                        type = val!;
+                        if (type.toLowerCase() == 'peaje') isExento = true;
+                      });
+                    }),
+                    const SizedBox(height: 12),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        isExento ? 'Documento Exento de IVA' : 'Factura con IVA Recuperable (19%)',
+                        style: TextStyle(
+                          color: isExento ? Colors.grey : Colors.orange,
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      subtitle: Text(
+                        isExento
+                            ? 'El total pagado va 100% al costo (Peajes, contratos s/IVA).'
+                            : 'El IVA (19%) se separa automáticamente para el F29.',
+                        style: const TextStyle(color: Colors.white54, fontSize: 11),
+                      ),
+                      value: isExento,
+                      activeTrackColor: Colors.grey,
+                      onChanged: (val) => setDialogState(() => isExento = val),
+                    ),
                     const SizedBox(height: 16),
                     if (type.toLowerCase() == 'combustible') ...[ _buildNumericField(litrosCtrl, 'Litros Reales'), const SizedBox(height: 16)],
                     DropdownButtonFormField<String>(initialValue: selectedVehicle, dropdownColor: const Color(0xFF1A1A1A), style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'Vehículo', labelStyle: TextStyle(color: Colors.grey)), items: [const DropdownMenuItem(value: null, child: Text('General')), ...vehicles.map((v) => DropdownMenuItem(value: v.id, child: Text(v.patente)))], onChanged: (val) => setDialogState(() => selectedVehicle = val)),
@@ -608,7 +644,7 @@ class KpiDashboardView extends ConsumerWidget {
               const SizedBox(width: 12),
               ElevatedButton(onPressed: () async {
                   final profile = ref.read(currentUserProfileProvider).value;
-                  final expense = ExpenseModel(id: '', idEmpresa: profile?.idEmpresa ?? '', idChofer: profile?.uid ?? 'ADMIN', idJornada: 'ADMIN', amount: NumberUtils.tryParseDouble(montoCtrl.text) ?? 0, type: type, litros: NumberUtils.tryParseDouble(litrosCtrl.text), date: selectedDate, description: descCtrl.text, status: 'Pagado', vehicleId: selectedVehicle, tripId: selectedTripId);
+                  final expense = ExpenseModel(id: '', idEmpresa: profile?.idEmpresa ?? '', idChofer: profile?.uid ?? 'ADMIN', idJornada: 'ADMIN', amount: NumberUtils.tryParseDouble(montoCtrl.text) ?? 0, type: type, litros: NumberUtils.tryParseDouble(litrosCtrl.text), date: selectedDate, description: descCtrl.text, status: 'Pagado', vehicleId: selectedVehicle, tripId: selectedTripId, isExento: isExento);
                   await ref.read(adminRepositoryProvider).saveExpense(expense);
                   if (ctx.mounted) Navigator.pop(ctx);
               }, style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16)), child: const Text('Guardar')),
