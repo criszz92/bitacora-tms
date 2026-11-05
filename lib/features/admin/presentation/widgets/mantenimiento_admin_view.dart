@@ -1,3 +1,4 @@
+import 'create_incidencia_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/admin_provider.dart';
@@ -601,13 +602,40 @@ class _IncidenciasTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final incidenciasAsync = ref.watch(adminIncidenciasProvider);
+    final vehicles = ref.watch(adminVehiclesProvider).value ?? [];
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
-      child: incidenciasAsync.when(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Control de Taller e Incidencias',
+                  style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Ingresar Mantención / Taller', style: TextStyle(fontWeight: FontWeight.bold)),
+                onPressed: () => showCreateIncidenciaDialog(context, ref, vehicles),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: incidenciasAsync.when(
         loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
         error: (e, s) => Center(child: Text('Error: $e', style: const TextStyle(color: Colors.red))),
         data: (incidencias) => _buildIncidenciasList(context, ref, incidencias),
+            ),
+          ),
+        ],
       ),
     );
   }

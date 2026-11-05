@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:bitacora/features/auth/presentation/providers/auth_provider.dart';
 import 'package:bitacora/features/admin/presentation/widgets/kpi_dashboard_view.dart';
+import 'package:bitacora/features/admin/presentation/widgets/monthly_reports_view.dart';
 import 'package:bitacora/features/admin/presentation/widgets/viaticos_admin_view.dart';
 import 'package:bitacora/features/admin/presentation/widgets/flota_admin_view.dart';
 import 'package:bitacora/features/admin/presentation/widgets/ziyu_conciliation_view.dart';
@@ -86,6 +87,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   Widget _buildSidebar(int pendientesCount, {bool isDrawer = false}) {
     final items = [
       (Icons.dashboard_outlined, 'Dashboard', 0),
+      (Icons.assessment_outlined, 'Informes Mensuales', 0),
       (Icons.satellite_alt_outlined, 'Torre de Control', 0),
       (Icons.auto_awesome_outlined, 'Solicitudes IA', 0),
       (Icons.analytics_outlined, 'Analítica', 0),
@@ -196,9 +198,10 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
 
   Widget _buildMainContent() {
     return IndexedStack(
-      index: _selectedIndex.clamp(0, 13),
+      index: _selectedIndex.clamp(0, 14),
       children: const [
         KpiDashboardView(),
+        MonthlyReportsView(),
         ControlTowerView(),
         ServiceRequestsInboxView(),
         AnalyticsView(),

@@ -377,11 +377,32 @@ class AdminRepository {
         .map((s) => s.docs.map((d) => IncidenciaModel.fromMap(d.data(), d.id)).toList());
   }
 
-  Future<void> updateIncidenciaEstado(String id, String nuevoEstado) async {
-    await _db.collection('incidencias').doc(id).update({'estado': nuevoEstado});
+  /// Guarda o actualiza una incidencia desde el panel de administración
+  Future<void> saveIncidencia(IncidenciaModel incidencia) async {
+    if (incidencia.id.isEmpty) {
+      final docRef = _db.collection('incidencias').doc();
+      final newInc = incidencia.copyWith(id: docRef.id);
+      await docRef.set(newInc.toMap());
+    } else {
+      await _db.collection('incidencias').doc(incidencia.id).update(incidencia.toMap());
+    }
   }
 
-  Future<void> convertIncidenciaToExpense(IncidenciaModel incidencia, double amount) async {
+  Future<void> updateIncidenciaEstado(String id, String nuevoEstado, {DateTime? fechaResolucion, DateTime? fechaIngresoTaller}) async {
+    final Map<String, dynamic> data = {'estado': nuevoEstado};
+    if (fechaResolucion != null) data['fechaResolucion'] = fechaResolucion.toIso8601String();
+    if (fechaIngresoTaller != null) data['fechaIngresoTaller'] = fechaIngresoTaller.toIso8601String();
+    await _db.collection('incidencias').doc(id).update(data);
+  }
+
+  Future<void> convertIncidenciaToExpense(
+    IncidenciaModel incidencia, 
+    double amount, {
+    DateTime? fechaResolucion,
+    DateTime? fechaIngresoTaller,
+    String? tallerProveedor,
+    String? numeroFactura,
+  }) async {
     final docRef = _db.collection('gastos').doc();
     final expense = ExpenseModel(
       id: docRef.id,
@@ -389,16 +410,29 @@ class AdminRepository {
       idChofer: incidencia.idChofer,
       idJornada: 'ReporteAdmin',
       amount: amount,
-      type: 'Mantenimiento',
-      date: DateTime.now(),
-      description: '[Incidencia] ${incidencia.descripcion}',
+      type: 'Mantención',
+      date: fechaResolucion ?? DateTime.now(),
+      description: '[Taller: ${tallerProveedor ?? "General"}] ${incidencia.descripcion}',
       status: 'Pagado',
       vehicleId: incidencia.vehiclePatente,
+      isExento: false,
     );
 
     final batch = _db.batch();
     batch.set(docRef, expense.toMap());
-    batch.update(_db.collection('incidencias').doc(incidencia.id), {'estado': 'Solucionado'});
+    
+    final Map<String, dynamic> incUpdate = {
+      'estado': 'Solucionado',
+      'costoReparacion': amount,
+      'fechaResolucion': (fechaResolucion ?? DateTime.now()).toIso8601String(),
+    };
+    if (fechaIngresoTaller != null) {
+      incUpdate['fechaIngresoTaller'] = fechaIngresoTaller.toIso8601String();
+    }
+    if (tallerProveedor != null) incUpdate['tallerProveedor'] = tallerProveedor;
+    if (numeroFactura != null) incUpdate['numeroFactura'] = numeroFactura;
+
+    batch.update(_db.collection('incidencias').doc(incidencia.id), incUpdate);
     await batch.commit();
   }
 
