@@ -58,19 +58,35 @@ class PushNotificationService {
     final notification = message.notification;
     if (notification == null) return;
 
+    showCustomNotification(
+      id: notification.hashCode,
+      title: notification.title ?? 'Notificación Bitácora',
+      body: notification.body ?? '',
+    );
+  }
+
+  /// Dispara una notificación local inmediata para avisar al conductor en ruta
+  /// (ej: aproximación a romana, peaje, o restricción horaria)
+  static Future<void> showCustomNotification({
+    required int id,
+    required String title,
+    required String body,
+  }) async {
     const AndroidNotificationDetails androidPlatformChannelSpecifics = AndroidNotificationDetails(
       'bitacora_high_importance_channel',
-      'Notificaciones Importantes',
+      'Alertas de Ruta y Telemetría',
       importance: Importance.max,
       priority: Priority.high,
       icon: '@mipmap/ic_launcher',
+      enableVibration: true,
+      playSound: true,
     );
     const NotificationDetails platformChannelSpecifics = NotificationDetails(android: androidPlatformChannelSpecifics);
 
-    _localNotificationsPlugin.show(
-      id: notification.hashCode,
-      title: notification.title,
-      body: notification.body,
+    await _localNotificationsPlugin.show(
+      id: id,
+      title: title,
+      body: body,
       notificationDetails: platformChannelSpecifics,
     );
   }

@@ -202,8 +202,10 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
         idJornada: shift.id,
         origin: _originCtrl.text.trim(),
         destination: _destCtrl.text.trim(),
-        cargoType: isMantenimiento ? 'suelta' : _cargoType.name,
-        containerNumber: (isRetiro || (isOperativo && _cargoType != CargoType.suelta))
+        cargoType: isMantenimiento
+            ? 'suelta' 
+            : (isRetiro ? 'retiro' : _cargoType.name),
+        containerNumber: (isOperativo && _cargoType != CargoType.suelta)
             ? (_containerCtrl.text.trim().isEmpty 
                 ? null 
                 : ContainerValidator.format(_containerCtrl.text))
@@ -294,8 +296,9 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
               const SizedBox(height: 28),
             ],
 
-            // ── 2. TIPO DE CARGA (Operativo o Retiro) ─────────────────────
-            if (!isMantenimiento) ...[
+            // ── 2. TIPO DE CARGA (Solo Operativo estándar) ─────────────────────
+            // En Retiro Anticipado y Mantenimiento NO se exige ni se solicita tipo de carga
+            if (isOperativo) ...[
               _sectionHeader('Tipo de Carga', Icons.inventory_2_outlined),
               const SizedBox(height: 12),
               _buildCargoTypeSelector(),
@@ -320,12 +323,35 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
             ),
             const SizedBox(height: 28),
 
-            // ── 4. DOCUMENTACIÓN DE CARGA (Si aplica contenedor) ──────────
-            if (!isMantenimiento && _cargoType != CargoType.suelta) ...[
+            // ── 4. DOCUMENTACIÓN DE CARGA (Solo para viajes operativos con contenedor) ──
+            if (isOperativo && _cargoType != CargoType.suelta) ...[
               _sectionHeader('Documentación de Carga', Icons.description_outlined),
               const SizedBox(height: 12),
               _buildContainerField(),
               const SizedBox(height: 14),
+            ] else if (isRetiro) ...[
+              // Para retiro anticipado: Mensaje informativo claro de que el contenedor no se exige ahora
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.inventory_2_outlined, color: Colors.amberAccent, size: 20),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Desplazamiento para retiro: El Nº de contenedor podrá ser ingresado al momento de retirarlo en puerto o al finalizar.',
+                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
             ],
 
             // INFO: La Guía de Despacho se solicitará al FINALIZAR el viaje

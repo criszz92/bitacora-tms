@@ -16,6 +16,8 @@ import '../../../admin/domain/services/modogps_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 import '../../../admin/domain/models/infraestructura_vial_model.dart';
+import '../../../../core/utils/road_infrastructure_detector.dart';
+import '../../../../core/utils/route_live_monitor.dart';
 import '../../../admin/data/repositories/infraestructura_repository.dart';
 import '../../../trips/domain/models/expense_model.dart';
 
@@ -897,6 +899,76 @@ class DriverDashboardScreen extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: 10),
+
+            // ── MONITOREO DE RUTA EN VIVO (Alertas de Romanas, Restricciones y Peajes) ──
+            Builder(
+              builder: (ctx) {
+                final monitorState = ref.watch(routeMonitorStreamProvider(targetPlate)).value ?? RouteMonitorState();
+                if (monitorState.activeAlerts.isEmpty && monitorState.passedTolls.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+
+                return Column(
+                  children: [
+                    // Alertas activas prioritarias (Romanas o Restricciones Horarias)
+                    ...monitorState.activeAlerts.take(2).map((alert) {
+                      final isRomana = alert.tipo == TipoPuntoInfraestructura.romana;
+                      final isRestriccion = alert.tipo == TipoPuntoInfraestructura.restriccion;
+                      final alertColor = isRomana ? Colors.amberAccent : (isRestriccion ? Colors.redAccent : Colors.cyanAccent);
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: alertColor.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: alertColor.withValues(alpha: 0.6), width: 1.2),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(isRomana ? Icons.balance : (isRestriccion ? Icons.block : Icons.toll), color: alertColor, size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(alert.title, style: TextStyle(color: alertColor, fontWeight: FontWeight.bold, fontSize: 12)),
+                                  Text(alert.message, style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+
+                    // Acumulador de peajes detectados en vivo en ruta
+                    if (monitorState.passedTolls.isNotEmpty)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.teal.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.tealAccent.withValues(alpha: 0.4)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.toll_outlined, color: Colors.tealAccent, size: 16),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Peajes cruzados: ${monitorState.passedTolls.length} • Estimado: \$${monitorState.estimatedTollsTotal.toInt()}',
+                                style: const TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.bold, fontSize: 11.5),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
 
             // Telemetría GPS en vivo / Geocerca detectada
             gpsUnitAsync.when(
@@ -1959,6 +2031,7 @@ class _EndTripDialog extends ConsumerStatefulWidget {
 class _EndTripDialogState extends ConsumerState<_EndTripDialog> {
   late final TextEditingController _guideCtrl;
   late final TextEditingController _kmCtrl;
+  late final TextEditingController _containerCtrl;
   final _formKey = GlobalKey<FormState>();
 
   bool _isLoadingGps = true;
@@ -1974,6 +2047,7 @@ class _EndTripDialogState extends ConsumerState<_EndTripDialog> {
   void initState() {
     super.initState();
     _guideCtrl = TextEditingController(text: widget.trip.guideNumber ?? '');
+    _containerCtrl = TextEditingController(text: widget.trip.containerNumber ?? '');
     _kmCtrl = TextEditingController(
       text: (widget.trip.totalKm != null && widget.trip.totalKm! > 0)
           ? widget.trip.totalKm!.toStringAsFixed(1)
@@ -1986,6 +2060,7 @@ class _EndTripDialogState extends ConsumerState<_EndTripDialog> {
   void dispose() {
     _guideCtrl.dispose();
     _kmCtrl.dispose();
+    _containerCtrl.dispose();
     for (final t in _detectedTolls) {
       t.dispose();
     }
@@ -2077,9 +2152,24 @@ class _EndTripDialogState extends ConsumerState<_EndTripDialog> {
           double minDistanceInPass = double.infinity;
           DateTime bestPointTime = peaje.createdAt;
 
-          for (final pt in hTrip.points) {
+          for (int ptIdx = 0; ptIdx < hTrip.points.length; ptIdx++) {
+            final pt = hTrip.points[ptIdx];
             final distM = distanceCalc.as(LengthUnit.Meter, peajeLatLng, pt.position);
             if (distM <= maxRadius) {
+              // Validar rumbo y sentido del camión (Norte a Sur vs Sur a Norte)
+              double? ptBearing;
+              if (ptIdx > 0) {
+                final prevPt = hTrip.points[ptIdx - 1];
+                ptBearing = RoadInfrastructureDetector.calculateBearing(prevPt.position, pt.position);
+              } else if (ptIdx < hTrip.points.length - 1) {
+                final nextPt = hTrip.points[ptIdx + 1];
+                ptBearing = RoadInfrastructureDetector.calculateBearing(pt.position, nextPt.position);
+              }
+
+              // Si el rumbo NO coincide con el sentido del peaje, descartar
+              if (!RoadInfrastructureDetector.matchesDirection(truckHeading: ptBearing, sentidoPunto: peaje.sentido)) {
+                continue;
+              }
               if (lastDetectionTime == null || pt.timestamp.difference(lastDetectionTime).inMinutes.abs() > 15) {
                 if (lastDetectionTime != null && minDistanceInPass < double.infinity) {
                   final defaultAmount = peaje.tarifaCamionPesado ?? peaje.tarifaCamionSimple ?? 0.0;
@@ -2705,6 +2795,25 @@ class _EndTripDialogState extends ConsumerState<_EndTripDialog> {
               _buildTollsSection(),
 
               const SizedBox(height: 16),
+              // Si el viaje no tiene contenedor (o es retiro anticipado), permitir ingresarlo aquí
+              if (widget.trip.containerNumber == null || widget.trip.containerNumber!.isEmpty || widget.trip.tipoMovimiento == 'retiro_anticipado') ...[
+                TextFormField(
+                  controller: _containerCtrl,
+                  textCapitalization: TextCapitalization.characters,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  decoration: InputDecoration(
+                    labelText: 'Nº Contenedor Asignado (opcional)',
+                    labelStyle: const TextStyle(color: Colors.cyanAccent, fontSize: 13),
+                    hintText: 'Ej: MSMU3836691',
+                    hintStyle: const TextStyle(color: Colors.white30),
+                    prefixIcon: const Icon(Icons.inventory_2_outlined, color: Colors.cyanAccent, size: 20),
+                    filled: true,
+                    fillColor: Colors.black26,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
               TextFormField(
                 controller: _guideCtrl,
                 keyboardType: TextInputType.text,
@@ -2784,6 +2893,7 @@ class _EndTripDialogState extends ConsumerState<_EndTripDialog> {
                       widget.trip.id,
                       _guideCtrl.text.trim(),
                       totalKm: parsedKm,
+                      containerNumber: _containerCtrl.text.trim().isNotEmpty ? _containerCtrl.text.trim().toUpperCase() : null,
                     );
 
                     // 2. Guardar y conciliar los peajes seleccionados en /gastos

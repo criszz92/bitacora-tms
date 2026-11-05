@@ -171,14 +171,21 @@ class TripRepository {
     });
   }
 
-  // Finaliza un viaje y guarda el número de guía obtenido al cerrar la carga
-  Future<void> endTripWithGuide(String tripId, String? guideNumber, {double? totalKm}) async {
+  // Finaliza un viaje y guarda el número de guía obtenido al cerrar la carga (y opcionalmente contenedor)
+  Future<void> endTripWithGuide(
+    String tripId, 
+    String? guideNumber, {
+    double? totalKm,
+    String? containerNumber,
+  }) async {
     final sanitizedGuide = guideNumber != null ? SecurityUtils.sanitizeText(guideNumber) : null;
+    final sanitizedContainer = containerNumber != null ? SecurityUtils.sanitizeText(containerNumber) : null;
     
     await _firestore.collection('viajes').doc(tripId).update({
       'status': 'Finalizado',
       'endDate': DateTime.now().toIso8601String(),
-      ...(sanitizedGuide != null ? {'guideNumber': sanitizedGuide} : {}),
+      ...(sanitizedGuide != null && sanitizedGuide.isNotEmpty ? {'guideNumber': sanitizedGuide} : {}),
+      ...(sanitizedContainer != null && sanitizedContainer.isNotEmpty ? {'containerNumber': sanitizedContainer} : {}),
       ...(totalKm != null ? {'totalKm': totalKm} : {}),
     });
 
