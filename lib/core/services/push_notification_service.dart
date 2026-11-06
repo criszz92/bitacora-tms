@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
@@ -65,23 +66,30 @@ class PushNotificationService {
     );
   }
 
-  /// Dispara una notificación local inmediata para avisar al conductor en ruta
-  /// (ej: aproximación a romana, peaje, o restricción horaria)
+  /// Canal exclusivo con sonido armónico binaural propio de Bitácora TMS
+  static final AndroidNotificationDetails _binauralAlertChannel = AndroidNotificationDetails(
+    'bitacora_binaural_alert_v2',
+    'Alertas Inteligentes de Ruta (Binaural)',
+    channelDescription: 'Canal prioritario para advertencias de romanas, peajes y restricciones con tono binaural 528Hz',
+    importance: Importance.max,
+    priority: Priority.high,
+    icon: '@mipmap/ic_launcher',
+    enableVibration: true,
+    vibrationPattern: Int64List.fromList([0, 250, 150, 400]),
+    playSound: true,
+    sound: const RawResourceAndroidNotificationSound('bitacora_alert'),
+    audioAttributesUsage: AudioAttributesUsage.alarm,
+  );
+
+  /// Dispara una alerta sonora y visual que activa la pantalla y suena fuerte con el tono binaural
   static Future<void> showCustomNotification({
     required int id,
     required String title,
     required String body,
   }) async {
-    const AndroidNotificationDetails androidPlatformChannelSpecifics = AndroidNotificationDetails(
-      'bitacora_high_importance_channel',
-      'Alertas de Ruta y Telemetría',
-      importance: Importance.max,
-      priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
-      enableVibration: true,
-      playSound: true,
+    final NotificationDetails platformChannelSpecifics = NotificationDetails(
+      android: _binauralAlertChannel,
     );
-    const NotificationDetails platformChannelSpecifics = NotificationDetails(android: androidPlatformChannelSpecifics);
 
     await _localNotificationsPlugin.show(
       id: id,

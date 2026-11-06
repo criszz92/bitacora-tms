@@ -1,10 +1,11 @@
 import 'dart:math' as math;
 import 'package:latlong2/latlong.dart';
 
-/// Utilidad técnica para:
-/// 1. Calcular rumbo (heading/bearing 0-360°) entre coordenadas o evaluar el `course` del GPS del camión.
-/// 2. Validar si el sentido del camión coincide con el sentido asignado al punto de infraestructura.
-/// 3. Validar si una restricción horaria aplica en el momento proyectado de cruce.
+/// Utilidad técnica avanzada para:
+/// 1. Detección por proximidad ortogonal y radio adaptativo según tipo (Troncal vs Lateral).
+/// 2. Cálculo de rumbo (heading/bearing 0-360°) y concordancia angular flexible con la calzada.
+/// 3. Prevención de falsos positivos en peajes laterales adyacentes a autopistas troncales.
+/// 4. Desempate por "Gate más cercano" (Nearest Toll Gate) en plazas con calzadas paralelas.
 class RoadInfrastructureDetector {
   /// Distancia en metros entre dos coordenadas geográficas (Fórmula de Haversine)
   static double calculateDistanceMeters(LatLng p1, LatLng p2) {
@@ -39,14 +40,41 @@ class RoadInfrastructureDetector {
     return bearing;
   }
 
+  /// Retorna el radio de captura óptimo en metros para evitar atrapar calzadas adyacentes:
+  /// - Peajes Laterales: Radio estricto de 16m (el ramal tiene ~8m; la autopista central está a 20-30m)
+  /// - Peajes Troncales: Radio de 45m (cubre las pistas de la calzada)
+  /// - Romanas / Pesajes: Radio amplio preventivo
+  static double getOptimalDetectionRadius({
+    required String tipoCode,
+    required String subtipo,
+    double? radioConfigurado,
+  }) {
+    final subLower = subtipo.toLowerCase();
+    
+    // Si es un Peaje Lateral (como el de Ranco / Los Ángeles)
+    if (subLower.contains('lateral') || subLower.contains('ramal') || subLower.contains('salida')) {
+      return 18.0; // Quirúrgico: descarta completamente el tránsito por la carretera central
+    }
+
+    // Si es Troncal / TAG / Free Flow
+    if (subLower.contains('troncal') || subLower.contains('tag') || subLower.contains('portico')) {
+      return (radioConfigurado != null && radioConfigurado >= 35.0 && radioConfigurado <= 60.0)
+          ? radioConfigurado
+          : 45.0;
+    }
+
+    return (radioConfigurado != null && radioConfigurado > 0) ? radioConfigurado : 50.0;
+  }
+
   /// Valida si el rumbo del camión [truckHeading] coincide con el sentido del punto [sentidoPunto].
+  /// Usa tolerancias de cono de 65° para adaptarse a curvas reales en carreteras (ej. Cabrero o Puente Industrial).
   static bool matchesDirection({
     required double? truckHeading,
     required String sentidoPunto,
   }) {
     final cleanSentido = sentidoPunto.trim().toLowerCase();
 
-    // Si es bidireccional o desconocido, no se discrimina por rumbo
+    // Si es bidireccional o sin rumbo disponible, es válido
     if (cleanSentido.isEmpty ||
         cleanSentido == 'bidireccional' ||
         cleanSentido == 'ambos' ||
@@ -56,34 +84,34 @@ class RoadInfrastructureDetector {
 
     final double h = (truckHeading % 360.0 + 360.0) % 360.0;
 
-    // Sentido Norte -> Sur
+    // Sentido Norte -> Sur (Eje Sur nominal 180°, tolerancia amplia 105° a 255°)
     if (cleanSentido.contains('norte-sur') ||
         cleanSentido == 'sur' ||
         cleanSentido == 'hacia el sur') {
-      return h >= 110.0 && h <= 250.0;
+      return h >= 105.0 && h <= 255.0;
     }
 
-    // Sentido Sur -> Norte
+    // Sentido Sur -> Norte (Eje Norte nominal 0° / 360°, tolerancia 285° a 75°)
     if (cleanSentido.contains('sur-norte') ||
         cleanSentido == 'norte' ||
         cleanSentido == 'hacia el norte') {
-      return h >= 290.0 || h <= 70.0;
+      return h >= 285.0 || h <= 75.0;
     }
 
-    // Sentido Oriente -> Poniente (Hacia la costa / mar)
+    // Sentido Oriente -> Poniente (Hacia la costa / mar, nominal 270°, ej. Cabrero a Concepción: 195° a 345°)
     if (cleanSentido.contains('oriente-poniente') ||
         cleanSentido.contains('cordillera-costa') ||
         cleanSentido == 'poniente' ||
         cleanSentido == 'oeste') {
-      return h >= 200.0 && h <= 340.0;
+      return h >= 195.0 && h <= 345.0;
     }
 
-    // Sentido Poniente -> Oriente (Hacia el interior / cordillera)
+    // Sentido Poniente -> Oriente (Hacia el interior / cordillera, nominal 90°, ej. Concepción a Cabrero: 15° a 165°)
     if (cleanSentido.contains('poniente-oriente') ||
         cleanSentido.contains('costa-cordillera') ||
         cleanSentido == 'oriente' ||
         cleanSentido == 'este') {
-      return h >= 20.0 && h <= 160.0;
+      return h >= 15.0 && h <= 165.0;
     }
 
     return true;

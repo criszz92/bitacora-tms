@@ -2141,12 +2141,20 @@ class _EndTripDialogState extends ConsumerState<_EndTripDialog> {
         const distanceCalc = Distance();
         final detected = <_DetectedTollPass>[];
 
+        // Lista de candidatos potenciales con distancia y punto exacto de cruce
+        final candidatePasses = <_DetectedTollPass>[];
+
         for (final peaje in _allAvailablePeajes) {
           final peajeLatLng = LatLng(peaje.lat, peaje.lng);
-          // Radio estricto: entre 40 y 110 metros para casetas de peaje
-          final maxRadius = (peaje.radioMetros >= 40 && peaje.radioMetros <= 120)
-              ? peaje.radioMetros
-              : 80.0;
+
+          // Radio adaptativo:
+          // Peajes Laterales: radio estricto de 18m para no atrapar el camión que viaja por la autopista central
+          // Peajes Troncales: radio de 45m para cubrir las pistas de la calzada
+          final maxRadius = RoadInfrastructureDetector.getOptimalDetectionRadius(
+            tipoCode: peaje.tipo.code,
+            subtipo: peaje.subtipo,
+            radioConfigurado: peaje.radioMetros,
+          );
 
           DateTime? lastDetectionTime;
           double minDistanceInPass = double.infinity;
@@ -2155,8 +2163,9 @@ class _EndTripDialogState extends ConsumerState<_EndTripDialog> {
           for (int ptIdx = 0; ptIdx < hTrip.points.length; ptIdx++) {
             final pt = hTrip.points[ptIdx];
             final distM = distanceCalc.as(LengthUnit.Meter, peajeLatLng, pt.position);
+
             if (distM <= maxRadius) {
-              // Validar rumbo y sentido del camión (Norte a Sur vs Sur a Norte)
+              // Calcular rumbo del camión en ese momento
               double? ptBearing;
               if (ptIdx > 0) {
                 final prevPt = hTrip.points[ptIdx - 1];
@@ -2166,15 +2175,16 @@ class _EndTripDialogState extends ConsumerState<_EndTripDialog> {
                 ptBearing = RoadInfrastructureDetector.calculateBearing(pt.position, nextPt.position);
               }
 
-              // Si el rumbo NO coincide con el sentido del peaje, descartar
+              // Validar concordancia de sentido (Norte a Sur vs Sur a Norte, etc.)
               if (!RoadInfrastructureDetector.matchesDirection(truckHeading: ptBearing, sentidoPunto: peaje.sentido)) {
                 continue;
               }
-              if (lastDetectionTime == null || pt.timestamp.difference(lastDetectionTime).inMinutes.abs() > 15) {
+
+              if (lastDetectionTime == null || pt.timestamp.difference(lastDetectionTime).inMinutes.abs() > 8) {
                 if (lastDetectionTime != null && minDistanceInPass < double.infinity) {
                   final defaultAmount = peaje.tarifaCamionPesado ?? peaje.tarifaCamionSimple ?? 0.0;
                   final isSaved = existingPeajeNames.any((n) => n.contains(peaje.nombre.toLowerCase()));
-                  detected.add(_DetectedTollPass(
+                  candidatePasses.add(_DetectedTollPass(
                     id: 'pass-${peaje.id}-${bestPointTime.millisecondsSinceEpoch}',
                     peaje: peaje,
                     passTime: bestPointTime,
@@ -2199,7 +2209,7 @@ class _EndTripDialogState extends ConsumerState<_EndTripDialog> {
           if (lastDetectionTime != null && minDistanceInPass < double.infinity) {
             final defaultAmount = peaje.tarifaCamionPesado ?? peaje.tarifaCamionSimple ?? 0.0;
             final isSaved = existingPeajeNames.any((n) => n.contains(peaje.nombre.toLowerCase()));
-            detected.add(_DetectedTollPass(
+            candidatePasses.add(_DetectedTollPass(
               id: 'pass-${peaje.id}-${bestPointTime.millisecondsSinceEpoch}',
               peaje: peaje,
               passTime: bestPointTime,
@@ -2208,6 +2218,29 @@ class _EndTripDialogState extends ConsumerState<_EndTripDialog> {
               isSelected: !isSaved,
               initialAmount: defaultAmount,
             ));
+          }
+        }
+
+        // DESEMPATE DE CASILLAS PARALELAS (Nearest Gate Competition):
+        // Si dos casetas de peaje (ej. Cabrero Norte vs Sur, o Puente Industrial) fueron detectadas
+        // en una misma ventana de tiempo (< 3 minutos), nos quedamos con la que tuvo menor distancia física
+        // al camión (la pista exacta por la que circulaba).
+        candidatePasses.sort((a, b) => a.passTime.compareTo(b.passTime));
+
+        for (final cand in candidatePasses) {
+          final conflictingIdx = detected.indexWhere((existing) {
+            final diffSec = cand.passTime.difference(existing.passTime).inSeconds.abs();
+            return diffSec < 180; // Misma ventana de paso
+          });
+
+          if (conflictingIdx >= 0) {
+            final existing = detected[conflictingIdx];
+            // Si el nuevo candidato está físicamente más cerca de la calzada que el anterior, lo reemplaza
+            if (cand.distanceMeters < existing.distanceMeters) {
+              detected[conflictingIdx] = cand;
+            }
+          } else {
+            detected.add(cand);
           }
         }
 

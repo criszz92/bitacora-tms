@@ -169,7 +169,11 @@ final routeMonitorStreamProvider = StreamProvider.autoDispose.family<RouteMonito
 
         // ─── C) EVALUAR PEAJES (Cruce efectivo y suma en tiempo real) ───
         if (punto.tipo == TipoPuntoInfraestructura.peaje) {
-          final detectionRadius = punto.radioMetros > 30 ? punto.radioMetros : 90.0;
+          final detectionRadius = RoadInfrastructureDetector.getOptimalDetectionRadius(
+            tipoCode: punto.tipo.code,
+            subtipo: punto.subtipo,
+            radioConfigurado: punto.radioMetros,
+          );
           
           if (distM <= detectionRadius) {
             final passId = 'peaje-${punto.id}';

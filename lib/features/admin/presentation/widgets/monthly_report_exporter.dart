@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -12,8 +11,7 @@ import '../../../auth/domain/models/user_model.dart';
 import '../../../../core/utils/chilean_holidays.dart';
 import '../../../../core/utils/number_utils.dart';
 
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
+import '../../../../core/utils/file_downloader.dart';
 
 class MonthlyReportExporter {
   /// Genera y descarga el PDF Ejecutivo Oficial Multipágina del Mes
@@ -365,13 +363,10 @@ class MonthlyReportExporter {
       sb.writeln('${t.id};${DateFormat('dd/MM/yyyy').format(t.startDate)};${t.origin};${t.destination};${t.vehicleId ?? "N/A"};${(drivers.where((d) => d.uid == t.idChofer).firstOrNull?.nombre ?? 'Chofer')};${t.client};${t.guideNumber ?? ""};${t.totalKm ?? 0};${t.value};${t.extraCostos ?? 0};${t.sobreEstadia ?? 0};$total');
     }
 
-    final bytes = utf8.encode(sb.toString());
-    final blob = html.Blob([bytes], 'text/csv;charset=utf-8');
-    final url = html.Url.createObjectUrlFromBlob(blob);
-    html.AnchorElement(href: url)
-      ..setAttribute('download', 'Informe_Mensual_${selectedMonth.year}_${selectedMonth.month}.csv')
-      ..click();
-    html.Url.revokeObjectUrl(url);
+    downloadCsvFile(
+      'Informe_Mensual_${selectedMonth.year}_${selectedMonth.month}.csv',
+      sb.toString(),
+    );
   }
 
   static pw.Widget _buildPdfCard(String title, String val, PdfColor bg) {
