@@ -25,6 +25,9 @@ import '../../../../core/services/app_update_service.dart';
 import '../../../../core/widgets/app_update_dialog.dart';
 import '../../../../core/services/push_notification_service.dart';
 import '../../../trips/domain/services/fuzzy_search_service.dart';
+import 'dart:ui';
+import '../../../../core/theme/app_theme.dart';
+import '../../../../core/widgets/glass_container.dart';
 
 class DriverDashboardScreen extends ConsumerWidget {
   const DriverDashboardScreen({super.key});
@@ -59,26 +62,103 @@ class DriverDashboardScreen extends ConsumerWidget {
 
     final activeShiftAsync = ref.watch(activeShiftProvider);
     final shiftTripsAsync = ref.watch(currentShiftTripsProvider);
+    final hasActiveShift = activeShiftAsync.value != null;
 
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Bitacora Conductor', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: AppColors.background.withValues(alpha: 0.85),
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        title: Row(
+          children: [
+            Container(
+              width: 9,
+              height: 9,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: hasActiveShift ? AppColors.success : AppColors.warning,
+                boxShadow: [
+                  BoxShadow(
+                    color: (hasActiveShift ? AppColors.success : AppColors.warning).withValues(alpha: 0.6),
+                    blurRadius: 6,
+                    spreadRadius: 1.5,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Text(
+              'Bitácora Conductor',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 18,
+                letterSpacing: 0.3,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: (hasActiveShift ? AppColors.success : AppColors.textMuted).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: (hasActiveShift ? AppColors.success : AppColors.textMuted).withValues(alpha: 0.3),
+                  width: 0.8,
+                ),
+              ),
+              child: Text(
+                hasActiveShift ? 'EN JORNADA' : 'CERRADA',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.6,
+                  color: hasActiveShift ? AppColors.success : AppColors.textSecondary,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
       drawer: _buildDriverDrawer(context, ref),
-      body: SafeArea(
-        child: activeShiftAsync.when(
-          data: (shift) {
-            if (shift == null) {
-              return _buildNoShiftView(context, ref);
-            }
-            // Listener para reportes automáticos de documentos
-            _setupAutoDocumentReportListener(ref, shift);
-            
-            return _buildDashboardContent(context, ref, shiftTripsAsync, shift);
-          },
-          loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFFFFFFFF))),
-          error: (err, stack) => Center(child: Text('Error al cargar jornada: $err')),
-        ),
+      body: Stack(
+        children: [
+          // Resplandor ambiental de cabina / instrumentación pesada (glow radial ámbar sutil al 6%)
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: const Alignment(0.0, -0.2),
+                  radius: 0.85,
+                  colors: [
+                    AppColors.primary.withValues(alpha: 0.06),
+                    AppColors.backgroundSecondary.withValues(alpha: 0.4),
+                    AppColors.background,
+                  ],
+                  stops: const [0.0, 0.55, 1.0],
+                ),
+              ),
+            ),
+          ),
+          SafeArea(
+            child: activeShiftAsync.when(
+              data: (shift) {
+                if (shift == null) {
+                  return _buildNoShiftView(context, ref);
+                }
+                // Listener para reportes automáticos de documentos
+                _setupAutoDocumentReportListener(ref, shift);
+                
+                return _buildDashboardContent(context, ref, shiftTripsAsync, shift);
+              },
+              loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+              error: (err, stack) => Center(
+                child: Text('Error al cargar jornada: $err', style: const TextStyle(color: AppColors.error)),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -86,40 +166,108 @@ class DriverDashboardScreen extends ConsumerWidget {
   // ================= PANTALLA DE BLOQUEO =================
   Widget _buildNoShiftView(BuildContext context, WidgetRef ref) {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.lock_clock, size: 80, color: Colors.grey),
-            const SizedBox(height: 24),
-            const Text(
-              'Jornada Cerrada',
-              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
-            ),
-            const SizedBox(height: 12),
             _buildAssignedRequestBanner(context, ref), // Banner dinámico
-            const SizedBox(height: 16),
-            const Text(
-              'Para registrar viajes o viáticos, debes iniciar tu día de trabajo indicando el camión y el kilometraje.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey, fontSize: 16),
-            ),
-            const SizedBox(height: 48),
-            SizedBox(
-              width: double.infinity,
-              height: 64,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFFFFFF),
-                  foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-                onPressed: () {
-                  context.push('/start-shift');
-                },
-                icon: const Icon(Icons.play_arrow, size: 32),
-                label: const Text('INICIAR JORNADA', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1)),
+            const SizedBox(height: 12),
+            GlassContainer(
+              padding: const EdgeInsets.symmetric(horizontal: 26.0, vertical: 34.0),
+              borderRadius: BorderRadius.circular(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Emblema estilizado con halo ámbar
+                  Container(
+                    width: 86,
+                    height: 86,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: AppColors.primary.withValues(alpha: 0.35),
+                        width: 1.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primary.withValues(alpha: 0.18),
+                          blurRadius: 18,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.lock_clock_outlined,
+                      size: 44,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Jornada Cerrada',
+                    style: TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.4,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Para registrar viajes o viáticos, debes iniciar tu día de trabajo indicando el camión y el kilometraje.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 14,
+                      height: 1.45,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  Container(
+                    width: double.infinity,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      gradient: const LinearGradient(
+                        colors: [AppColors.primary, AppColors.primaryAccent],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primary.withValues(alpha: 0.30),
+                          blurRadius: 16,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () => context.push('/start-shift'),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.play_arrow_rounded, size: 28, color: AppColors.background),
+                            SizedBox(width: 8),
+                            Text(
+                              'INICIAR JORNADA',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.0,
+                                color: AppColors.background,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -129,6 +277,64 @@ class DriverDashboardScreen extends ConsumerWidget {
   }
 
   // ================= DRAWER (MENÚ LATERAL) =================
+  Widget _buildDrawerItem({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    String? subtitle,
+    required VoidCallback onTap,
+    Color? titleColor,
+  }) {
+    return ListTile(
+      dense: true,
+      visualDensity: const VisualDensity(horizontal: 0, vertical: -1),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+      leading: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: iconColor.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: iconColor.withValues(alpha: 0.25),
+            width: 0.8,
+          ),
+        ),
+        child: Icon(icon, size: 20, color: iconColor),
+      ),
+      title: Text(
+        title,
+        style: TextStyle(
+          color: titleColor ?? AppColors.textPrimary,
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      subtitle: subtitle != null
+          ? Text(
+              subtitle,
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+            )
+          : null,
+      onTap: onTap,
+    );
+  }
+
+  Widget _buildDrawerSectionHeader(String label) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 6),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: AppColors.textMuted,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1.2,
+        ),
+      ),
+    );
+  }
+
   Widget _buildDriverDrawer(BuildContext context, WidgetRef ref) {
     final user = ref.read(currentUserProfileProvider).value;
     final isAdmin = user?.rol == 'ADMIN';
@@ -142,144 +348,243 @@ class DriverDashboardScreen extends ConsumerWidget {
     }
 
     return Drawer(
-      backgroundColor: const Color(0xFF121212),
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          DrawerHeader(
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: Colors.white10)),
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      child: ClipRRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF11141B).withValues(alpha: 0.88),
+              border: Border(
+                right: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  width: 1,
+                ),
+              ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Row(
-                  children: [
-                    CircleAvatar(
-                      backgroundColor: const Color(0xFFFFFFFF),
-                      foregroundColor: Colors.black,
-                      radius: 24,
-                      child: Text(initial, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(displayName, 
-                            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(user?.email ?? 'Sin correo', 
-                            style: const TextStyle(color: Colors.grey, fontSize: 12),
-                            overflow: TextOverflow.ellipsis,
-                          ),
+            child: SafeArea(
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  // Cabecera de Perfil con anillo degradado en ámbar
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          AppColors.primary.withValues(alpha: 0.08),
+                          AppColors.surfaceElevated.withValues(alpha: 0.6),
                         ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      border: Border(
+                        bottom: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.08),
+                          width: 1,
+                        ),
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-              ],
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.local_gas_station, color: Colors.white),
-            title: const Text('Carga de Combustible'),
-            onTap: () {
-              context.pop();
-              context.push('/add-expense?type=Combustible');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.add_road, color: Colors.white),
-            title: const Text('Peajes'),
-            onTap: () {
-              context.pop();
-              context.push('/add-expense?type=Peaje');
-            },
-          ),
-          const Divider(color: Colors.white24),
-          ListTile(
-            leading: const Icon(Icons.request_quote, color: Color(0xFFE0E0E0)),
-            title: const Text('Rendición de Viáticos', style: TextStyle(color: Color(0xFFE0E0E0), fontWeight: FontWeight.bold)),
-            onTap: () {
-              context.pop();
-              context.push('/viaticos-request');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.analytics_outlined, color: Colors.blueAccent),
-            title: const Text('Resumen del Mes', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            subtitle: const Text('Ver viajes, viáticos y comisiones', style: TextStyle(color: Colors.white38, fontSize: 11)),
-            onTap: () {
-              context.pop();
-              context.push('/monthly-summary');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.build_circle_outlined, color: Colors.orangeAccent),
-            title: const Text('Salud del Camión', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            subtitle: const Text('Estado de mantención y documentos', style: TextStyle(color: Colors.white38, fontSize: 11)),
-            onTap: () {
-              context.pop();
-              _showVehicleMaintenanceDialog(context, ref);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.history, color: Colors.white60),
-            title: const Text('Agregar Viaje Pasado', style: TextStyle(color: Colors.white60)),
-            subtitle: const Text('Olvidé registrar un viaje', style: TextStyle(color: Colors.white30, fontSize: 11)),
-            onTap: () {
-              context.pop();
-              context.push('/retro-trip');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.system_update_alt_rounded, color: Colors.greenAccent),
-            title: const Text('Buscar Actualizaciones', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            subtitle: const Text('Verificar versión más reciente del sistema', style: TextStyle(color: Colors.white38, fontSize: 11)),
-            onTap: () async {
-              context.pop();
-              final update = await AppUpdateService.checkForUpdate();
-              if (context.mounted) {
-                if (update != null) {
-                  AppUpdateDialog.show(context, update);
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('✅ Tienes la última versión instalada.'),
-                      backgroundColor: Colors.green,
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(2.5),
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              colors: [AppColors.primary, AppColors.primaryAccent],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                          ),
+                          child: CircleAvatar(
+                            backgroundColor: AppColors.surfaceElevated,
+                            radius: 24,
+                            child: Text(
+                              initial,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 20,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                displayName,
+                                style: const TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                user?.email ?? 'Sin correo',
+                                style: const TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 12,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  );
-                }
-              }
-            },
-          ),
-          if (isAdmin) ...[
-            const Divider(color: Colors.white24),
-            ListTile(
-              leading: const Icon(Icons.admin_panel_settings, color: Colors.orangeAccent),
-              title: const Text('Volver a Administración', style: TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold)),
-              onTap: () {
-                context.pop();
-                context.go('/admin');
-              },
+                  ),
+
+                  // SECCIÓN: OPERACIÓN EN RUTA
+                  _buildDrawerSectionHeader('OPERACIÓN EN RUTA'),
+                  _buildDrawerItem(
+                    icon: Icons.local_gas_station_rounded,
+                    iconColor: AppColors.warning,
+                    title: 'Carga de Combustible',
+                    onTap: () {
+                      context.pop();
+                      context.push('/add-expense?type=Combustible');
+                    },
+                  ),
+                  _buildDrawerItem(
+                    icon: Icons.add_road_rounded,
+                    iconColor: AppColors.info,
+                    title: 'Peajes',
+                    onTap: () {
+                      context.pop();
+                      context.push('/add-expense?type=Peaje');
+                    },
+                  ),
+                  _buildDrawerItem(
+                    icon: Icons.receipt_long_rounded,
+                    iconColor: AppColors.primaryWarm,
+                    title: 'Rendición de Viáticos',
+                    onTap: () {
+                      context.pop();
+                      context.push('/viaticos-request');
+                    },
+                  ),
+
+                  Divider(color: Colors.white.withValues(alpha: 0.06), height: 20),
+
+                  // SECCIÓN: GESTIÓN Y FLOTA
+                  _buildDrawerSectionHeader('GESTIÓN Y FLOTA'),
+                  _buildDrawerItem(
+                    icon: Icons.analytics_outlined,
+                    iconColor: const Color(0xFF60A5FA),
+                    title: 'Resumen del Mes',
+                    subtitle: 'Viajes, viáticos y comisiones',
+                    onTap: () {
+                      context.pop();
+                      context.push('/monthly-summary');
+                    },
+                  ),
+                  _buildDrawerItem(
+                    icon: Icons.build_circle_outlined,
+                    iconColor: AppColors.primaryWarm,
+                    title: 'Salud del Camión',
+                    subtitle: 'Mantenimiento y documentos',
+                    onTap: () {
+                      context.pop();
+                      _showVehicleMaintenanceDialog(context, ref);
+                    },
+                  ),
+                  _buildDrawerItem(
+                    icon: Icons.history_rounded,
+                    iconColor: AppColors.textSecondary,
+                    title: 'Agregar Viaje Pasado',
+                    subtitle: 'Olvidé registrar un viaje',
+                    onTap: () {
+                      context.pop();
+                      context.push('/retro-trip');
+                    },
+                  ),
+
+                  Divider(color: Colors.white.withValues(alpha: 0.06), height: 20),
+
+                  // SECCIÓN: SISTEMA
+                  _buildDrawerSectionHeader('SISTEMA'),
+                  _buildDrawerItem(
+                    icon: Icons.system_update_alt_rounded,
+                    iconColor: AppColors.success,
+                    title: 'Buscar Actualizaciones',
+                    subtitle: 'Verificar versión del sistema',
+                    onTap: () async {
+                      context.pop();
+                      final update = await AppUpdateService.checkForUpdate();
+                      if (context.mounted) {
+                        if (update != null) {
+                          AppUpdateDialog.show(context, update);
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('✅ Tienes la última versión instalada.'),
+                              backgroundColor: AppColors.success,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
+
+                  if (isAdmin) ...[
+                    Divider(color: Colors.white.withValues(alpha: 0.06), height: 20),
+                    _buildDrawerSectionHeader('ADMINISTRACIÓN'),
+                    _buildDrawerItem(
+                      icon: Icons.admin_panel_settings_outlined,
+                      iconColor: AppColors.primary,
+                      title: 'Volver a Administración',
+                      titleColor: AppColors.primary,
+                      onTap: () {
+                        context.pop();
+                        context.go('/admin');
+                      },
+                    ),
+                  ],
+
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.error.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.error.withValues(alpha: 0.30),
+                          width: 0.8,
+                        ),
+                      ),
+                      child: ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.logout_rounded, color: AppColors.error),
+                        title: const Text(
+                          'Cerrar Sesión',
+                          style: TextStyle(
+                            color: AppColors.error,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                        onTap: () async {
+                          context.pop();
+                          await ref.read(authServiceProvider).signOut();
+                          if (context.mounted) context.go('/login');
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ),
             ),
-          ],
-          const Divider(color: Colors.white24),
-          ListTile(
-            leading: const Icon(Icons.logout, color: Colors.redAccent),
-            title: const Text('Cerrar Sesión', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
-            onTap: () async {
-              context.pop();
-              await ref.read(authServiceProvider).signOut();
-              if (context.mounted) context.go('/login');
-            },
           ),
-        ],
+        ),
       ),
     );
   }
@@ -301,11 +606,23 @@ class DriverDashboardScreen extends ConsumerWidget {
                 children: [
                   const Text(
                     'Tus Registros',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                      letterSpacing: 0.2,
+                    ),
                   ),
-                  Text(
-                    'Camión asignado: ${shift.patenteCamion}',
-                    style: const TextStyle(fontSize: 12, color: Colors.white60),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      const Icon(Icons.directions_bus_rounded, size: 13, color: AppColors.primary),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Camión asignado: ${shift.patenteCamion}',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -318,18 +635,18 @@ class DriverDashboardScreen extends ConsumerWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.redAccent.withValues(alpha: 0.15),
+                    color: AppColors.error.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.redAccent.withValues(alpha: 0.5), width: 0.8),
+                    border: Border.all(color: AppColors.error.withValues(alpha: 0.4), width: 0.8),
                   ),
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.stop_circle, color: Colors.redAccent, size: 18),
+                      Icon(Icons.stop_circle_rounded, color: AppColors.error, size: 18),
                       SizedBox(width: 6),
                       Text(
                         'Cerrar Jornada',
-                        style: TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                        style: TextStyle(color: AppColors.error, fontSize: 11, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
@@ -343,28 +660,39 @@ class DriverDashboardScreen extends ConsumerWidget {
               final activeCount = trips.where((t) => t.status == 'En Ruta').length;
               final completedTrips = trips.where((t) => t.status != 'En Ruta').toList();
               final double totalKmJornada = completedTrips.fold(0.0, (acc, t) => acc + (t.totalKm ?? 0.0));
-              return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E222B),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white12),
-                ),
+              return GlassContainer(
+                borderRadius: BorderRadius.circular(14),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 child: Row(
                   children: [
-                    Icon(Icons.local_shipping, size: 16, color: activeCount > 0 ? Colors.greenAccent : Colors.white60),
+                    Icon(
+                      Icons.local_shipping_rounded,
+                      size: 16,
+                      color: activeCount > 0 ? AppColors.success : AppColors.textMuted,
+                    ),
                     const SizedBox(width: 6),
-                    Text('$activeCount', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
+                    Text(
+                      '$activeCount',
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.textPrimary),
+                    ),
                     const SizedBox(width: 4),
-                    Text(activeCount == 1 ? 'Activo' : 'Activos', style: const TextStyle(color: Colors.white60, fontSize: 11)),
+                    Text(activeCount == 1 ? 'Activo' : 'Activos', style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
                     const SizedBox(width: 12),
                     Container(width: 1, height: 16, color: Colors.white12),
                     const SizedBox(width: 12),
-                    const Icon(Icons.route, size: 16, color: Colors.purpleAccent),
+                    const Icon(Icons.route_rounded, size: 16, color: AppColors.primary),
                     const SizedBox(width: 6),
-                    Text('${totalKmJornada.toStringAsFixed(0)} KM', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
+                    Text(
+                      '${totalKmJornada.toStringAsFixed(0)} KM',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: AppColors.textPrimary,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                      ),
+                    ),
                     const SizedBox(width: 4),
-                    const Text('Jornada', style: TextStyle(color: Colors.white60, fontSize: 11)),
+                    const Text('Jornada', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
                     const Spacer(),
                     InkWell(
                       onTap: () => _showReportIncidentDialog(context, ref, shift),
@@ -372,16 +700,16 @@ class DriverDashboardScreen extends ConsumerWidget {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Colors.redAccent.withValues(alpha: 0.12),
+                          color: AppColors.error.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.redAccent.withValues(alpha: 0.4), width: 0.8),
+                          border: Border.all(color: AppColors.error.withValues(alpha: 0.35), width: 0.8),
                         ),
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.report_problem_outlined, size: 13, color: Colors.redAccent),
+                            Icon(Icons.report_problem_outlined, size: 13, color: AppColors.error),
                             SizedBox(width: 4),
-                            Text('Incidencia', style: TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                            Text('Incidencia', style: TextStyle(color: AppColors.error, fontSize: 11, fontWeight: FontWeight.bold)),
                           ],
                         ),
                       ),
@@ -399,7 +727,12 @@ class DriverDashboardScreen extends ConsumerWidget {
             children: [
               const Text(
                 'Viajes de la Jornada',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                  letterSpacing: 0.2,
+                ),
               ),
               shiftTripsAsync.maybeWhen(
                 data: (trips) {
@@ -411,8 +744,8 @@ class DriverDashboardScreen extends ConsumerWidget {
                       visualDensity: VisualDensity.compact,
                     ),
                     onPressed: () => _showStartMovementOptions(context),
-                    icon: const Icon(Icons.add, size: 16, color: Colors.blueAccent),
-                    label: const Text('Nuevo Movimiento', style: TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                    icon: const Icon(Icons.add_rounded, size: 16, color: AppColors.primary),
+                    label: const Text('Nuevo Movimiento', style: TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.bold)),
                   );
                 },
                 orElse: () => const SizedBox.shrink(),
@@ -424,7 +757,9 @@ class DriverDashboardScreen extends ConsumerWidget {
             child: shiftTripsAsync.when(
               data: (trips) {
                 if (trips.isEmpty) {
-                  return const Center(child: Text('No hay viajes registrados en esta jornada', style: TextStyle(color: Colors.grey)));
+                  return const Center(
+                    child: Text('No hay viajes registrados en esta jornada', style: TextStyle(color: AppColors.textSecondary)),
+                  );
                 }
                 final sorted = List<TripModel>.from(trips)..sort((a, b) {
                   if (a.status == 'En Ruta' && b.status != 'En Ruta') return -1;
@@ -438,8 +773,8 @@ class DriverDashboardScreen extends ConsumerWidget {
                   },
                 );
               },
-              loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFFFFFFFF))),
-              error: (error, _) => Center(child: Text('Error: $error')),
+              loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+              error: (error, _) => Center(child: Text('Error: $error', style: const TextStyle(color: AppColors.error))),
             ),
           ),
           // Botón inferior: solo se muestra destacado si NO hay viaje activo para no tapar la pantalla
@@ -452,17 +787,47 @@ class DriverDashboardScreen extends ConsumerWidget {
               return Padding(
                 padding: const EdgeInsets.only(top: 8.0),
                 child: SizedBox(
-                  height: 50,
+                  height: 52,
                   width: double.infinity,
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFFFFFF),
-                      foregroundColor: Colors.black,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      gradient: const LinearGradient(
+                        colors: [AppColors.primary, AppColors.primaryAccent],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primary.withValues(alpha: 0.25),
+                          blurRadius: 14,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
-                    onPressed: () => _showStartMovementOptions(context),
-                    icon: const Icon(Icons.add_box, color: Colors.black, size: 20),
-                    label: const Text('INICIAR NUEVA ACTIVIDAD', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: () => _showStartMovementOptions(context),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.add_box_rounded, color: AppColors.background, size: 22),
+                            SizedBox(width: 8),
+                            Text(
+                              'INICIAR NUEVA ACTIVIDAD',
+                              style: TextStyle(
+                                color: AppColors.background,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.6,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               );
@@ -863,27 +1228,12 @@ class DriverDashboardScreen extends ConsumerWidget {
     final nextHito = _getNextHito(trip.hitoActual);
     final pendingArrival = ref.watch(pendingArrivalProvider);
 
-    return Card(
+    return GlassContainer(
+      isActive: true,
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: 3,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: Color(0xFF22C55E), width: 1.5),
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          gradient: LinearGradient(
-            colors: [
-              const Color(0xFF161B22),
-              const Color(0xFF0F172A).withValues(alpha: 0.95),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        padding: const EdgeInsets.all(14.0),
-        child: Column(
+      borderRadius: BorderRadius.circular(16),
+      padding: const EdgeInsets.all(14.0),
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Header del viaje activo
@@ -1532,111 +1882,112 @@ class DriverDashboardScreen extends ConsumerWidget {
             ),
           ],
         ),
-      ),
     );
   }
 
   Widget _buildCompletedTripCard(BuildContext context, WidgetRef ref, TripModel trip, String targetPlate) {
-    return Card(
+    return GlassContainer(
       margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: const BorderSide(color: Colors.white12, width: 0.8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  trip.isRetiroAnticipado
-                      ? 'RETIRO ANTICIPADO'
-                      : (trip.isMantenimiento ? 'MANTENIMIENTO' : 'VIAJE COMPLETADO'),
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: trip.isRetiroAnticipado
-                        ? Colors.amberAccent
-                        : (trip.isMantenimiento ? Colors.cyanAccent : Colors.white70),
-                    fontSize: 12,
-                  ),
+      borderRadius: BorderRadius.circular(16),
+      padding: const EdgeInsets.all(14.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                trip.isRetiroAnticipado
+                    ? 'RETIRO ANTICIPADO'
+                    : (trip.isMantenimiento ? 'MANTENIMIENTO' : 'VIAJE COMPLETADO'),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: trip.isRetiroAnticipado
+                      ? AppColors.primary
+                      : (trip.isMantenimiento ? AppColors.info : AppColors.textSecondary),
+                  fontSize: 12,
+                  letterSpacing: 0.5,
                 ),
-                Row(
-                  children: [
-                    if (!trip.isOperativo)
-                      Container(
-                        margin: const EdgeInsets.only(right: 6),
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.white10,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Text('SIN GANANCIAS', style: TextStyle(color: Colors.white38, fontSize: 9, fontWeight: FontWeight.bold)),
-                      ),
+              ),
+              Row(
+                children: [
+                  if (!trip.isOperativo)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      margin: const EdgeInsets.only(right: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: Colors.green.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(10),
+                        color: Colors.white10,
+                        borderRadius: BorderRadius.circular(6),
                       ),
-                      child: Text(
-                        trip.status,
-                        style: const TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold),
-                      ),
+                      child: const Text('SIN GANANCIAS', style: TextStyle(color: AppColors.textMuted, fontSize: 9, fontWeight: FontWeight.bold)),
                     ),
-                  ],
-                ),
-              ],
-            ),
-            const Divider(height: 16, color: Colors.white12),
-            _buildRouteRow(Icons.my_location, 'Origen', trip.origin),
-            const SizedBox(height: 8),
-            _buildRouteRow(Icons.location_on, 'Destino', trip.destination),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                const Icon(Icons.inventory_2, size: 14, color: Colors.grey),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    trip.containerNumber != null && trip.containerNumber!.isNotEmpty
-                        ? trip.containerNumber!
-                        : (trip.guideNumber != null && trip.guideNumber!.isNotEmpty
-                            ? 'Guía: ${trip.guideNumber}'
-                            : 'Carga Suelta'),
-                    style: const TextStyle(color: Colors.grey, fontSize: 12),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (trip.totalKm != null) ...[
-                  const Icon(Icons.route, size: 14, color: Colors.purpleAccent),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${trip.totalKm!.toStringAsFixed(1)} KM',
-                    style: const TextStyle(color: Colors.purpleAccent, fontWeight: FontWeight.bold, fontSize: 13),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppColors.success.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.success.withValues(alpha: 0.3), width: 0.8),
+                    ),
+                    child: Text(
+                      trip.status,
+                      style: const TextStyle(color: AppColors.success, fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ],
-              ],
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white70,
-                  side: const BorderSide(color: Colors.white24),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                ),
-                onPressed: () => _showEditTripDriverDialog(context, ref, trip),
-                icon: const Icon(Icons.edit, size: 15),
-                label: const Text('EDITAR KM / GUÍA', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
               ),
+            ],
+          ),
+          const Divider(height: 16, color: Colors.white12),
+          _buildRouteRow(Icons.my_location, 'Origen', trip.origin),
+          const SizedBox(height: 8),
+          _buildRouteRow(Icons.location_on, 'Destino', trip.destination),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              const Icon(Icons.inventory_2, size: 14, color: AppColors.textMuted),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  trip.containerNumber != null && trip.containerNumber!.isNotEmpty
+                      ? trip.containerNumber!
+                      : (trip.guideNumber != null && trip.guideNumber!.isNotEmpty
+                          ? 'Guía: ${trip.guideNumber}'
+                          : 'Carga Suelta'),
+                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (trip.totalKm != null) ...[
+                const Icon(Icons.route_rounded, size: 14, color: AppColors.primary),
+                const SizedBox(width: 4),
+                Text(
+                  '${trip.totalKm!.toStringAsFixed(1)} KM',
+                  style: const TextStyle(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.textSecondary,
+                side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+              ),
+              onPressed: () => _showEditTripDriverDialog(context, ref, trip),
+              icon: const Icon(Icons.edit, size: 15),
+              label: const Text('EDITAR KM / GUÍA', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -2352,13 +2703,13 @@ class DriverDashboardScreen extends ConsumerWidget {
   Widget _buildRouteRow(IconData icon, String label, String value) {
     return Row(
       children: [
-        Icon(icon, size: 16, color: Colors.grey),
+        Icon(icon, size: 16, color: AppColors.primary),
         const SizedBox(width: 8),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-            Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+            Text(label, style: const TextStyle(fontSize: 10, color: AppColors.textMuted, fontWeight: FontWeight.w600)),
+            Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
           ],
         ),
       ],
