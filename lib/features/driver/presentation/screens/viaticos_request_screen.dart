@@ -6,6 +6,7 @@ import '../../../trips/presentation/providers/trip_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import 'package:bitacora/features/admin/presentation/providers/admin_provider.dart';
 import 'package:bitacora/features/admin/domain/models/company_config_model.dart';
+import 'package:bitacora/core/theme/app_theme.dart';
 
 class ViaticosRequestScreen extends ConsumerStatefulWidget {
   const ViaticosRequestScreen({super.key});
@@ -31,9 +32,9 @@ class _ViaticosRequestScreenState extends ConsumerState<ViaticosRequestScreen> {
       builder: (context, child) => Theme(
         data: ThemeData.dark().copyWith(
           colorScheme: const ColorScheme.dark(
-            primary: Color(0xFFE0E0E0),
-            onPrimary: Colors.white,
-            surface: Color(0xFF1E1E1E),
+            primary: AppColors.primary,
+            onPrimary: AppColors.background,
+            surface: AppColors.surface,
             onSurface: Colors.white,
           ),
         ),
@@ -123,10 +124,11 @@ class _ViaticosRequestScreenState extends ConsumerState<ViaticosRequestScreen> {
     final viaticosAsync = ref.watch(viaticosProvider);
 
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Rendición de Viáticos',
-            style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.transparent,
+        title: const Text('Rendición de Viáticos', style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.3, color: AppColors.textPrimary)),
+        backgroundColor: AppColors.background.withValues(alpha: 0.85),
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
       ),
       body: Column(
@@ -162,19 +164,19 @@ class _ViaticosRequestScreenState extends ConsumerState<ViaticosRequestScreen> {
                     child: Container(
                       padding: const EdgeInsets.all(28),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1E1E1E),
+                        color: const Color(0xFF161A22),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
                           color: _selectedRange != null
-                              ? const Color(0xFFE0E0E0)
-                              : const Color(0xFFE0E0E0).withValues(alpha: 0.3),
+                              ? const Color(0xFFF59E0B)
+                              : const Color(0xFFF59E0B).withValues(alpha: 0.3),
                           width: _selectedRange != null ? 1.5 : 1,
                         ),
                       ),
                       child: Column(
                         children: [
                           const Icon(Icons.date_range,
-                              size: 56, color: Color(0xFFE0E0E0)),
+                              size: 56, color: Color(0xFFF59E0B)),
                           const SizedBox(height: 16),
                           Text(
                             _selectedRange == null
@@ -205,7 +207,7 @@ class _ViaticosRequestScreenState extends ConsumerState<ViaticosRequestScreen> {
                   // ── Historial de rendiciones (scrollable) ───────────────
                   viaticosAsync.when(
                     loading: () => const Center(
-                      child: CircularProgressIndicator(color: Color(0xFFE0E0E0)),
+                      child: CircularProgressIndicator(color: Color(0xFFF59E0B)),
                     ),
                     error: (e, s) => Text('Error: $e',
                         style: const TextStyle(color: Colors.red)),
@@ -225,7 +227,7 @@ class _ViaticosRequestScreenState extends ConsumerState<ViaticosRequestScreen> {
               height: 60,
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFE0E0E0),
+                  backgroundColor: const Color(0xFFF59E0B),
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16)),
@@ -367,7 +369,7 @@ class _ViaticosRequestScreenState extends ConsumerState<ViaticosRequestScreen> {
           // ── Menú de opciones ──
           PopupMenuButton<String>(
             icon: Icon(Icons.more_vert, color: textColor, size: 20),
-            color: const Color(0xFF1E1E1E),
+            color: const Color(0xFF161A22),
             onSelected: (val) {
               if (val == 'pdf') {
                 _regenerarPdf(v);
@@ -438,7 +440,7 @@ class _ViaticosRequestScreenState extends ConsumerState<ViaticosRequestScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: const Color(0xFF161A22),
         title: const Text('Eliminar Rendición', style: TextStyle(color: Colors.white)),
         content: const Text(
           '¿Estás seguro de que deseas eliminar esta rendición pendiente?\n\nAl eliminarla, los días y viajes quedarán liberados para que puedas incluirlos en una nueva rendición.',

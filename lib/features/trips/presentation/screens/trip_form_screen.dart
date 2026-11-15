@@ -10,6 +10,7 @@ import '../../domain/services/route_mission_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../admin/domain/models/service_request_model.dart';
 import '../providers/trip_draft_provider.dart';
+import '../../../../core/theme/app_theme.dart';
 
 // ─── Tipos de carga disponibles ───────────────────────────────────────────────
 enum CargoType {
@@ -462,7 +463,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E1E1E),
+                color: const Color(0xFF161A22),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.white12),
               ),
@@ -512,25 +513,58 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
 
             // ── BOTÓN INICIAR ─────────────────────────────────────────────
             SizedBox(
-              height: 60,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFFFFFF),
-                  foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              height: 56,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  gradient: const LinearGradient(
+                    colors: [AppColors.primary, AppColors.primaryAccent],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.30),
+                      blurRadius: 16,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
                 ),
-                onPressed: _isLoading ? null : _submit,
-                icon: _isLoading
-                    ? const SizedBox(
-                        width: 22, height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.black),
-                      )
-                    : const Icon(Icons.play_circle_fill, size: 26),
-                label: Text(
-                  _isLoading 
-                      ? 'Guardando...' 
-                      : (isRetiro ? 'INICIAR RETIRO ANTICIPADO' : (isMantenimiento ? 'INICIAR MANTENIMIENTO' : 'INICIAR VIAJE')),
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: _isLoading ? null : _submit,
+                    child: Center(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          if (_isLoading)
+                            const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2.5, color: AppColors.background),
+                            )
+                          else
+                            const Icon(Icons.play_circle_fill_rounded, size: 26, color: AppColors.background),
+                          const SizedBox(width: 10),
+                          Text(
+                            _isLoading
+                                ? 'Guardando...'
+                                : (isRetiro
+                                    ? 'INICIAR RETIRO ANTICIPADO'
+                                    : (isMantenimiento ? 'INICIAR MANTENIMIENTO' : 'INICIAR VIAJE')),
+                            style: const TextStyle(
+                              color: AppColors.background,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -560,10 +594,10 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
                 duration: const Duration(milliseconds: 200),
                 padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
                 decoration: BoxDecoration(
-                  color: isSelected ? const Color(0xFFFFFFFF) : const Color(0xFF1E1E1E),
+                  color: isSelected ? AppColors.primary : const Color(0xFF161A22),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: isSelected ? Colors.white : Colors.white12,
+                    color: isSelected ? AppColors.primaryWarm : Colors.white12,
                     width: isSelected ? 1.5 : 1,
                   ),
                 ),
@@ -572,7 +606,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
                   children: [
                     Icon(
                       opt['icon'] as IconData,
-                      color: isSelected ? Colors.black : Colors.white70,
+                      color: isSelected ? AppColors.background : AppColors.textSecondary,
                       size: 20,
                     ),
                     const SizedBox(height: 6),
@@ -582,7 +616,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: isSelected ? Colors.black : Colors.white70,
+                        color: isSelected ? AppColors.background : AppColors.textSecondary,
                         fontSize: 11,
                         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                       ),
@@ -654,7 +688,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
         duration: const Duration(milliseconds: 250),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         decoration: BoxDecoration(
-          color: const Color(0xFF1E1E1E),
+          color: const Color(0xFF161A22),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: color.withValues(alpha: 0.5), width: 1.5),
         ),
@@ -715,7 +749,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
               decoration: BoxDecoration(
                 color: isSelected
                     ? const Color(0xFFFFFFFF).withValues(alpha: 0.1)
-                    : const Color(0xFF1E1E1E),
+                    : const Color(0xFF161A22),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: isSelected
@@ -870,7 +904,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
               decoration: InputDecoration(
                 labelText: label,
                 filled: true,
-                fillColor: const Color(0xFF1E1E1E),
+                fillColor: const Color(0xFF161A22),
                 border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none),
@@ -934,7 +968,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
         errorText: isInvalid ? _containerError : null,
         errorStyle: const TextStyle(color: Colors.redAccent, fontSize: 11),
         filled: true,
-        fillColor: const Color(0xFF1E1E1E),
+        fillColor: const Color(0xFF161A22),
         counterText: '',
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -970,7 +1004,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
         prefixText: '\$ ',
         hintText: '1.200.000',
         filled: true,
-        fillColor: const Color(0xFF1E1E1E),
+        fillColor: const Color(0xFF161A22),
         border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide.none),

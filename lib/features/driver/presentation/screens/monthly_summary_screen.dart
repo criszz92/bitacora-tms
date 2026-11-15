@@ -10,6 +10,7 @@ import 'package:bitacora/features/auth/domain/models/user_model.dart';
 import 'package:bitacora/features/trips/presentation/providers/trip_provider.dart';
 import 'package:bitacora/core/utils/pdf_generator.dart';
 import 'package:printing/printing.dart';
+import 'package:bitacora/core/theme/app_theme.dart';
 class MonthlySummaryScreen extends ConsumerStatefulWidget {
   final String? userId; // Si es null, usa el usuario actual (Conductor)
   
@@ -32,10 +33,11 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
     final driversAsync = ref.watch(choferesProvider);
     
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Resumen del Mes', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.transparent,
+        title: const Text('Resumen del Mes', style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.3, color: AppColors.textPrimary)),
+        backgroundColor: AppColors.background.withValues(alpha: 0.85),
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
         actions: [
           IconButton(
@@ -45,10 +47,10 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
         ],
       ),
       body: configAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
+        loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
         error: (e, s) => Center(child: Text('Error: $e', style: const TextStyle(color: Colors.red))),
         data: (config) => driversAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
+          loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
           error: (e, s) => Center(child: Text('Error: $e', style: const TextStyle(color: Colors.red))),
           data: (drivers) {
             final driver = drivers.firstWhere((d) => d.uid == currentUserId, orElse: () => UserModel(uid: '', nombre: 'Desconocido', email: '', rol: 'CHOFER', idEmpresa: ''));
@@ -56,7 +58,7 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
             return FutureBuilder<List<TripModel>>(
               future: ref.read(adminRepositoryProvider).getTripsForMonth(driver.idEmpresa, _selectedMonth),
               builder: (context, snapshot) {
-                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.white));
+                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: AppColors.primary));
                 
                 final trips = snapshot.data!.where((t) => t.idChofer == driver.uid).toList();
                 
@@ -223,7 +225,7 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
+        color: const Color(0xFF161A22),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white10),
       ),
@@ -242,7 +244,7 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
+        color: const Color(0xFF161A22),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white10),
       ),
@@ -357,7 +359,7 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: const Color(0xFF161A22),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Editar Kilometraje / Guía', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
         content: Form(

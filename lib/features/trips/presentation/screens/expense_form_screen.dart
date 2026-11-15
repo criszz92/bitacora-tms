@@ -6,6 +6,7 @@ import 'package:bitacora/features/trips/domain/models/expense_model.dart';
 import 'package:bitacora/features/auth/presentation/providers/auth_provider.dart';
 import 'package:bitacora/features/admin/presentation/providers/admin_provider.dart';
 import 'package:bitacora/core/utils/number_utils.dart';
+import 'package:bitacora/core/theme/app_theme.dart';
 
 class ExpenseFormScreen extends ConsumerStatefulWidget {
   final String? initialType;
@@ -193,7 +194,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
             snackMsg,
             style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
           ),
-          backgroundColor: const Color(0xFFFFFFFF),
+          backgroundColor: AppColors.primary,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -219,8 +220,12 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
     }
 
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Registrar Gasto', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Registrar Gasto', style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.3, color: AppColors.textPrimary)),
+        backgroundColor: AppColors.background.withValues(alpha: 0.85),
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
       ),
       body: SafeArea(
         child: Form(
@@ -238,7 +243,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1E1E1E),
+                    color: const Color(0xFF161A22),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: Colors.white12),
                   ),
@@ -246,7 +251,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                     child: DropdownButton<String>(
                       value: _selectedType,
                       isExpanded: true,
-                      dropdownColor: const Color(0xFF1E1E1E),
+                      dropdownColor: const Color(0xFF161A22),
                       items: _expenseTypes.map((String type) {
                         return DropdownMenuItem<String>(
                           value: type,
@@ -275,7 +280,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1E1E1E),
+                    color: const Color(0xFF161A22),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: _isExento ? Colors.blueGrey : Colors.greenAccent.withValues(alpha: 0.5),
@@ -343,7 +348,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                               decoration: BoxDecoration(
                                 color: _destinoCombustible == 'CAMION'
                                     ? Colors.white.withValues(alpha: 0.12)
-                                    : const Color(0xFF1E1E1E),
+                                    : const Color(0xFF161A22),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
                                   color: _destinoCombustible == 'CAMION'
@@ -380,7 +385,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                               decoration: BoxDecoration(
                                 color: _destinoCombustible == 'AUXILIAR'
                                     ? Colors.cyanAccent.withValues(alpha: 0.12)
-                                    : const Color(0xFF1E1E1E),
+                                    : const Color(0xFF161A22),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
                                   color: _destinoCombustible == 'AUXILIAR'
@@ -422,7 +427,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: _isFullTank ? Colors.green.withValues(alpha: 0.12) : const Color(0xFF1E1E1E),
+                      color: _isFullTank ? Colors.green.withValues(alpha: 0.12) : const Color(0xFF161A22),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: _isFullTank ? Colors.greenAccent : Colors.white12,
@@ -483,7 +488,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                     prefixText: '\$ ',
                     prefixStyle: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white54),
                     filled: true,
-                    fillColor: const Color(0xFF1E1E1E),
+                    fillColor: const Color(0xFF161A22),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
@@ -522,7 +527,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                       hintText: 'Ej: 350.0',
                       hintStyle: const TextStyle(color: Colors.white30, fontSize: 20),
                       filled: true,
-                      fillColor: const Color(0xFF1E1E1E),
+                      fillColor: const Color(0xFF161A22),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide.none,
@@ -562,7 +567,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                         hintText: 'Ej: 145200',
                         hintStyle: const TextStyle(color: Colors.white30, fontSize: 18),
                         filled: true,
-                        fillColor: const Color(0xFF1E1E1E),
+                        fillColor: const Color(0xFF161A22),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide.none,
@@ -653,7 +658,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                         hintText: 'Ej: 3450.5',
                         hintStyle: const TextStyle(color: Colors.white30, fontSize: 18),
                         filled: true,
-                        fillColor: const Color(0xFF1E1E1E),
+                        fillColor: const Color(0xFF161A22),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide.none,
@@ -683,7 +688,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                     hintText: 'Ej: Copec Curicó / Carga completa',
                     hintStyle: const TextStyle(color: Colors.white30),
                     filled: true,
-                    fillColor: const Color(0xFF1E1E1E),
+                    fillColor: const Color(0xFF161A22),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
@@ -698,7 +703,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                   child: ElevatedButton(
                     onPressed: _submit,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFFFFFF),
+                      backgroundColor: AppColors.primary,
                       foregroundColor: Colors.black,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),

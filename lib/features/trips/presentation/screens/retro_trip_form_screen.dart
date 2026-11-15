@@ -8,6 +8,7 @@ import '../../domain/models/vehicle_model.dart';
 import '../../domain/services/fuzzy_search_service.dart';
 import '../../domain/services/container_validator.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../../core/theme/app_theme.dart';
 
 /// Pantalla para registrar un viaje que el conductor olvidó ingresar en su momento.
 /// No requiere jornada activa y permite seleccionar la fecha manualmente.
@@ -74,7 +75,7 @@ class _RetroTripFormScreenState extends ConsumerState<RetroTripFormScreen> {
           colorScheme: const ColorScheme.dark(
             primary: Color(0xFFFFFFFF),
             onPrimary: Colors.black,
-            surface: Color(0xFF1E1E1E),
+            surface: Color(0xFF161A22),
             onSurface: Colors.white,
           ),
         ),
@@ -123,7 +124,7 @@ class _RetroTripFormScreenState extends ConsumerState<RetroTripFormScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('✓ Viaje registrado correctamente'),
-            backgroundColor: Color(0xFF1E1E1E),
+            backgroundColor: Color(0xFF161A22),
           ),
         );
         context.pop();
@@ -184,7 +185,7 @@ class _RetroTripFormScreenState extends ConsumerState<RetroTripFormScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1E1E1E),
+                  color: const Color(0xFF161A22),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.white24),
                 ),
@@ -257,20 +258,54 @@ class _RetroTripFormScreenState extends ConsumerState<RetroTripFormScreen> {
 
             // ── BOTÓN GUARDAR ─────────────────────────────────────────────────
             SizedBox(
-              height: 60,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFFFFFF),
-                  foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              height: 56,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  gradient: const LinearGradient(
+                    colors: [AppColors.primary, AppColors.primaryAccent],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.30),
+                      blurRadius: 16,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
                 ),
-                onPressed: _isLoading ? null : _submit,
-                icon: _isLoading
-                    ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.black))
-                    : const Icon(Icons.save, size: 24),
-                label: Text(
-                  _isLoading ? 'Guardando...' : 'GUARDAR VIAJE',
-                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, letterSpacing: 1),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: _isLoading ? null : _submit,
+                    child: Center(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          if (_isLoading)
+                            const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2.5, color: AppColors.background),
+                            )
+                          else
+                            const Icon(Icons.save_rounded, size: 24, color: AppColors.background),
+                          const SizedBox(width: 10),
+                          Text(
+                            _isLoading ? 'Guardando...' : 'GUARDAR VIAJE',
+                            style: const TextStyle(
+                              color: AppColors.background,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -302,7 +337,7 @@ class _RetroTripFormScreenState extends ConsumerState<RetroTripFormScreen> {
                 labelText: 'Patente del Camión',
                 hintText: 'Selecciona o escribe la patente',
                 filled: true,
-                fillColor: const Color(0xFF1E1E1E),
+                fillColor: const Color(0xFF161A22),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                 prefixIcon: const Icon(Icons.local_shipping, color: Color(0xFFE0E0E0)),
               ),
@@ -322,7 +357,7 @@ class _RetroTripFormScreenState extends ConsumerState<RetroTripFormScreen> {
         duration: const Duration(milliseconds: 250),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         decoration: BoxDecoration(
-          color: const Color(0xFF1E1E1E),
+          color: const Color(0xFF161A22),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: color.withValues(alpha: 0.5), width: 1.5),
         ),
@@ -391,7 +426,7 @@ class _RetroTripFormScreenState extends ConsumerState<RetroTripFormScreen> {
           decoration: InputDecoration(
             labelText: label,
             filled: true,
-            fillColor: const Color(0xFF1E1E1E),
+            fillColor: const Color(0xFF161A22),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
             prefixIcon: Icon(icon, color: const Color(0xFFE0E0E0)),
           ),
@@ -416,7 +451,7 @@ class _RetroTripFormScreenState extends ConsumerState<RetroTripFormScreen> {
       decoration: InputDecoration(
         labelText: label,
         filled: true,
-        fillColor: const Color(0xFF1E1E1E),
+        fillColor: const Color(0xFF161A22),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
         prefixIcon: Icon(icon, color: Colors.grey),
         helperText: !isRequired ? 'Opcional' : null,
@@ -439,7 +474,7 @@ class _RetroTripFormScreenState extends ConsumerState<RetroTripFormScreen> {
         prefixText: '\$ ',
         hintText: '1.200.000',
         filled: true,
-        fillColor: const Color(0xFF1E1E1E),
+        fillColor: const Color(0xFF161A22),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
         prefixIcon: const Icon(Icons.attach_money, color: Color(0xFFFFFFFF)),
       ),
@@ -508,7 +543,7 @@ class _RetroTripFormScreenState extends ConsumerState<RetroTripFormScreen> {
         errorText: isInvalid ? _containerError : null,
         errorStyle: const TextStyle(color: Colors.redAccent, fontSize: 11),
         filled: true,
-        fillColor: const Color(0xFF1E1E1E),
+        fillColor: const Color(0xFF161A22),
         counterText: '',
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
