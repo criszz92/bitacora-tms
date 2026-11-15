@@ -39,6 +39,11 @@ class VehicleModel {
   // Costo de Desgaste de Mantenimiento por KM (Opcional, override por camión)
   final double? costoMantenimientoPorKm;    // Si es null, usa el valor global de la empresa ($49/km)
 
+  // Métricas avanzadas de calibración real de consumo vs computador a bordo
+  final double? ultimoRendimientoReal;        // Último rendimiento real medido (km/L)
+  final double? ultimoComputadorAbordoL100km; // Última lectura de computador a bordo (L/100km)
+  final double? factorCorreccionComputador;   // Factor de ajuste (Rendimiento Real / Rendimiento Computador)
+
   VehicleModel({
     required this.id,
     required this.idEmpresa,
@@ -69,6 +74,9 @@ class VehicleModel {
     this.consumoRalentiLitrosHora = 2.0,
     this.maxMinutosRalentiAlerta = 20,
     this.costoMantenimientoPorKm,
+    this.ultimoRendimientoReal,
+    this.ultimoComputadorAbordoL100km,
+    this.factorCorreccionComputador,
   });
 
   Map<String, dynamic> toMap() {
@@ -101,6 +109,9 @@ class VehicleModel {
       'consumoRalentiLitrosHora': consumoRalentiLitrosHora,
       'maxMinutosRalentiAlerta': maxMinutosRalentiAlerta,
       'costoMantenimientoPorKm': costoMantenimientoPorKm,
+      'ultimoRendimientoReal': ultimoRendimientoReal,
+      'ultimoComputadorAbordoL100km': ultimoComputadorAbordoL100km,
+      'factorCorreccionComputador': factorCorreccionComputador,
     };
   }
 
@@ -135,6 +146,9 @@ class VehicleModel {
       consumoRalentiLitrosHora: (map['consumoRalentiLitrosHora'] as num?)?.toDouble() ?? 2.0,
       maxMinutosRalentiAlerta: (map['maxMinutosRalentiAlerta'] as num?)?.toInt() ?? 20,
       costoMantenimientoPorKm: (map['costoMantenimientoPorKm'] as num?)?.toDouble(),
+      ultimoRendimientoReal: (map['ultimoRendimientoReal'] as num?)?.toDouble(),
+      ultimoComputadorAbordoL100km: (map['ultimoComputadorAbordoL100km'] as num?)?.toDouble(),
+      factorCorreccionComputador: (map['factorCorreccionComputador'] as num?)?.toDouble(),
     );
   }
 
@@ -168,6 +182,9 @@ class VehicleModel {
     double? consumoRalentiLitrosHora,
     int? maxMinutosRalentiAlerta,
     double? costoMantenimientoPorKm,
+    double? ultimoRendimientoReal,
+    double? ultimoComputadorAbordoL100km,
+    double? factorCorreccionComputador,
   }) {
     return VehicleModel(
       id: id ?? this.id,
@@ -199,6 +216,9 @@ class VehicleModel {
       consumoRalentiLitrosHora: consumoRalentiLitrosHora ?? this.consumoRalentiLitrosHora,
       maxMinutosRalentiAlerta: maxMinutosRalentiAlerta ?? this.maxMinutosRalentiAlerta,
       costoMantenimientoPorKm: costoMantenimientoPorKm ?? this.costoMantenimientoPorKm,
+      ultimoRendimientoReal: ultimoRendimientoReal ?? this.ultimoRendimientoReal,
+      ultimoComputadorAbordoL100km: ultimoComputadorAbordoL100km ?? this.ultimoComputadorAbordoL100km,
+      factorCorreccionComputador: factorCorreccionComputador ?? this.factorCorreccionComputador,
     );
   }
 

@@ -90,7 +90,7 @@ class _ShiftStartScreenState extends ConsumerState<ShiftStartScreen> {
                 controller: _odometerCtrl,
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
-                  labelText: 'Kilometraje Inicial',
+                  labelText: 'Kilometraje Inicial (Verificar con Tablero)',
                   hintText: 'Ej: 154000',
                   filled: true,
                   fillColor: const Color(0xFF1E1E1E),
@@ -98,6 +98,27 @@ class _ShiftStartScreenState extends ConsumerState<ShiftStartScreen> {
                   prefixIcon: const Icon(Icons.speed, color: Color(0xFFE0E0E0)),
                 ),
                 validator: (v) => v == null || v.isEmpty ? 'El kilometraje es obligatorio' : null,
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E293B).withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.3)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.verified_outlined, size: 16, color: Color(0xFF38BDF8)),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Se auto-carga el último kilometraje registrado. Verifica con el tablero del camión antes de iniciar.',
+                        style: TextStyle(color: Color(0xFFBAE6FD), fontSize: 11.5),
+                      ),
+                    ),
+                  ],
+                ),
               ),
 
               const Spacer(),

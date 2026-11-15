@@ -21,6 +21,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
   final _litrosController = TextEditingController();
   final _odometerController = TextEditingController();
   final _horometroController = TextEditingController();
+  final _onboardComputerController = TextEditingController();
   final _descriptionController = TextEditingController();
 
   String _selectedType = 'Peaje';
@@ -46,6 +47,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
     _litrosController.dispose();
     _odometerController.dispose();
     _horometroController.dispose();
+    _onboardComputerController.dispose();
     _descriptionController.dispose();
     super.dispose();
   }
@@ -82,14 +84,43 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
       // Cálculo automático de rendimiento de tramo si es Full Tank
       double? kmRecorridos;
       double? rendimientoTramo;
+      double intermediateLiters = 0.0;
+      double? variacionComputadorPct;
+      final computerL100km = _isCombustible
+          ? NumberUtils.tryParseDouble(_onboardComputerController.text)
+          : null;
 
       if (_isCombustible && _isFullTank && matchedVehicle != null) {
         if (_destinoCombustible == 'CAMION' && odoValue != null && matchedVehicle.ultimoLlenadoKm != null) {
           kmRecorridos = (odoValue >= matchedVehicle.ultimoLlenadoKm!)
               ? (odoValue - matchedVehicle.ultimoLlenadoKm!)
               : null;
-          if (kmRecorridos != null && litrosValue != null && litrosValue > 0) {
-            rendimientoTramo = double.parse((kmRecorridos / litrosValue).toStringAsFixed(2));
+
+          // Sumar cargas intermedias ocurridas entre el último Full Tank y este Full Tank
+          if (matchedVehicle.ultimoLlenadoFecha != null) {
+            final allExpenses = ref.read(allExpensesProvider).value ??
+                ref.read(monthlyExpensesProvider).value ?? [];
+            for (final exp in allExpenses) {
+              if (exp.type.toLowerCase() == 'combustible' &&
+                  (exp.vehicleId == matchedVehicle.id || exp.vehicleId == matchedVehicle.patente) &&
+                  exp.destinoCombustible == 'CAMION' &&
+                  !exp.isFullTank &&
+                  exp.date.isAfter(matchedVehicle.ultimoLlenadoFecha!)) {
+                intermediateLiters += (exp.litros ?? 0.0);
+              }
+            }
+          }
+
+          final totalLiters = intermediateLiters + (litrosValue ?? 0.0);
+          if (kmRecorridos != null && totalLiters > 0) {
+            rendimientoTramo = double.parse((kmRecorridos / totalLiters).toStringAsFixed(2));
+
+            // Comparar con el computador a bordo si el chofer lo ingresó
+            if (computerL100km != null && computerL100km > 0) {
+              final computerKmPorLitro = 100.0 / computerL100km;
+              variacionComputadorPct = double.parse(
+                  (((rendimientoTramo - computerKmPorLitro) / computerKmPorLitro) * 100.0).toStringAsFixed(1));
+            }
           }
         }
       }
@@ -113,6 +144,9 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
         horometroAtFill: horoValue,
         kmRecorridosTramo: kmRecorridos,
         rendimientoTramo: rendimientoTramo,
+        litrosCargasIntermedias: intermediateLiters > 0 ? intermediateLiters : null,
+        onboardComputerL100km: computerL100km,
+        variacionComputadorPct: variacionComputadorPct,
         isExento: _isExento,
       );
 
@@ -131,6 +165,11 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
           ultimoLlenadoHorometroAux: (_isFullTank && _destinoCombustible == 'AUXILIAR' && horoValue != null)
               ? horoValue
               : matchedVehicle.ultimoLlenadoHorometroAux,
+          ultimoRendimientoReal: rendimientoTramo ?? matchedVehicle.ultimoRendimientoReal,
+          ultimoComputadorAbordoL100km: computerL100km ?? matchedVehicle.ultimoComputadorAbordoL100km,
+          factorCorreccionComputador: (computerL100km != null && computerL100km > 0 && rendimientoTramo != null)
+              ? double.parse((rendimientoTramo / (100.0 / computerL100km)).toStringAsFixed(3))
+              : matchedVehicle.factorCorreccionComputador,
         );
         try {
           await ref.read(adminRepositoryProvider).updateVehicle(updatedVehicle);
@@ -140,12 +179,18 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
       }
 
       if (!mounted) return;
+      String snackMsg = 'Gasto registrado exitosamente';
+      if (rendimientoTramo != null) {
+        final l100 = (100.0 / rendimientoTramo).toStringAsFixed(1);
+        snackMsg = '¡Full Tank! Rendimiento real: $rendimientoTramo km/L ($l100 L/100km)';
+        if (variacionComputadorPct != null) {
+          snackMsg += ' • Dif. tablero: ${variacionComputadorPct > 0 ? "+$variacionComputadorPct" : "$variacionComputadorPct"}%';
+        }
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            rendimientoTramo != null
-                ? '¡Carga registrada! Rendimiento tramo: $rendimientoTramo km/L'
-                : 'Gasto registrado exitosamente',
+            snackMsg,
             style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
           ),
           backgroundColor: const Color(0xFFFFFFFF),
@@ -529,6 +574,63 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                         }
                         return null;
                       },
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Entrada opcional de lectura de Computador a Bordo (Tablero CAN)
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF161E2E),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.3)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.display_settings, color: Color(0xFF38BDF8), size: 18),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'Computador a Bordo (Tablero CAN)',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
+                              ),
+                              const Spacer(),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.white10,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text('Opcional', style: TextStyle(color: Colors.white60, fontSize: 10)),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            'Ingresa el consumo promedio que marca el tablero (ej: 34.1 L/100km) para contrastar con la realidad.',
+                            style: TextStyle(color: Colors.white70, fontSize: 11),
+                          ),
+                          const SizedBox(height: 10),
+                          TextFormField(
+                            controller: _onboardComputerController,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            inputFormatters: [DecimalTextInputFormatter()],
+                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.cyanAccent),
+                            decoration: InputDecoration(
+                              suffixText: 'L / 100 km',
+                              suffixStyle: const TextStyle(fontSize: 14, color: Colors.white60),
+                              hintText: 'Ej: 34.1',
+                              hintStyle: const TextStyle(color: Colors.white30, fontSize: 16),
+                              filled: true,
+                              fillColor: const Color(0xFF0F172A),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                              isDense: true,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 24),
                   ],

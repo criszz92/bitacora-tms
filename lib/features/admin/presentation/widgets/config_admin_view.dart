@@ -9,6 +9,7 @@ import '../../domain/models/company_config_model.dart';
 import '../../domain/models/recurring_expense_model.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../trips/domain/models/vehicle_model.dart';
+import 'csv_importer_dialog.dart';
 
 class ConfigAdminView extends ConsumerStatefulWidget {
   const ConfigAdminView({super.key});
@@ -48,6 +49,8 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
   List<Map<String, dynamic>> _maintenanceRules = [];
   List<RecurringExpenseModel> _recurringExpenses = [];
 
+  String? _loadedConfigId;
+
   @override
   void initState() {
     super.initState();
@@ -58,6 +61,7 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
   }
 
   void _loadConfig(CompanyConfigModel config) {
+    _loadedConfigId = config.idEmpresa;
     _sueldoMinimoCtrl.text = config.sueldoMinimo.toStringAsFixed(0);
     _umbralKmCtrl.text = config.umbralKilometrosViatico.toStringAsFixed(0);
     _tasaSISCtrl.text = config.tasaSIS.toString();
@@ -76,15 +80,13 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
     _direccionCtrl.text = config.emisorDireccion;
     _telefonoCtrl.text = config.emisorTelefono;
     _emailCtrl.text = config.emisorEmail;
-    setState(() {
-      _tipoViatico = config.tipoViatico;
-      _logoBase64 = config.emisorLogoBase64;
-      _logoPreviewBytes = config.emisorLogoBase64.isNotEmpty
-          ? base64Decode(config.emisorLogoBase64)
-          : null;
-      _maintenanceRules = List<Map<String, dynamic>>.from(config.maintenanceRules.map((e) => Map<String, dynamic>.from(e)));
-      _recurringExpenses = List<RecurringExpenseModel>.from(config.gastosRecurrentes);
-    });
+    _tipoViatico = config.tipoViatico;
+    _logoBase64 = config.emisorLogoBase64;
+    _logoPreviewBytes = config.emisorLogoBase64.isNotEmpty
+        ? base64Decode(config.emisorLogoBase64)
+        : null;
+    _maintenanceRules = List<Map<String, dynamic>>.from(config.maintenanceRules.map((e) => Map<String, dynamic>.from(e)));
+    _recurringExpenses = List<RecurringExpenseModel>.from(config.gastosRecurrentes);
   }
 
   Future<void> _pickLogo() async {
@@ -360,6 +362,11 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
       loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
       error: (e, s) => Center(child: Text('Error: $e')),
       data: (config) {
+        if (config != null && _loadedConfigId != config.idEmpresa) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) setState(() => _loadConfig(config));
+          });
+        }
         return SingleChildScrollView(
           padding: const EdgeInsets.all(40),
           child: Column(
@@ -688,6 +695,53 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
                 ],
               ),
               
+              const SizedBox(height: 24),
+              // ─── SECCIÓN CENTRO DE IMPORTACIÓN MASIVA (CSV) ─────────
+              _buildSectionCard(
+                title: 'Centro de Importación Masiva (CSV)',
+                icon: Icons.upload_file_outlined,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Importa catálogos completos de Peajes (con tarifas por ejes) y Clientes con sus geocercas.',
+                              style: TextStyle(color: Colors.white70, fontSize: 13),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'El sistema valida duplicados automáticamente para evitar sobreescrituras innecesarias.',
+                              style: TextStyle(color: Colors.white38, fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          showDialog(
+                            context: context,
+                            builder: (ctx) => const CsvImporterDialog(),
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blueAccent,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        icon: const Icon(Icons.file_upload, size: 18),
+                        label: const Text('Abrir Importador CSV', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+
               const SizedBox(height: 24),
               // ─── SECCIÓN DATOS DEL EMISOR (para cotizaciones PDF) ───
               _buildSectionCard(

@@ -14,6 +14,28 @@ class TankState {
   final double? lastRealRendimiento;
   final double expectedRendimiento;
   final double fuelValueClp; // Dinero a favor valorizado al precio neto
+  final double? onboardComputerL100km; // Lectura del computador a bordo (L/100km)
+  final double? factorCorreccion; // Ratio Rendimiento Real / Computador
+
+  // Helper getters de conversión para comparativas
+  double? get lastRealL100km => (lastRealRendimiento != null && lastRealRendimiento! > 0)
+      ? (100.0 / lastRealRendimiento!)
+      : null;
+
+  double get expectedL100km => (expectedRendimiento > 0)
+      ? (100.0 / expectedRendimiento)
+      : 40.0;
+
+  double? get onboardComputerKmPorLitro => (onboardComputerL100km != null && onboardComputerL100km! > 0)
+      ? (100.0 / onboardComputerL100km!)
+      : null;
+
+  double? get computerDifferencePct {
+    if (lastRealRendimiento != null && onboardComputerKmPorLitro != null && onboardComputerKmPorLitro! > 0) {
+      return ((lastRealRendimiento! - onboardComputerKmPorLitro!) / onboardComputerKmPorLitro!) * 100.0;
+    }
+    return null;
+  }
 
   // Estado del generador / Thermo King auxiliar (si aplica)
   final bool hasAuxiliary;
@@ -36,6 +58,8 @@ class TankState {
     this.lastRealRendimiento,
     required this.expectedRendimiento,
     required this.fuelValueClp,
+    this.onboardComputerL100km,
+    this.factorCorreccion,
     this.hasAuxiliary = false,
     this.auxIdentifier,
     this.auxCapacityLitros = 0.0,
@@ -124,6 +148,21 @@ class FuelPerformanceService {
         break;
       }
     }
+    ultimoRendimientoReal ??= vehicle.ultimoRendimientoReal;
+
+    double? lastComputerL100km = vehicle.ultimoComputadorAbordoL100km;
+    for (final exp in fuelExpenses) {
+      if (exp.onboardComputerL100km != null && exp.onboardComputerL100km! > 0) {
+        lastComputerL100km = exp.onboardComputerL100km;
+        break;
+      }
+    }
+
+    double? factorCorreccion = vehicle.factorCorreccionComputador;
+    if (ultimoRendimientoReal != null && lastComputerL100km != null && lastComputerL100km > 0) {
+      final compKmPorLitro = 100.0 / lastComputerL100km;
+      factorCorreccion = double.parse((ultimoRendimientoReal / compKmPorLitro).toStringAsFixed(3));
+    }
 
     for (final exp in fuelExpenses) {
       if (exp.date.isAfter(baseFecha) && !exp.isFullTank) {
@@ -196,6 +235,8 @@ class FuelPerformanceService {
       lastRealRendimiento: ultimoRendimientoReal,
       expectedRendimiento: expectedRendimiento,
       fuelValueClp: fuelValue,
+      onboardComputerL100km: lastComputerL100km,
+      factorCorreccion: factorCorreccion,
       hasAuxiliary: vehicle.tieneEquipoAuxiliar,
       auxIdentifier: vehicle.identificadorAuxiliar,
       auxCapacityLitros: auxCap,

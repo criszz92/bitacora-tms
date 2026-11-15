@@ -35,6 +35,23 @@ class PushNotificationService {
       const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
       await _localNotificationsPlugin.initialize(settings: initializationSettings);
 
+      // Crear explícitamente el NotificationChannel de alta prioridad en Android
+      final androidImplementation = _localNotificationsPlugin
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      if (androidImplementation != null) {
+        await androidImplementation.createNotificationChannel(
+          const AndroidNotificationChannel(
+            'bitacora_binaural_alert_v2',
+            'Alertas Inteligentes de Ruta (Binaural)',
+            description: 'Canal prioritario para advertencias de romanas, peajes y restricciones con tono binaural 528Hz',
+            importance: Importance.max,
+            playSound: true,
+            sound: RawResourceAndroidNotificationSound('bitacora_alert'),
+            enableVibration: true,
+          ),
+        );
+      }
+
       // 4. Escuchar mensajes en FOREGROUND
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
         debugPrint('FCM: Mensaje recibido en FOREGROUND: ${message.messageId}');

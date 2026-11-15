@@ -7,6 +7,7 @@ class TripDraft {
   final String client;
   final String origin;
   final String destination;
+  final String puntoDescarga;
   final String container;
   final String value;
   final String mandante;
@@ -18,6 +19,7 @@ class TripDraft {
     this.client = '',
     this.origin = '',
     this.destination = '',
+    this.puntoDescarga = '',
     this.container = '',
     this.value = '',
     this.mandante = '',
@@ -30,6 +32,7 @@ class TripDraft {
     'client': client,
     'origin': origin,
     'destination': destination,
+    'puntoDescarga': puntoDescarga,
     'container': container,
     'value': value,
     'mandante': mandante,
@@ -42,6 +45,7 @@ class TripDraft {
     client: map['client'] ?? '',
     origin: map['origin'] ?? '',
     destination: map['destination'] ?? '',
+    puntoDescarga: map['puntoDescarga'] ?? '',
     container: map['container'] ?? '',
     value: map['value'] ?? '',
     mandante: map['mandante'] ?? '',

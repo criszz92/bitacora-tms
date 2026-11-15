@@ -88,3 +88,9 @@ final currentVehicleProvider = Provider<AsyncValue<VehicleModel?>>((ref) {
     return const AsyncValue.data(null);
   }
 });
+
+/// Obtiene los destinos más frecuentes visitados por el chofer
+final frequentDestinationsProvider = FutureProvider<List<String>>((ref) async {
+  final repo = ref.watch(tripRepositoryProvider);
+  return repo.getFrequentDestinations(limit: 6);
+});

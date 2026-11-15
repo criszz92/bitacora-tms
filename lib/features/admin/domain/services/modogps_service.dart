@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:latlong2/latlong.dart';
@@ -99,6 +100,14 @@ class GpsUnit {
   final double? externalPower;
   final int? satellites;
   final String? currentGeofence; // Nombre de la geocerca actual (ej: "CASA-Base", "PUERTO_CORONEL")
+  final double? altitude;
+  final double? hardwareMileageKm;
+  final int? internalBattery;
+  final int? gsmSignal;
+
+  bool get isRalenti => (isIgnitionOn == true) && (speed < 2.0);
+  bool get isMoving => (isIgnitionOn == true) && (speed >= 2.0);
+  bool get isEngineOff => (isIgnitionOn == false);
 
   GpsUnit({
     required this.id,
@@ -113,6 +122,10 @@ class GpsUnit {
     this.externalPower,
     this.satellites,
     this.currentGeofence,
+    this.altitude,
+    this.hardwareMileageKm,
+    this.internalBattery,
+    this.gsmSignal,
   });
 }
 
@@ -136,12 +149,14 @@ class GpsHistoricalPoint {
   final double speed;
   final DateTime timestamp;
   final String? geofence;
+  final double? altitude;
 
   GpsHistoricalPoint({
     required this.position,
     required this.speed,
     required this.timestamp,
     this.geofence,
+    this.altitude,
   });
 }
 
@@ -474,14 +489,112 @@ class ModoGpsService {
         }
       }
 
+      // Cargar también las geocercas maestras de clientes locales (CSV institucional de Bitácora TMS)
+      final localClientGeofences = await _loadLocalClientGeofences();
+      
+      // Función para normalizar nombres y comparar sin guiones bajos, espacios extras ni símbolos
+      String normalize(String s) => s.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase();
+
+      final existingNormalizedNames = geofences.map((g) => normalize(g.name)).toSet();
+      const distanceCalc = Distance();
+
+      for (final lcg in localClientGeofences) {
+        final normLocal = normalize(lcg.name);
+        // 1. Descartar si el nombre normalizado ya existe (ej: "FORSACCHILLAN" vs "FORSAC_CHILLAN")
+        if (existingNormalizedNames.contains(normLocal)) continue;
+
+        // 2. Descartar si geográficamente ya existe una geocerca a menos de 400 metros
+        final hasProximityConflict = geofences.any((g) {
+          final meters = distanceCalc.as(LengthUnit.Meter, g.center, lcg.center);
+          return meters < 400.0;
+        });
+
+        if (!hasProximityConflict) {
+          geofences.add(lcg);
+          existingNormalizedNames.add(normLocal);
+        }
+      }
+
       _cachedGeofences = geofences;
       _lastGeofencesFetch = DateTime.now();
-      debugPrint('[ModoGPS] Geocercas cargadas: ${geofences.length}');
+      debugPrint('[ModoGPS] Geocercas totales unificadas (ModoGPS + Clientes TMS): ${geofences.length}');
       return geofences;
     } catch (e) {
       debugPrint('[ModoGPS] Error cargando geocercas: $e');
       return _cachedGeofences ?? [];
     }
+  }
+
+  /// Carga y parsea el archivo de clientes institucionales CSV integrado en la app
+  Future<List<GpsGeofence>> _loadLocalClientGeofences() async {
+    try {
+      final rawCsv = await rootBundle.loadString('assets/data/clientes_geocercas.csv');
+      final lines = const LineSplitter().convert(rawCsv);
+      if (lines.length <= 1) return [];
+
+      final list = <GpsGeofence>[];
+      int pseudoId = 900000;
+
+      for (int i = 1; i < lines.length; i++) {
+        final line = lines[i].trim();
+        if (line.isEmpty) continue;
+
+        // Manejar posibles comillas en el nombre de cliente
+        final parts = _parseCsvLine(line);
+        if (parts.length >= 3) {
+          final clientName = parts[0].replaceAll('"', '').trim();
+          final lat = double.tryParse(parts[1].trim());
+          final lng = double.tryParse(parts[2].trim());
+          final conf = parts.length >= 4 ? parts[3].trim() : 'alta';
+
+          if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
+            pseudoId++;
+            // Radio de geocerca según confianza y tipo de cliente (250m a 400m)
+            final double radius = conf.toLowerCase() == 'alta' ? 250.0 : 350.0;
+            // Aproximación de bounding box (1 grado ~ 111km)
+            final latDelta = radius / 111000.0;
+            final lngDelta = radius / (111000.0 * math.cos(lat * math.pi / 180.0)).abs();
+
+            list.add(GpsGeofence(
+              id: pseudoId,
+              name: clientName,
+              description: 'Cliente TMS (confianza: $conf)',
+              type: 3, // Círculo
+              radiusMeters: radius,
+              center: LatLng(lat, lng),
+              minLat: lat - latDelta,
+              maxLat: lat + latDelta,
+              minLng: lng - lngDelta,
+              maxLng: lng + lngDelta,
+            ));
+          }
+        }
+      }
+      return list;
+    } catch (e) {
+      debugPrint('[ModoGPS] Error cargando clientes locales CSV: $e');
+      return [];
+    }
+  }
+
+  List<String> _parseCsvLine(String line) {
+    final result = <String>[];
+    bool inQuotes = false;
+    final sb = StringBuffer();
+
+    for (int i = 0; i < line.length; i++) {
+      final c = line[i];
+      if (c == '"') {
+        inQuotes = !inQuotes;
+      } else if (c == ',' && !inQuotes) {
+        result.add(sb.toString());
+        sb.clear();
+      } else {
+        sb.write(c);
+      }
+    }
+    result.add(sb.toString());
+    return result;
   }
 
   Future<List<GpsUnit>> fetchFleetData({String? idEmpresa}) async {
@@ -504,7 +617,7 @@ class ModoGpsService {
           'sortType': 'sys_name',
         },
         'force': 1,
-        'flags': 2102273, // 1 (base) + 1024 (pos) + 2097152 (status) + 4096 (sensors)
+        'flags': 3150849, // 1 (base) + 1024 (pos) + 4096 (sensors) + 1048576 (last message & prms) + 2097152 (status)
         'from': 0,
         'to': 0,
       };
@@ -538,13 +651,45 @@ class ModoGpsService {
         final pos = item['pos'] as Map?;
         final netconn = item['netconn'] as num? ?? 0;
         final lmsg = item['lmsg'] as Map?;
-        final pwrExt = (lmsg?['p'] as Map?)?['pwr_ext'] as num?;
+        final prms = item['prms'] as Map?;
+        final p = (lmsg?['p'] as Map?);
+
+        // Alimentación externa (batería camión en voltios)
+        final pwrExt = ((prms?['pwr_ext'] as Map?)?['v'] as num?)?.toDouble() ??
+            (p?['pwr_ext'] as num?)?.toDouble();
+
+        // Contacto / Motor (ACC físico del GPS)
+        // NOTA CLAVE: pwr_ext > 0 solo significa energizado.
+        // Motor encendido requiere estrictamente acc == 1 (o in1 == 1)
+        int? accVal;
+        if (prms != null && prms['acc'] is Map) {
+          accVal = (prms['acc']['v'] as num?)?.toInt();
+        }
+        accVal ??= (p?['acc'] as num?)?.toInt();
+        if (accVal == null && prms != null && prms['in1'] is Map) {
+          accVal = (prms['in1']['v'] as num?)?.toInt();
+        }
+        accVal ??= (p?['in1'] as num?)?.toInt();
+
+        final isIgnitionOn = accVal != null ? (accVal == 1) : null;
+
+        // Odómetro nativo de hardware acumulado por el GPS (metros -> km)
+        final mileageM = ((prms?['mileage'] as Map?)?['v'] as num?)?.toDouble() ??
+            (p?['mileage'] as num?)?.toDouble();
+        final hardwareKm = mileageM != null ? (mileageM / 1000.0) : null;
+
+        // Batería interna (%) y señal GSM (barras)
+        final batteryVal = ((prms?['voltage'] as Map?)?['v'] as num?)?.toInt() ??
+            (p?['voltage'] as num?)?.toInt();
+        final gsmVal = ((prms?['gsm'] as Map?)?['v'] as num?)?.toInt() ??
+            (p?['gsm'] as num?)?.toInt();
 
         if (pos != null) {
           final lat = (pos['y'] as num?)?.toDouble() ?? 0.0;
           final lng = (pos['x'] as num?)?.toDouble() ?? 0.0;
           final speed = (pos['s'] as num?)?.toDouble() ?? 0.0;
           final course = (pos['c'] as num?)?.toDouble();
+          final alt = (pos['z'] as num?)?.toDouble();
           final satCount = pos['sc'] as int?;
           final timestamp = pos['t'] != null
               ? DateTime.fromMillisecondsSinceEpoch((pos['t'] as int) * 1000)
@@ -552,7 +697,7 @@ class ModoGpsService {
 
           String status;
           if (netconn == 1) {
-            status = speed > 0 ? 'online' : 'detenido';
+            status = speed > 2.0 ? 'online' : 'detenido';
           } else {
             status = 'offline';
           }
@@ -575,10 +720,14 @@ class ModoGpsService {
             status: status,
             lastUpdate: timestamp,
             course: course,
-            isIgnitionOn: pwrExt != null && pwrExt > 0,
-            externalPower: pwrExt?.toDouble(),
+            isIgnitionOn: isIgnitionOn,
+            externalPower: pwrExt,
             satellites: satCount,
             currentGeofence: currentZoneName,
+            altitude: alt,
+            hardwareMileageKm: hardwareKm,
+            internalBattery: batteryVal,
+            gsmSignal: gsmVal,
           ));
         }
       }
@@ -683,6 +832,7 @@ class ModoGpsService {
         final lat = (pos['y'] as num?)?.toDouble() ?? 0.0;
         final lng = (pos['x'] as num?)?.toDouble() ?? 0.0;
         final speed = (pos['s'] as num?)?.toDouble() ?? 0.0;
+        final altitude = (pos['z'] as num?)?.toDouble();
         final tsSec = (m['t'] as num?)?.toInt() ?? 0;
         final timestamp = DateTime.fromMillisecondsSinceEpoch(tsSec * 1000);
 
@@ -699,11 +849,11 @@ class ModoGpsService {
           // Leer sensor de motor del primer mensaje:
           // Wialon puede reportar pwr_ext (energía externa) o acc en m['p']
           final msgParams = m['p'] as Map?;
-          final pwrExt = (msgParams?['pwr_ext'] as num?) ?? 0;
           final acc = (msgParams?['acc'] as num?) ??  // sensor ACC
                       (msgParams?['ACC'] as num?) ??  // algunas configs mayúsculas
-                      (msgParams?['din1'] as num?) ?? 0;  // entrada digital 1 (ignition)
-          engineOnAtStart = pwrExt > 0 || acc > 0;
+                      (msgParams?['din1'] as num?) ??
+                      (msgParams?['in1'] as num?) ?? 0;  // entrada digital 1 (ignition)
+          engineOnAtStart = acc > 0;
 
           // Geocerca del punto de partida
           for (final z in geofences) {
@@ -743,6 +893,7 @@ class ModoGpsService {
           speed: speed,
           timestamp: timestamp,
           geofence: foundZone,
+          altitude: altitude,
         ));
 
         // Detectar transiciones de geocerca
@@ -988,6 +1139,27 @@ class ModoGpsService {
       // Así el próximo fetchFleetData (vista en vivo) re-autentica limpiamente
       _cachedEid = null;
       _lastLoginTime = null;
+      return null;
+    }
+  }
+
+  /// Retorna la distancia en km acumulada por GPS en un intervalo de tiempo para una patente
+  Future<double?> getGpsDistanceForInterval({
+    required String plate,
+    required DateTime startTime,
+    required DateTime endTime,
+    String? idEmpresa,
+  }) async {
+    try {
+      final trip = await fetchTripInterval(
+        plate: plate,
+        startTime: startTime,
+        endTime: endTime,
+        idEmpresa: idEmpresa,
+      );
+      return trip?.totalDistanceKm;
+    } catch (e) {
+      debugPrint('[ModoGPS] Error getGpsDistanceForInterval: $e');
       return null;
     }
   }

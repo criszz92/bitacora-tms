@@ -346,20 +346,36 @@ class _FuelPerformanceViewState extends ConsumerState<FuelPerformanceView> {
                               ),
                             ],
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: tank.isCalibrated ? Colors.green.withValues(alpha: 0.2) : Colors.orange.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              tank.isCalibrated ? 'CALIBRADO AL TOPE' : 'PENDIENTE CALIBRACIÓN',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: tank.isCalibrated ? Colors.greenAccent : Colors.orangeAccent,
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: tank.isCalibrated ? Colors.green.withValues(alpha: 0.2) : Colors.orange.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  tank.isCalibrated ? 'CALIBRADO AL TOPE' : 'PENDIENTE CALIBRACIÓN',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: tank.isCalibrated ? Colors.greenAccent : Colors.orangeAccent,
+                                  ),
+                                ),
                               ),
-                            ),
+                              const SizedBox(width: 8),
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.white10,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                                icon: const Icon(Icons.tune, size: 14, color: Colors.greenAccent),
+                                label: Text(tank.isCalibrated ? 'Re-calibrar' : 'Calibrar Estanque', style: const TextStyle(fontSize: 11)),
+                                onPressed: () => _showCalibrationDialog(context, vehicle),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -492,6 +508,165 @@ class _FuelPerformanceViewState extends ConsumerState<FuelPerformanceView> {
           ),
           const SizedBox(height: 28),
 
+          // AUDITORÍA DE RENDIMIENTO: REAL VS COMPUTADOR A BORDO VS BASE
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E1E1E),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.query_stats, color: Colors.greenAccent, size: 22),
+                            SizedBox(width: 10),
+                            Text(
+                              'Auditoría de Rendimiento: Real vs Computador a Bordo',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Contraste empírico (Full-to-Full) contra el computador de abordo (CAN Bus) y el parámetro base del camión.',
+                          style: TextStyle(color: Colors.grey, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                    if (tank.factorCorreccion != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.cyanAccent.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.4)),
+                        ),
+                        child: Text(
+                          'Factor de Calibración Tablero: ${tank.factorCorreccion!.toStringAsFixed(3)}x',
+                          style: const TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold, fontSize: 12),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // TILE 1: PARÁMETRO BASE
+                    Expanded(
+                      child: _buildComparisonTile(
+                        title: '1. Parámetro Base Unidad',
+                        kmPerLiter: '${vehicle.rendimientoKmPorLitro.toStringAsFixed(2)} km/L',
+                        l100km: '(${(100.0 / vehicle.rendimientoKmPorLitro).toStringAsFixed(1)} L/100km)',
+                        subtitle: 'Valor teórico configurado para costeo y autonomía estimada.',
+                        icon: Icons.tune,
+                        accentColor: Colors.white70,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+
+                    // TILE 2: RENDIMIENTO REAL MEDIDO (FULL-TO-FULL)
+                    Expanded(
+                      child: _buildComparisonTile(
+                        title: '2. Rendimiento Real Medido',
+                        kmPerLiter: tank.lastRealRendimiento != null
+                            ? '${tank.lastRealRendimiento!.toStringAsFixed(2)} km/L'
+                            : 'Pendiente',
+                        l100km: tank.lastRealL100km != null
+                            ? '(${tank.lastRealL100km!.toStringAsFixed(1)} L/100km)'
+                            : '(2do Full Tank)',
+                        subtitle: tank.lastRealRendimiento != null
+                            ? 'Calculado empíricamente por odómetro y litros en surtidor.'
+                            : 'Requiere dos cargas Full Tank consecutivas para triangulación exacta.',
+                        icon: Icons.verified,
+                        accentColor: tank.lastRealRendimiento != null ? Colors.greenAccent : Colors.orangeAccent,
+                        extraBadge: tank.lastRealRendimiento != null
+                            ? Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.greenAccent.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Text('EMPÍRICO', style: TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                              )
+                            : null,
+                        actionButton: (tank.lastRealRendimiento != null &&
+                                (tank.lastRealRendimiento! - vehicle.rendimientoKmPorLitro).abs() > 0.05)
+                            ? SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.greenAccent,
+                                    foregroundColor: Colors.black,
+                                    padding: const EdgeInsets.symmetric(vertical: 8),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                  icon: const Icon(Icons.sync_alt, size: 16),
+                                  label: Text(
+                                    'Aplicar ${tank.lastRealRendimiento!.toStringAsFixed(2)} km/L como Base',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
+                                  ),
+                                  onPressed: () => _applyNewBaseRendimiento(vehicle, tank.lastRealRendimiento!),
+                                ),
+                              )
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+
+                    // TILE 3: COMPUTADOR A BORDO
+                    Expanded(
+                      child: _buildComparisonTile(
+                        title: '3. Computador a Bordo (CAN)',
+                        kmPerLiter: tank.onboardComputerKmPorLitro != null
+                            ? '${tank.onboardComputerKmPorLitro!.toStringAsFixed(2)} km/L'
+                            : 'Sin registro',
+                        l100km: tank.onboardComputerL100km != null
+                            ? '(${tank.onboardComputerL100km!.toStringAsFixed(1)} L/100km)'
+                            : '-- L/100km',
+                        subtitle: tank.onboardComputerL100km != null
+                            ? 'Lectura ingresada directamente del computador de viaje del camión.'
+                            : 'El chofer puede ingresar este dato al cargar combustible.',
+                        icon: Icons.speed,
+                        accentColor: Colors.cyanAccent,
+                        extraBadge: tank.computerDifferencePct != null
+                            ? Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: (tank.computerDifferencePct!.abs() <= 5.0
+                                          ? Colors.green
+                                          : Colors.amber)
+                                      .withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  '${tank.computerDifferencePct! > 0 ? "+" : ""}${tank.computerDifferencePct!.toStringAsFixed(1)}% vs Real',
+                                  style: TextStyle(
+                                    color: tank.computerDifferencePct!.abs() <= 5.0 ? Colors.greenAccent : Colors.amberAccent,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              )
+                            : null,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 28),
+
           // HISTORIAL DE CARGAS DE ESTA UNIDAD
           Container(
             padding: const EdgeInsets.all(24),
@@ -612,6 +787,237 @@ class _FuelPerformanceViewState extends ConsumerState<FuelPerformanceView> {
         const SizedBox(height: 2),
         Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
       ],
+    );
+  }
+
+  Widget _buildComparisonTile({
+    required String title,
+    required String kmPerLiter,
+    required String l100km,
+    required String subtitle,
+    required IconData icon,
+    required Color accentColor,
+    Widget? extraBadge,
+    Widget? actionButton,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161616),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accentColor.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: accentColor, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white70),
+                ),
+              ),
+              ?extraBadge,
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                kmPerLiter,
+                style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: accentColor),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                l100km,
+                style: const TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w500),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            subtitle,
+            style: const TextStyle(fontSize: 12, color: Colors.white54),
+          ),
+          if (actionButton != null) ...[
+            const SizedBox(height: 16),
+            actionButton,
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _applyNewBaseRendimiento(VehicleModel vehicle, double newKmPerLiter) async {
+    final updatedVehicle = vehicle.copyWith(
+      rendimientoKmPorLitro: double.parse(newKmPerLiter.toStringAsFixed(2)),
+    );
+    await ref.read(adminRepositoryProvider).updateVehicle(updatedVehicle);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Rendimiento base de ${vehicle.patente} actualizado a ${newKmPerLiter.toStringAsFixed(2)} km/L (${(100.0 / newKmPerLiter).toStringAsFixed(1)} L/100km)',
+          ),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _showCalibrationDialog(BuildContext context, VehicleModel vehicle) async {
+    final odoController = TextEditingController(
+      text: vehicle.currentOdometer > 0 ? vehicle.currentOdometer.toStringAsFixed(0) : '',
+    );
+    final capacityController = TextEditingController(
+      text: vehicle.capacidadEstanqueLitros.toStringAsFixed(0),
+    );
+    final computerController = TextEditingController(
+      text: vehicle.ultimoComputadorAbordoL100km != null
+          ? vehicle.ultimoComputadorAbordoL100km!.toStringAsFixed(1)
+          : '',
+    );
+    bool fullTank = true;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              const Icon(Icons.tune, color: Colors.greenAccent),
+              const SizedBox(width: 10),
+              Text(
+                'Calibración de Estanque (${vehicle.patente})',
+                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 450,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Establece el punto cero del estanque digital al llenar el estanque al 100%. A partir de este momento, cada kilómetro recorrido descontará combustible con precisión.',
+                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                  ),
+                  const SizedBox(height: 20),
+
+                  const Text('Odómetro Actual Tablero (KM)', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 6),
+                  TextFormField(
+                    controller: odoController,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: const Color(0xFF121212),
+                      suffixText: 'KM',
+                      suffixStyle: const TextStyle(color: Colors.white54),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  const Text('Capacidad del Estanque (Litros)', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 6),
+                  TextFormField(
+                    controller: capacityController,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: const Color(0xFF121212),
+                      suffixText: 'L',
+                      suffixStyle: const TextStyle(color: Colors.white54),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  const Text('Lectura Computador a Bordo (L/100km) (Opcional)', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 6),
+                  TextFormField(
+                    controller: computerController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    style: const TextStyle(color: Colors.cyanAccent, fontSize: 18, fontWeight: FontWeight.bold),
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: const Color(0xFF121212),
+                      hintText: 'Ej: 34.1',
+                      hintStyle: const TextStyle(color: Colors.white24),
+                      suffixText: 'L/100km',
+                      suffixStyle: const TextStyle(color: Colors.cyanAccent),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Estanque lleno al 100% ahora', style: TextStyle(color: Colors.white, fontSize: 14)),
+                    subtitle: const Text('Marca el estanque como completamente lleno para iniciar el cálculo Full-to-Full', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    value: fullTank,
+                    activeThumbColor: Colors.greenAccent,
+                    onChanged: (val) => setDialogState(() => fullTank = val),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.greenAccent,
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () async {
+                final odo = double.tryParse(odoController.text.trim()) ?? vehicle.currentOdometer;
+                final cap = double.tryParse(capacityController.text.trim()) ?? vehicle.capacidadEstanqueLitros;
+                final comp = double.tryParse(computerController.text.trim());
+
+                final updatedVehicle = vehicle.copyWith(
+                  currentOdometer: odo > 0 ? odo : vehicle.currentOdometer,
+                  capacidadEstanqueLitros: cap > 0 ? cap : vehicle.capacidadEstanqueLitros,
+                  tanqueCalibrado: fullTank ? true : vehicle.tanqueCalibrado,
+                  ultimoLlenadoKm: fullTank ? odo : vehicle.ultimoLlenadoKm,
+                  ultimoLlenadoFecha: fullTank ? DateTime.now() : vehicle.ultimoLlenadoFecha,
+                  ultimoComputadorAbordoL100km: comp ?? vehicle.ultimoComputadorAbordoL100km,
+                );
+
+                await ref.read(adminRepositoryProvider).updateVehicle(updatedVehicle);
+                if (ctx.mounted) {
+                  Navigator.of(ctx).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Estanque de ${vehicle.patente} calibrado exitosamente'),
+                      backgroundColor: Colors.green,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              },
+              child: const Text('Guardar Calibración', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

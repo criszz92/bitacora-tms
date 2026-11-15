@@ -6,6 +6,7 @@ import '../providers/trip_provider.dart';
 import '../../domain/models/trip_model.dart';
 import '../../domain/services/fuzzy_search_service.dart';
 import '../../domain/services/container_validator.dart';
+import '../../domain/services/route_mission_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../admin/domain/models/service_request_model.dart';
 import '../providers/trip_draft_provider.dart';
@@ -42,6 +43,8 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
   // Controladores externos (reciben el texto desde los Autocomplete internos)
   final _originCtrl = TextEditingController();
   final _destCtrl = TextEditingController();
+  final _puntoDescargaCtrl = TextEditingController();
+  final List<TextEditingController> _intermediateStopsCtrls = [];
   final _containerCtrl = TextEditingController();
   final _clientCtrl = TextEditingController();
   final _mandanteCtrl = TextEditingController();
@@ -69,6 +72,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
     // Listeners para auto-guardado de borrador
     _originCtrl.addListener(_saveDraft);
     _destCtrl.addListener(_saveDraft);
+    _puntoDescargaCtrl.addListener(_saveDraft);
     _clientCtrl.addListener(_saveDraft);
     _mandanteCtrl.addListener(_saveDraft);
     _valueCtrl.addListener(_saveDraft);
@@ -89,6 +93,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
       setState(() {
         _originCtrl.text = draft.origin;
         _destCtrl.text = draft.destination;
+        _puntoDescargaCtrl.text = draft.puntoDescarga.isNotEmpty ? draft.puntoDescarga : draft.destination;
         _clientCtrl.text = draft.client;
         _mandanteCtrl.text = draft.mandante;
         _valueCtrl.text = draft.value;
@@ -106,6 +111,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
     setState(() {
       _originCtrl.text = req.origin;
       _destCtrl.text = req.destination;
+      _puntoDescargaCtrl.text = req.destination;
       _clientCtrl.text = req.clientName;
       _mandanteCtrl.text = 'MEDLOG TRUCK'; // Valor por defecto común
       _valueCtrl.text = _formatValue(req.proposedValue ?? 0);
@@ -140,6 +146,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
       client: _clientCtrl.text,
       origin: _originCtrl.text,
       destination: _destCtrl.text,
+      puntoDescarga: _puntoDescargaCtrl.text,
       container: _containerCtrl.text,
       value: _valueCtrl.text,
       mandante: _mandanteCtrl.text,
@@ -153,6 +160,10 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
   void dispose() {
     _originCtrl.dispose();
     _destCtrl.dispose();
+    _puntoDescargaCtrl.dispose();
+    for (final c in _intermediateStopsCtrls) {
+      c.dispose();
+    }
     _containerCtrl.dispose();
     _clientCtrl.dispose();
     _mandanteCtrl.dispose();
@@ -194,6 +205,27 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
           ? _mandanteCtrl.text.trim()
           : (isRetiro ? 'MEDLOG TRUCK' : 'MANTENIMIENTO');
 
+      final puntoDescarga = _puntoDescargaCtrl.text.trim();
+      final destination = isOperativo
+          ? (puntoDescarga.isNotEmpty ? puntoDescarga : _destCtrl.text.trim())
+          : _destCtrl.text.trim();
+      final paradas = _intermediateStopsCtrls
+          .map((c) => c.text.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+
+      final tramos = isOperativo
+          ? RouteMissionService.buildMissionLegs(
+              origin: _originCtrl.text.trim(),
+              client: client,
+              puntoDescarga: destination,
+              paradasIntermedias: paradas.isNotEmpty ? paradas : null,
+            )
+          : null;
+
+      final geocercaCarga = RouteMissionService.findGeofenceForClient(client);
+      final geocercaDescarga = RouteMissionService.findGeofenceForDestination(destination);
+
       final newTripId = 'VIAJE-${DateTime.now().millisecondsSinceEpoch}';
       final newTrip = TripModel(
         id: newTripId,
@@ -201,7 +233,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
         idChofer: user.uid,
         idJornada: shift.id,
         origin: _originCtrl.text.trim(),
-        destination: _destCtrl.text.trim(),
+        destination: destination,
         cargoType: isMantenimiento
             ? 'suelta' 
             : (isRetiro ? 'retiro' : _cargoType.name),
@@ -220,6 +252,11 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
         vehicleId: vehicleId, // USAMOS EL RESPALDO
         comments: '',
         tipoMovimiento: _tipoMovimiento,
+        puntoDescarga: isOperativo ? destination : null,
+        geocercaCarga: geocercaCarga,
+        geocercaDescarga: geocercaDescarga,
+        tramos: tramos,
+        paradasIntermedias: paradas.isNotEmpty ? paradas : null,
       );
 
       await ref.read(tripRepositoryProvider).startTrip(newTrip);
@@ -305,22 +342,89 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
               const SizedBox(height: 28),
             ],
 
-            // ── 3. RUTA ───────────────────────────────────────────────────
-            _sectionHeader('Ruta del Desplazamiento', Icons.route_outlined),
+            // ── 3. RUTA & MISIÓN DE TRANSPORTE ───────────────────────────
+            _sectionHeader(
+              isOperativo ? 'Ruta & Misión de Transporte' : 'Ruta del Desplazamiento',
+              Icons.route_outlined,
+            ),
             const SizedBox(height: 12),
             _buildFuzzyField(
-              label: 'Origen',
+              label: isOperativo ? 'Punto de Partida (Origen)' : 'Origen',
               controller: _originCtrl,
               icon: Icons.my_location,
               isRequired: true,
             ),
             const SizedBox(height: 14),
-            _buildFuzzyField(
-              label: 'Destino',
-              controller: _destCtrl,
-              icon: Icons.location_on_outlined,
-              isRequired: true,
-            ),
+
+            if (isOperativo) ...[
+              // PLANTA O CLIENTE DE CARGA
+              _buildFuzzyField(
+                label: 'Planta o Cliente de Carga (1er Hito)',
+                controller: _clientCtrl,
+                icon: Icons.business_outlined,
+                isRequired: true,
+              ),
+              const SizedBox(height: 14),
+
+              // PARADAS INTERMEDIAS DINÁMICAS (MULTI-PARADA)
+              if (_intermediateStopsCtrls.isNotEmpty) ...[
+                for (int i = 0; i < _intermediateStopsCtrls.length; i++) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildFuzzyField(
+                          label: 'Parada Intermedia #${i + 1}',
+                          controller: _intermediateStopsCtrls[i],
+                          icon: Icons.alt_route,
+                          isRequired: true,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent),
+                        tooltip: 'Eliminar parada',
+                        onPressed: () {
+                          setState(() {
+                            _intermediateStopsCtrls[i].dispose();
+                            _intermediateStopsCtrls.removeAt(i);
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                ],
+              ],
+
+              // BOTÓN AGREGAR PARADA INTERMEDIA
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.cyanAccent,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  ),
+                  icon: const Icon(Icons.add_circle_outline, size: 18),
+                  label: const Text('Agregar Parada Intermedia (Opcional)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  onPressed: () {
+                    setState(() {
+                      _intermediateStopsCtrls.add(TextEditingController());
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              // PUERTO O DEPÓSITO DE ENTREGA (OBLIGATORIO)
+              _buildPuntoDescargaField(),
+            ] else ...[
+              _buildFuzzyField(
+                label: 'Destino',
+                controller: _destCtrl,
+                icon: Icons.location_on_outlined,
+                isRequired: true,
+              ),
+            ],
             const SizedBox(height: 28),
 
             // ── 4. DOCUMENTACIÓN DE CARGA (Solo para viajes operativos con contenedor) ──
@@ -381,13 +485,6 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
             if (isOperativo) ...[
               _sectionHeader('Datos Comerciales', Icons.attach_money),
               const SizedBox(height: 12),
-              _buildFuzzyField(
-                label: 'Cliente',
-                controller: _clientCtrl,
-                icon: Icons.business_outlined,
-                isRequired: true,
-              ),
-              const SizedBox(height: 14),
               _buildFuzzyField(
                 label: 'Mandante',
                 controller: _mandanteCtrl,
@@ -658,6 +755,75 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
     );
   }
 
+  // ─── Campo Selector de Puerto / Depósito de Entrega ──────────────────────
+
+  Widget _buildPuntoDescargaField() {
+    final frequentAsync = ref.watch(frequentDestinationsProvider);
+    final List<String> frequentDestList = frequentAsync.maybeWhen(
+      data: (list) => list.isNotEmpty
+          ? list
+          : const [
+              'Puerto Coronel',
+              'DP World Lirquén',
+              'Puerto SVTI',
+              'Medlog Coronel',
+              'Sitrans San Vicente',
+              'D&C San Vicente',
+              'Contopsa San Vicente',
+            ],
+      orElse: () => const [
+        'Puerto Coronel',
+        'DP World Lirquén',
+        'Puerto SVTI',
+        'Medlog Coronel',
+        'Sitrans San Vicente',
+        'D&C San Vicente',
+        'Contopsa San Vicente',
+      ],
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildFuzzyField(
+          label: 'Puerto o Depósito de Entrega (Obligatorio)',
+          controller: _puntoDescargaCtrl,
+          icon: Icons.anchor_outlined,
+          isRequired: true,
+        ),
+        const SizedBox(height: 8),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              const Text('Destinos frecuentes: ', style: TextStyle(color: Colors.grey, fontSize: 11)),
+              ...frequentDestList.map(
+                (quickDest) => Padding(
+                  padding: const EdgeInsets.only(right: 6.0),
+                  child: ActionChip(
+                    label: Text(quickDest, style: const TextStyle(fontSize: 11, color: Colors.white)),
+                    backgroundColor: _puntoDescargaCtrl.text == quickDest
+                        ? const Color(0xFF2563EB)
+                        : const Color(0xFF262626),
+                    side: BorderSide(
+                      color: _puntoDescargaCtrl.text == quickDest ? Colors.blueAccent : Colors.white12,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _puntoDescargaCtrl.text = quickDest;
+                        _destCtrl.text = quickDest;
+                      });
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   // ─── Campo Autocomplete (fuzzy) ────────────────────────────────────────────
 
   Widget _buildFuzzyField({
@@ -669,48 +835,52 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
   }) {
     const medlog = 'MEDLOG TRUCK';
 
-    return Autocomplete<String>(
-      initialValue: TextEditingValue(text: controller.text),
-      optionsBuilder: (TextEditingValue textValue) {
-        final query = textValue.text.trim();
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        return Autocomplete<String>(
+          key: ValueKey('${controller.hashCode}_${value.text}'),
+          initialValue: value,
+          optionsBuilder: (TextEditingValue textValue) {
+            final query = textValue.text.trim();
 
-        if (alwaysPinMedlog) {
-          if (query.isEmpty) return [medlog];
-          final results = ref.read(fuzzySearchProvider).search(query);
-          // Medlog Truck siempre ocupa el primer lugar
-          final rest = results.where((r) => r != medlog).toList();
-          return [medlog, ...rest];
-        }
+            if (alwaysPinMedlog) {
+              if (query.isEmpty) return [medlog];
+              final results = ref.read(fuzzySearchProvider).search(query);
+              final rest = results.where((r) => r != medlog).toList();
+              return [medlog, ...rest];
+            }
 
-        if (query.isEmpty) return const [];
-        return ref.read(fuzzySearchProvider).search(query);
-      },
-      onSelected: (String selection) {
-        controller.text = selection;
-      },
-      fieldViewBuilder: (ctx, innerCtrl, focusNode, onEditingComplete) {
-        // Sincroniza el controlador interno con el externo
-        innerCtrl.addListener(() {
-          if (controller.text != innerCtrl.text) {
-            controller.text = innerCtrl.text;
-          }
-        });
-        return TextFormField(
-          controller: innerCtrl,
-          focusNode: focusNode,
-          textCapitalization: TextCapitalization.characters,
-          decoration: InputDecoration(
-            labelText: label,
-            filled: true,
-            fillColor: const Color(0xFF1E1E1E),
-            border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none),
-            prefixIcon: Icon(icon, color: const Color(0xFFE0E0E0)),
-          ),
-          validator: isRequired
-              ? (v) => (v == null || v.trim().isEmpty) ? 'Campo obligatorio' : null
-              : null,
+            if (query.isEmpty) return const [];
+            return ref.read(fuzzySearchProvider).search(query);
+          },
+          onSelected: (String selection) {
+            controller.text = selection;
+          },
+          fieldViewBuilder: (ctx, innerCtrl, focusNode, onEditingComplete) {
+            innerCtrl.addListener(() {
+              if (controller.text != innerCtrl.text) {
+                controller.text = innerCtrl.text;
+              }
+            });
+            return TextFormField(
+              controller: innerCtrl,
+              focusNode: focusNode,
+              textCapitalization: TextCapitalization.characters,
+              decoration: InputDecoration(
+                labelText: label,
+                filled: true,
+                fillColor: const Color(0xFF1E1E1E),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none),
+                prefixIcon: Icon(icon, color: const Color(0xFFE0E0E0)),
+              ),
+              validator: isRequired
+                  ? (v) => (v == null || v.trim().isEmpty) ? 'Campo obligatorio' : null
+                  : null,
+            );
+          },
         );
       },
     );

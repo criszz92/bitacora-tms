@@ -26,11 +26,31 @@ class TripModel {
   final String? hitoActual;     // Hito operativo actual (ej: "En Antepuerto", "En Cliente", etc.)
   final List<Map<String, dynamic>>? hitos; // Historial de hitos registrados con timestamp
   final String tipoMovimiento;  // 'operativo' (default) | 'retiro_anticipado' | 'traslado_mantenimiento'
+  final String? puntoDescarga;  // Puerto o Depósito final obligatorio de entrega
+  final String? geocercaCarga;  // Geocerca ModoGPS del punto de carga (ej: "FORSAC_CHILLAN")
+  final String? geocercaDescarga; // Geocerca ModoGPS del punto de descarga (ej: "PUERTO_CORONEL")
+  final List<Map<String, dynamic>>? tramos; // Segmentación inteligente de la misión
+  final List<String>? paradasIntermedias; // Paradas intermedias opcionales
 
   bool get isOperativo => tipoMovimiento == 'operativo';
   bool get isRetiroAnticipado => tipoMovimiento == 'retiro_anticipado';
   bool get isMantenimiento => tipoMovimiento == 'traslado_mantenimiento';
   bool get generaGanancia => isOperativo;
+
+  /// Obtiene el índice del tramo actualmente en curso (o 0 por defecto)
+  int get tramoActualIndex {
+    if (tramos == null || tramos!.isEmpty) return 0;
+    final idx = tramos!.indexWhere((t) => t['estado'] == 'en_ruta');
+    return idx >= 0 ? idx : (tramos!.length - 1);
+  }
+
+  /// Retorna el tramo actualmente activo de la misión
+  Map<String, dynamic>? get tramoActual {
+    if (tramos == null || tramos!.isEmpty) return null;
+    return tramos![tramoActualIndex];
+  }
+
+  bool get hasMultipleTramos => tramos != null && tramos!.length > 1;
 
   TripModel({
     required this.id,
@@ -60,6 +80,11 @@ class TripModel {
     this.hitoActual,
     this.hitos,
     this.tipoMovimiento = 'operativo',
+    this.puntoDescarga,
+    this.geocercaCarga,
+    this.geocercaDescarga,
+    this.tramos,
+    this.paradasIntermedias,
   });
 
   Map<String, dynamic> toMap() {
@@ -90,6 +115,11 @@ class TripModel {
       if (kmEditadoEn != null) 'kmEditadoEn': kmEditadoEn!.toIso8601String(),
       if (hitoActual != null) 'hitoActual': hitoActual,
       if (hitos != null) 'hitos': hitos,
+      if (puntoDescarga != null) 'puntoDescarga': puntoDescarga,
+      if (geocercaCarga != null) 'geocercaCarga': geocercaCarga,
+      if (geocercaDescarga != null) 'geocercaDescarga': geocercaDescarga,
+      if (tramos != null) 'tramos': tramos,
+      if (paradasIntermedias != null) 'paradasIntermedias': paradasIntermedias,
     };
   }
 
@@ -122,6 +152,11 @@ class TripModel {
       hitoActual: map['hitoActual'],
       hitos: map['hitos'] != null ? List<Map<String, dynamic>>.from(map['hitos']) : null,
       tipoMovimiento: map['tipoMovimiento'] ?? 'operativo',
+      puntoDescarga: map['puntoDescarga'],
+      geocercaCarga: map['geocercaCarga'],
+      geocercaDescarga: map['geocercaDescarga'],
+      tramos: map['tramos'] != null ? List<Map<String, dynamic>>.from(map['tramos']) : null,
+      paradasIntermedias: map['paradasIntermedias'] != null ? List<String>.from(map['paradasIntermedias']) : null,
     );
   }
 
@@ -153,6 +188,11 @@ class TripModel {
     String? hitoActual,
     List<Map<String, dynamic>>? hitos,
     String? tipoMovimiento,
+    String? puntoDescarga,
+    String? geocercaCarga,
+    String? geocercaDescarga,
+    List<Map<String, dynamic>>? tramos,
+    List<String>? paradasIntermedias,
   }) {
     return TripModel(
       id: id ?? this.id,
@@ -182,6 +222,11 @@ class TripModel {
       hitoActual: hitoActual ?? this.hitoActual,
       hitos: hitos ?? this.hitos,
       tipoMovimiento: tipoMovimiento ?? this.tipoMovimiento,
+      puntoDescarga: puntoDescarga ?? this.puntoDescarga,
+      geocercaCarga: geocercaCarga ?? this.geocercaCarga,
+      geocercaDescarga: geocercaDescarga ?? this.geocercaDescarga,
+      tramos: tramos ?? this.tramos,
+      paradasIntermedias: paradasIntermedias ?? this.paradasIntermedias,
     );
   }
 }

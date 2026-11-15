@@ -11,6 +11,7 @@ import '../../../admin/domain/models/service_request_model.dart';
 import '../../../admin/domain/models/incidencia_model.dart';
 import '../../../../core/models/audit_log_model.dart';
 import '../../../../core/utils/security_utils.dart';
+import '../../domain/services/route_mission_service.dart';
 
 class TripRepository {
   final FirebaseFirestore _firestore;
@@ -57,12 +58,27 @@ class TripRepository {
     } catch (_) {}
   }
 
-  Future<void> endShift(String shiftId, int endOdometer) async {
-    await _firestore.collection('jornadas').doc(shiftId).update({
+  Future<void> endShift(
+    String shiftId,
+    int endOdometer, {
+    double? tripsKm,
+    double? totalGpsKm,
+    double? unregisteredKm,
+    String? unregisteredReason,
+    double? odometerVariationPercent,
+  }) async {
+    final updateData = <String, dynamic>{
       'endTime': DateTime.now().toIso8601String(),
       'endOdometer': endOdometer,
       'status': 'Cerrada',
-    });
+    };
+    if (tripsKm != null) updateData['tripsKm'] = tripsKm;
+    if (totalGpsKm != null) updateData['totalGpsKm'] = totalGpsKm;
+    if (unregisteredKm != null) updateData['unregisteredKm'] = unregisteredKm;
+    if (unregisteredReason != null) updateData['unregisteredReason'] = unregisteredReason;
+    if (odometerVariationPercent != null) updateData['odometerVariationPercent'] = odometerVariationPercent;
+
+    await _firestore.collection('jornadas').doc(shiftId).update(updateData);
 
     // Actualizar el odómetro actual del vehículo al cerrar la jornada
     try {
@@ -80,11 +96,17 @@ class TripRepository {
       }
     } catch (_) {}
 
+    final auditDetails = <String, dynamic>{'endOdometer': endOdometer};
+    if (tripsKm != null) auditDetails['tripsKm'] = tripsKm;
+    if (totalGpsKm != null) auditDetails['totalGpsKm'] = totalGpsKm;
+    if (unregisteredKm != null) auditDetails['unregisteredKm'] = unregisteredKm;
+    if (odometerVariationPercent != null) auditDetails['odometerVariationPercent'] = odometerVariationPercent;
+
     await _logAction(
       accion: 'CIERRE_JORNADA',
       coleccion: 'jornadas',
       documentoId: shiftId,
-      detalles: {'endOdometer': endOdometer},
+      detalles: auditDetails,
     );
   }
 
@@ -113,6 +135,110 @@ class TripRepository {
         .map((snapshot) {
       return snapshot.docs.map((doc) => TripModel.fromMap(doc.data(), doc.id)).toList();
     });
+  }
+
+  /// Obtiene los destinos más frecuentes visitados por el chofer
+  Future<List<String>> getFrequentDestinations({int limit = 5}) async {
+    try {
+      final snap = await _firestore
+          .collection('viajes')
+          .where('idEmpresa', isEqualTo: currentEmpresaId)
+          .where('idChofer', isEqualTo: currentChoferId)
+          .get(const GetOptions(source: Source.serverAndCache));
+
+      final countMap = <String, int>{};
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final dest = (data['puntoDescarga'] ?? data['destination'] ?? '').toString().trim();
+        if (dest.isNotEmpty && dest != 'Retiro Anticipado' && dest != 'Mantenimiento') {
+          countMap[dest] = (countMap[dest] ?? 0) + 1;
+        }
+      }
+
+      if (countMap.isEmpty) return [];
+
+      final sorted = countMap.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+
+      return sorted.take(limit).map((e) => e.key).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Agrega una parada intermedia a un viaje activo en ruta y reestructura los tramos
+  Future<void> addIntermediateStopToActiveTrip({
+    required String tripId,
+    required String stopName,
+    required TripModel currentTrip,
+  }) async {
+    final sanitizedStop = SecurityUtils.sanitizeText(stopName);
+    if (sanitizedStop.isEmpty) return;
+
+    final existingStops = List<String>.from(currentTrip.paradasIntermedias ?? []);
+    existingStops.add(sanitizedStop);
+
+    // Reconstruir tramos si el viaje es operativo
+    List<Map<String, dynamic>>? newTramos;
+    if (currentTrip.isOperativo) {
+      final finalDest = currentTrip.puntoDescarga ?? currentTrip.destination;
+      final freshLegs = RouteMissionService.buildMissionLegs(
+        origin: currentTrip.origin,
+        client: currentTrip.client,
+        puntoDescarga: finalDest,
+        paradasIntermedias: existingStops,
+      );
+
+      // Si ya existían tramos, preservar el estado completado de los que ya pasaron
+      if (currentTrip.tramos != null && currentTrip.tramos!.isNotEmpty) {
+        final oldTramos = currentTrip.tramos!;
+        newTramos = [];
+        for (int i = 0; i < freshLegs.length; i++) {
+          final leg = Map<String, dynamic>.from(freshLegs[i]);
+          if (i < oldTramos.length && oldTramos[i]['estado'] == 'completado') {
+            leg['estado'] = 'completado';
+            leg['horaInicio'] = oldTramos[i]['horaInicio'];
+            leg['horaFin'] = oldTramos[i]['horaFin'];
+            leg['kmGps'] = oldTramos[i]['kmGps'];
+          }
+          newTramos.add(leg);
+        }
+        // Asegurar que al menos un tramo no completado quede 'en_ruta'
+        final hasActive = newTramos.any((t) => t['estado'] == 'en_ruta');
+        if (!hasActive) {
+          final firstPending = newTramos.indexWhere((t) => t['estado'] == 'pendiente');
+          if (firstPending >= 0) {
+            newTramos[firstPending]['estado'] = 'en_ruta';
+            newTramos[firstPending]['horaInicio'] = DateTime.now().toIso8601String();
+          }
+        }
+      } else {
+        newTramos = freshLegs;
+      }
+    }
+
+    final updates = <String, dynamic>{
+      'paradasIntermedias': existingStops,
+    };
+    if (newTramos != null) {
+      updates['tramos'] = newTramos;
+    }
+
+    await _firestore.collection('viajes').doc(tripId).update(updates);
+
+    await registrarHito(
+      tripId,
+      'Parada agregada: $sanitizedStop',
+      geocerca: RouteMissionService.findGeofenceForClient(sanitizedStop) ??
+          RouteMissionService.findGeofenceForDestination(sanitizedStop),
+    );
+
+    await _logAction(
+      accion: 'AGREGAR_PARADA_INTERMEDIA',
+      coleccion: 'viajes',
+      documentoId: tripId,
+      detalles: {'stop': sanitizedStop, 'totalStops': existingStops.length},
+    );
   }
 
   // Obtiene los viajes de un chofer en un rango de fechas para rendición de viáticos

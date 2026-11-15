@@ -104,10 +104,19 @@ class PdfService {
             else
                 pw.TableHelper.fromTextArray(
                   context: context,
-                  headers: ['Fecha', 'Ruta', 'Patente', 'KM', 'Tipo', 'Monto Asignado'],
-                  headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
-                  cellStyle: const pw.TextStyle(fontSize: 10),
+                  headers: ['Fecha', 'Ruta / Misión', 'Cliente / Faena', 'Patente', 'KM', 'Tipo', 'Monto Asignado'],
+                  headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
+                  cellStyle: const pw.TextStyle(fontSize: 8.5),
                   cellAlignment: pw.Alignment.centerLeft,
+                  columnWidths: {
+                    0: const pw.FixedColumnWidth(55),  // Fecha
+                    1: const pw.FlexColumnWidth(2.5),  // Ruta / Misión (Inicio -> Fin)
+                    2: const pw.FlexColumnWidth(2.0),  // Cliente / Faena
+                    3: const pw.FixedColumnWidth(50),  // Patente
+                    4: const pw.FixedColumnWidth(42),  // KM
+                    5: const pw.FixedColumnWidth(40),  // Tipo (Local/Largo)
+                    6: const pw.FixedColumnWidth(65),  // Monto Asignado
+                  },
                   data: () {
                     final List<List<String>> rows = [];
                     final Map<String, bool> dayHasPaid = {};
@@ -134,9 +143,24 @@ class PdfService {
                         dayHasPaid[dayKey] = true;
                       }
 
+                      // Armado de Ruta completa de 3 puntos (INICIO -> CLIENTE -> DESTINO)
+                      final clientClean = t.client.trim();
+                      final originClean = t.origin.trim();
+                      final destClean = t.destination.trim();
+                      
+                      String rutaStr = '$originClean -> $destClean';
+                      if (clientClean.isNotEmpty && 
+                          !clientClean.toLowerCase().contains('retiro') && 
+                          !clientClean.toLowerCase().contains('mantenimiento') &&
+                          clientClean != originClean && 
+                          clientClean != destClean) {
+                        rutaStr = '$originClean -> $clientClean -> $destClean';
+                      }
+
                       rows.add([
                         '${t.startDate.day}/${t.startDate.month}/${t.startDate.year}',
-                        '${t.origin} -> ${t.destination}',
+                        rutaStr,
+                        clientClean.isNotEmpty ? clientClean : 'General',
                         t.vehicleId ?? 'S/P',
                         '${km.toStringAsFixed(0)} KM',
                         isLong ? 'Largo' : 'Local',

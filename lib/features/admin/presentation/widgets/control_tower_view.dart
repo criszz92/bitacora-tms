@@ -9,6 +9,9 @@ import '../../domain/services/modogps_service.dart';
 import '../../domain/services/gps_harvest_service.dart';
 import '../../domain/models/infraestructura_vial_model.dart';
 import '../../data/repositories/infraestructura_repository.dart';
+import '../../../trips/domain/services/route_mission_service.dart';
+import 'route_elevation_profile_widget.dart';
+import 'route_comparator_widget.dart';
 
 export '../../domain/services/modogps_service.dart' show GpsUnit, modoGpsServiceProvider, singleVehicleGpsProvider, GpsGeofence;
 
@@ -76,15 +79,24 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
   bool _showGeofences = true;
   bool _showInfraestructura = true;
 
-  // Modo de vista: 0 = En Vivo, 1 = Historial de Recorridos
+  // Modo de vista: 0 = En Vivo, 1 = Historial de Recorridos, 2 = Comparador de Rutas
   int _viewMode = 0;
   DateTime _selectedDate = DateTime.now();
   TimeOfDay _startTime = const TimeOfDay(hour: 0, minute: 0);
   TimeOfDay _endTime = const TimeOfDay(hour: 23, minute: 59);
   bool _isLoadingHistory = false;
   GpsHistoricalTrip? _historicalTrip;
+  Map<String, double>? _demElevationProfile;
+  RouteTopographyAnalysis? _currentDetailedAnalysis;
+  bool _isLoadingElevation = false;
   List<GpsGeofence> _cachedGeofencesList = [];
   int? _selectedLegIndex; // null = ver todos los tramos, o índice de tramo específico
+
+  // Datos para el comparador de rutas
+  ComparedRouteData? _comparedRouteA;
+  ComparedRouteData? _comparedRouteB;
+  GpsHistoricalTrip? _routeBTrip;
+  LatLng? _hoveredMapMarker;
 
   @override
   void initState() {
@@ -149,6 +161,8 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
     setState(() {
       _isLoadingHistory = true;
       _historicalTrip = null;
+      _demElevationProfile = null;
+      _isLoadingElevation = false;
     });
 
     try {
@@ -187,6 +201,12 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
           // Centrar mapa en el punto medio del recorrido
           final midPoint = trip.points[trip.points.length ~/ 2].position;
           _mapController.move(midPoint, 13);
+
+          // Si el GPS físico no reporta elevación (todos pos.z = 0), consultar modelo digital de elevación gratuito SRTM
+          final allAltitudesZero = trip.points.every((p) => p.altitude == null || p.altitude! <= 0);
+          if (allAltitudesZero) {
+            _fetchDemProfileForTrip(trip);
+          }
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -207,6 +227,55 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
             backgroundColor: Colors.redAccent,
           ),
         );
+      }
+    }
+  }
+
+  Future<void> _fetchDemProfileForTrip(GpsHistoricalTrip trip) async {
+    if (!mounted) return;
+    setState(() {
+      _isLoadingElevation = true;
+    });
+    try {
+      final points = trip.points.map((p) => p.position).toList();
+      final rawAlts = trip.points.map((p) => p.altitude).toList();
+
+      final detailedAnalysis = await RouteMissionService.analyzeDetailedTopography(
+        coordinates: points,
+        rawHardwareAltitudes: rawAlts,
+      );
+
+      if (mounted) {
+        setState(() {
+          _currentDetailedAnalysis = detailedAnalysis;
+          _demElevationProfile = {
+            'ascentMeters': detailedAnalysis.ascentMeters,
+            'descentMeters': detailedAnalysis.descentMeters,
+            'minAltitude': detailedAnalysis.minAltitude,
+            'maxAltitude': detailedAnalysis.maxAltitude,
+          };
+          _isLoadingElevation = false;
+
+          // Si Ruta A no está fijada, fijarla automáticamente con este viaje
+          _comparedRouteA ??= ComparedRouteData(
+            label: 'Viaje ${_selectedPlate ?? ""} (${_selectedDate.day}/${_selectedDate.month})',
+            plate: _selectedPlate ?? 'Unidad',
+            date: _selectedDate,
+            distanceKm: trip.totalDistanceKm,
+            avgSpeed: trip.avgSpeed,
+            maxSpeed: trip.maxSpeed,
+            totalDuration: trip.endTime.difference(trip.startTime),
+            estimatedLiters: trip.totalDistanceKm / 2.5,
+            topography: detailedAnalysis,
+            color: Colors.cyanAccent,
+          );
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isLoadingElevation = false;
+        });
       }
     }
   }
@@ -896,6 +965,52 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                           ),
                         ],
 
+                        // ── CAPA MAPA MODO 2: COMPARADOR DE RUTAS (SUPERPOSICIÓN A vs B) ──
+                        if (_viewMode == 2) ...[
+                          PolylineLayer(
+                            polylines: [
+                              // Trazado Ruta 1 (A) en Celeste / Cian
+                              if (_comparedRouteA != null && _historicalTrip != null)
+                                Polyline(
+                                  points: _historicalTrip!.points.map((p) => p.position).toList(),
+                                  color: _comparedRouteA!.color,
+                                  strokeWidth: 5.5,
+                                  borderColor: Colors.black,
+                                  borderStrokeWidth: 1.5,
+                                ),
+                              // Trazado Ruta 2 (B) en Naranja Neón
+                              if (_comparedRouteB != null && _routeBTrip != null)
+                                Polyline(
+                                  points: _routeBTrip!.points.map((p) => p.position).toList(),
+                                  color: _comparedRouteB!.color,
+                                  strokeWidth: 5.5,
+                                  borderColor: Colors.black,
+                                  borderStrokeWidth: 1.5,
+                                ),
+                            ],
+                          ),
+                          // Marcador interactivo del punto que se pasa el mouse en el perfil
+                          if (_hoveredMapMarker != null)
+                            MarkerLayer(
+                              markers: [
+                                Marker(
+                                  point: _hoveredMapMarker!,
+                                  width: 44,
+                                  height: 44,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: Colors.black, width: 2),
+                                      boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 8)],
+                                    ),
+                                    child: const Icon(Icons.location_on, color: Colors.redAccent, size: 28),
+                                  ),
+                                ),
+                              ],
+                            ),
+                        ],
+
                         // Estela / Migas de pan de la unidad seleccionada (se limpia al cambiar de camión)
                         if (_viewMode == 0)
                           AnimatedBuilder(
@@ -1362,6 +1477,34 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                             ),
                           ),
                         ),
+                        Expanded(
+                          child: InkWell(
+                            onTap: () => setState(() => _viewMode = 2),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(
+                                color: _viewMode == 2 ? const Color(0xFF6366F1) : Colors.transparent,
+                                borderRadius: BorderRadius.circular(7),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.compare_arrows, size: 14, color: _viewMode == 2 ? Colors.white : Colors.white60),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Comparador',
+                                    style: TextStyle(
+                                      color: _viewMode == 2 ? Colors.white : Colors.white60,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11.5,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -1392,7 +1535,10 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                           error: (e, s) => const SizedBox(),
                         )
                       // MODO 1: HISTORIAL DE RECORRIDOS
-                      : _buildHistoryPanel(fleetAsync.value ?? []),
+                      : (_viewMode == 1
+                          ? _buildHistoryPanel(fleetAsync.value ?? [])
+                          // MODO 2: COMPARADOR DE RUTAS & CORREDORES
+                          : _buildComparatorPanel(fleetAsync.value ?? [])),
                 ),
               ],
             ),
@@ -1486,15 +1632,23 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
             Row(
               children: [
                 Icon(
-                  unit.isIgnitionOn == true ? Icons.power : Icons.power_off,
-                  color: unit.isIgnitionOn == true ? Colors.greenAccent : Colors.white24,
+                  unit.isRalenti
+                      ? Icons.pause_circle_outline
+                      : (unit.isIgnitionOn == true ? Icons.power : Icons.power_off),
+                  color: unit.isRalenti
+                      ? Colors.amberAccent
+                      : (unit.isIgnitionOn == true ? Colors.greenAccent : Colors.white24),
                   size: 13,
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  unit.isIgnitionOn == true ? 'Motor Encendido' : 'Motor Apagado',
+                  unit.isRalenti
+                      ? 'Motor en Ralentí'
+                      : (unit.isIgnitionOn == true ? 'Motor Encendido' : 'Motor Apagado'),
                   style: TextStyle(
-                    color: unit.isIgnitionOn == true ? Colors.greenAccent : Colors.white38,
+                    color: unit.isRalenti
+                        ? Colors.amberAccent
+                        : (unit.isIgnitionOn == true ? Colors.greenAccent : Colors.white38),
                     fontSize: 11,
                   ),
                 ),
@@ -1846,6 +2000,258 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                   Text('Prom: ${_historicalTrip!.avgSpeed.toStringAsFixed(0)} km/h', style: const TextStyle(color: Colors.white54, fontSize: 11)),
                 ],
               ),
+            ),
+
+            const SizedBox(height: 12),
+
+            // ── TOPOGRAFÍA & PERFIL DE ALTITUD (pos.z o SRTM DEM) Y CORREDOR VIAL ──
+            Builder(
+              builder: (ctx) {
+                final altitudes = _historicalTrip!.points
+                    .map((p) => p.altitude)
+                    .whereType<double>()
+                    .toList();
+                
+                final hasHardwareAlt = altitudes.isNotEmpty && altitudes.any((a) => a > 0);
+                
+                double ascent = 0.0;
+                double descent = 0.0;
+                double minAlt = 0.0;
+                double maxAlt = 0.0;
+                String sourceLabel = '';
+
+                if (hasHardwareAlt) {
+                  final elevation = RouteMissionService.computeElevationProfile(altitudes);
+                  ascent = elevation['ascentMeters'] ?? 0.0;
+                  descent = elevation['descentMeters'] ?? 0.0;
+                  minAlt = altitudes.reduce(math.min);
+                  maxAlt = altitudes.reduce(math.max);
+                  sourceLabel = 'ModoGPS pos.z: ${altitudes.length} lecturas satelitales procesadas.';
+                } else if (_demElevationProfile != null) {
+                  ascent = _demElevationProfile!['ascentMeters'] ?? 0.0;
+                  descent = _demElevationProfile!['descentMeters'] ?? 0.0;
+                  minAlt = _demElevationProfile!['minAltitude'] ?? 0.0;
+                  maxAlt = _demElevationProfile!['maxAltitude'] ?? 0.0;
+                  sourceLabel = 'Topografía Satelital SRTM (Open-Meteo DEM) • Precisión vial';
+                } else if (_isLoadingElevation) {
+                  sourceLabel = 'Calculando relieve del terreno vía satélite SRTM...';
+                } else {
+                  sourceLabel = 'Sin datos de altitud en hardware GPS (pos.z = 0)';
+                }
+
+                // Detectar corredor predominante con los puntos del recorrido
+                String? detectedCorridor;
+                for (final p in _historicalTrip!.points) {
+                  final c = RouteMissionService.detectCorridor(p.position.latitude, p.position.longitude);
+                  if (c != null) {
+                    detectedCorridor = c;
+                    break;
+                  }
+                }
+
+                return Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF161B22),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.35)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Row(
+                                children: [
+                                  Icon(Icons.terrain, size: 16, color: Colors.cyanAccent),
+                                  SizedBox(width: 6),
+                                  Text(
+                                    'TOPOGRAFÍA & ELEVACIÓN',
+                                    style: TextStyle(color: Colors.cyanAccent, fontSize: 10.5, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                                  ),
+                                ],
+                              ),
+                              if (detectedCorridor != null)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.cyanAccent.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    detectedCorridor,
+                                    style: const TextStyle(color: Colors.cyanAccent, fontSize: 9.5, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Desnivel Subida', style: TextStyle(color: Colors.white54, fontSize: 10)),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '+${ascent.toStringAsFixed(0)} m',
+                                    style: const TextStyle(color: Colors.greenAccent, fontSize: 15, fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Desnivel Bajada', style: TextStyle(color: Colors.white54, fontSize: 10)),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '-${descent.toStringAsFixed(0)} m',
+                                    style: const TextStyle(color: Colors.orangeAccent, fontSize: 15, fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  const Text('Rango m.s.n.m.', style: TextStyle(color: Colors.white54, fontSize: 10)),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${minAlt.toStringAsFixed(0)}m - ${maxAlt.toStringAsFixed(0)}m',
+                                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              if (_isLoadingElevation) ...[
+                                const SizedBox(
+                                  width: 10,
+                                  height: 10,
+                                  child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.cyanAccent),
+                                ),
+                                const SizedBox(width: 6),
+                              ],
+                              Expanded(
+                                child: Text(
+                                  sourceLabel,
+                                  style: TextStyle(
+                                    color: _isLoadingElevation ? Colors.cyanAccent : Colors.white38,
+                                    fontSize: 9.5,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Botón para Fijar como Ruta 1 o Ruta 2 en el Comparador
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              if (_currentDetailedAnalysis != null && _historicalTrip != null) {
+                                setState(() {
+                                  _comparedRouteA = ComparedRouteData(
+                                    label: '$_selectedPlate (${_selectedDate.day}/${_selectedDate.month})',
+                                    plate: _selectedPlate ?? '',
+                                    date: _selectedDate,
+                                    distanceKm: _historicalTrip!.totalDistanceKm,
+                                    avgSpeed: _historicalTrip!.avgSpeed,
+                                    maxSpeed: _historicalTrip!.maxSpeed,
+                                    totalDuration: _historicalTrip!.endTime.difference(_historicalTrip!.startTime),
+                                    estimatedLiters: _historicalTrip!.totalDistanceKm / 2.5,
+                                    topography: _currentDetailedAnalysis!,
+                                    color: Colors.cyanAccent,
+                                  );
+                                });
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('✅ Fijada como Ruta 1 (Base en Comparador)'),
+                                    backgroundColor: Colors.cyan,
+                                  ),
+                                );
+                              }
+                            },
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.cyanAccent,
+                              side: const BorderSide(color: Colors.cyanAccent),
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                            ),
+                            icon: const Icon(Icons.bookmark_add, size: 14),
+                            label: const Text('Fijar como Ruta 1', style: TextStyle(fontSize: 11)),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              if (_currentDetailedAnalysis != null && _historicalTrip != null) {
+                                setState(() {
+                                  _comparedRouteB = ComparedRouteData(
+                                    label: '$_selectedPlate (${_selectedDate.day}/${_selectedDate.month})',
+                                    plate: _selectedPlate ?? '',
+                                    date: _selectedDate,
+                                    distanceKm: _historicalTrip!.totalDistanceKm,
+                                    avgSpeed: _historicalTrip!.avgSpeed,
+                                    maxSpeed: _historicalTrip!.maxSpeed,
+                                    totalDuration: _historicalTrip!.endTime.difference(_historicalTrip!.startTime),
+                                    estimatedLiters: _historicalTrip!.totalDistanceKm / 2.5,
+                                    topography: _currentDetailedAnalysis!,
+                                    color: Colors.orangeAccent,
+                                  );
+                                  _routeBTrip = _historicalTrip;
+                                  _viewMode = 2; // Ir al comparador automáticamente
+                                });
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('✅ Fijada como Ruta 2 (Comparativa). Abriendo comparador...'),
+                                    backgroundColor: Colors.orangeAccent,
+                                  ),
+                                );
+                              }
+                            },
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.orangeAccent,
+                              side: const BorderSide(color: Colors.orangeAccent),
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                            ),
+                            icon: const Icon(Icons.compare_arrows, size: 14),
+                            label: const Text('Fijar como Ruta 2', style: TextStyle(fontSize: 11)),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    // Gráfico de Elevación Interactivo
+                    if (_currentDetailedAnalysis != null && _currentDetailedAnalysis!.points.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      RouteElevationProfileWidget(
+                        analysis: _currentDetailedAnalysis!,
+                        routeTitle: 'PERFIL PUNTO A PUNTO: ${_selectedPlate ?? ""}',
+                        primaryColor: Colors.cyanAccent,
+                        onPointHover: (ElevationProfilePoint? pt) {
+                          setState(() {
+                            _hoveredMapMarker = pt?.position;
+                          });
+                        },
+                      ),
+                    ],
+                  ],
+                );
+              },
             ),
 
             const SizedBox(height: 16),
@@ -2204,6 +2610,66 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
           ],
         ],
       ),
+    );
+  }
+
+  Widget _buildComparatorPanel(List<GpsUnit> units) {
+    if (_comparedRouteA == null) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.alt_route, size: 48, color: Colors.white24),
+              const SizedBox(height: 16),
+              const Text(
+                'Aún no hay rutas fijadas para comparar',
+                style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Ve a la pestaña "Historial", selecciona la fecha y camión del primer viaje, presiona "Trazar Recorrido" y luego "Fijar como Ruta 1".',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () => setState(() => _viewMode = 1),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueAccent,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                icon: const Icon(Icons.history, size: 16),
+                label: const Text('Ir al Historial de Recorridos'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return RouteComparatorWidget(
+      routeA: _comparedRouteA!,
+      routeB: _comparedRouteB,
+      onClearRouteB: () {
+        setState(() {
+          _comparedRouteB = null;
+          _routeBTrip = null;
+          _hoveredMapMarker = null;
+        });
+      },
+      onPointHoverA: (ElevationProfilePoint? pt) {
+        setState(() {
+          _hoveredMapMarker = pt?.position;
+        });
+      },
+      onPointHoverB: (ElevationProfilePoint? pt) {
+        setState(() {
+          _hoveredMapMarker = pt?.position;
+        });
+      },
     );
   }
 

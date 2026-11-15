@@ -8,6 +8,15 @@ class ShiftModel {
   final int startOdometer;
   final int? endOdometer;
   final String status; // 'Activa', 'Cerrada'
+  final double? tripsKm;
+  final double? totalGpsKm;
+  final double? unregisteredKm;
+  final String? unregisteredReason;
+  final double? odometerVariationPercent;
+
+  int get deltaOdometer => (endOdometer != null && endOdometer! >= startOdometer)
+      ? (endOdometer! - startOdometer)
+      : 0;
 
   ShiftModel({
     required this.id,
@@ -19,6 +28,11 @@ class ShiftModel {
     required this.startOdometer,
     this.endOdometer,
     required this.status,
+    this.tripsKm,
+    this.totalGpsKm,
+    this.unregisteredKm,
+    this.unregisteredReason,
+    this.odometerVariationPercent,
   });
 
   Map<String, dynamic> toMap() {
@@ -31,6 +45,11 @@ class ShiftModel {
       'startOdometer': startOdometer,
       'endOdometer': endOdometer,
       'status': status,
+      if (tripsKm != null) 'tripsKm': tripsKm,
+      if (totalGpsKm != null) 'totalGpsKm': totalGpsKm,
+      if (unregisteredKm != null) 'unregisteredKm': unregisteredKm,
+      if (unregisteredReason != null) 'unregisteredReason': unregisteredReason,
+      if (odometerVariationPercent != null) 'odometerVariationPercent': odometerVariationPercent,
     };
   }
 
@@ -45,6 +64,11 @@ class ShiftModel {
       startOdometer: map['startOdometer']?.toInt() ?? 0,
       endOdometer: map['endOdometer']?.toInt(),
       status: map['status'] ?? 'Activa',
+      tripsKm: (map['tripsKm'] as num?)?.toDouble(),
+      totalGpsKm: (map['totalGpsKm'] as num?)?.toDouble(),
+      unregisteredKm: (map['unregisteredKm'] as num?)?.toDouble(),
+      unregisteredReason: map['unregisteredReason'] as String?,
+      odometerVariationPercent: (map['odometerVariationPercent'] as num?)?.toDouble(),
     );
   }
 }

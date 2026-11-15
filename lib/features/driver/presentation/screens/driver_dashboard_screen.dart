@@ -18,14 +18,45 @@ import 'package:latlong2/latlong.dart' hide Path;
 import '../../../admin/domain/models/infraestructura_vial_model.dart';
 import '../../../../core/utils/road_infrastructure_detector.dart';
 import '../../../../core/utils/route_live_monitor.dart';
+import '../../../../core/services/silent_navigator_service.dart';
 import '../../../admin/data/repositories/infraestructura_repository.dart';
 import '../../../trips/domain/models/expense_model.dart';
+import '../../../../core/services/app_update_service.dart';
+import '../../../../core/widgets/app_update_dialog.dart';
+import '../../../../core/services/push_notification_service.dart';
+import '../../../trips/domain/services/fuzzy_search_service.dart';
 
 class DriverDashboardScreen extends ConsumerWidget {
   const DriverDashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Comprobar silenciosamente si existe una nueva versión de la app
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final update = await AppUpdateService.checkForUpdate();
+      if (update != null && context.mounted) {
+        AppUpdateDialog.show(context, update);
+      }
+    });
+
+    // Escuchar servicios asignados en tiempo real y disparar notificación de alta prioridad
+    ref.listen<AsyncValue<List<ServiceRequest>>>(assignedRequestsProvider, (previous, next) {
+      final prevList = previous?.value ?? [];
+      final currentList = next.value ?? [];
+      if (currentList.isNotEmpty) {
+        for (final req in currentList) {
+          final isNew = !prevList.any((p) => p.id == req.id);
+          if (isNew) {
+            PushNotificationService.showCustomNotification(
+              id: req.id.hashCode,
+              title: '📦 ¡Nuevo Servicio Asignado!',
+              body: '${req.clientName}: ${req.origin} -> ${req.destination}',
+            );
+          }
+        }
+      }
+    });
+
     final activeShiftAsync = ref.watch(activeShiftProvider);
     final shiftTripsAsync = ref.watch(currentShiftTripsProvider);
 
@@ -206,6 +237,27 @@ class DriverDashboardScreen extends ConsumerWidget {
               context.push('/retro-trip');
             },
           ),
+          ListTile(
+            leading: const Icon(Icons.system_update_alt_rounded, color: Colors.greenAccent),
+            title: const Text('Buscar Actualizaciones', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            subtitle: const Text('Verificar versión más reciente del sistema', style: TextStyle(color: Colors.white38, fontSize: 11)),
+            onTap: () async {
+              context.pop();
+              final update = await AppUpdateService.checkForUpdate();
+              if (context.mounted) {
+                if (update != null) {
+                  AppUpdateDialog.show(context, update);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('✅ Tienes la última versión instalada.'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              }
+            },
+          ),
           if (isAdmin) ...[
             const Divider(color: Colors.white24),
             ListTile(
@@ -258,7 +310,10 @@ class DriverDashboardScreen extends ConsumerWidget {
                 ],
               ),
               InkWell(
-                onTap: () => _showEndShiftDialog(context, ref, shift),
+                onTap: () {
+                  final completed = shiftTripsAsync.value?.where((t) => t.status != 'En Ruta').toList() ?? [];
+                  _showEndShiftDialog(context, ref, shift, completedTrips: completed);
+                },
                 borderRadius: BorderRadius.circular(12),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -791,6 +846,7 @@ class DriverDashboardScreen extends ConsumerWidget {
     final gpsUnitAsync = ref.watch(singleVehicleGpsProvider(targetPlate));
 
     if (isEnRuta) {
+      ref.watch(silentNavigatorObserverProvider(targetPlate));
       return _buildActiveTripCard(context, ref, trip, targetPlate, gpsUnitAsync);
     } else {
       return _buildCompletedTripCard(context, ref, trip, targetPlate);
@@ -805,6 +861,7 @@ class DriverDashboardScreen extends ConsumerWidget {
     AsyncValue<GpsUnit?> gpsUnitAsync,
   ) {
     final nextHito = _getNextHito(trip.hitoActual);
+    final pendingArrival = ref.watch(pendingArrivalProvider);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -900,6 +957,189 @@ class DriverDashboardScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 10),
 
+            // ── ALERTA PROACTIVA DE LLEGADA DETECTADA POR GEOCERCA ──
+            if (pendingArrival != null && pendingArrival.tripId == trip.id) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F5132).withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.greenAccent, width: 1.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.greenAccent.withValues(alpha: 0.2),
+                      blurRadius: 10,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.check_circle, color: Colors.greenAccent, size: 22),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '¡Llegada Detectada: ${pendingArrival.destino}!',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.greenAccent.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text('GEOCERCA GPS', style: TextStyle(color: Colors.greenAccent, fontSize: 9, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'El camión ingresó a ${pendingArrival.geocerca ?? pendingArrival.destino} a las ${DateFormat('HH:mm').format(pendingArrival.detectedAt)}. Confirma para registrar tu hora real y avanzar al siguiente tramo.',
+                      style: const TextStyle(color: Colors.white70, fontSize: 11.5),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.greenAccent,
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: const Icon(Icons.done_all, size: 18),
+                        label: Text(
+                          'CONFIRMAR LLEGADA A ${pendingArrival.destino.toUpperCase()}',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
+                        ),
+                        onPressed: () async {
+                          await ref.read(silentNavigatorServiceProvider).confirmLegArrival(
+                                trip: trip,
+                                tramoId: pendingArrival.tramoId,
+                              );
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('✓ Llegada a ${pendingArrival.destino} confirmada exitosamente'),
+                                backgroundColor: const Color(0xFF1E3A8A),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            // ── MISIÓN SEGMENTADA (BARRA DE TRAMOS EN SEGUNDO PLANO) ──
+            if (trip.tramos != null && trip.tramos!.isNotEmpty) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F172A).withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.alt_route, color: Colors.cyanAccent, size: 16),
+                        const SizedBox(width: 6),
+                        const Text(
+                          'Misión Segmentada (Navegador Silencioso)',
+                          style: TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold, fontSize: 11.5),
+                        ),
+                        const Spacer(),
+                        Text(
+                          'Tramo ${trip.tramoActualIndex + 1} de ${trip.tramos!.length}',
+                          style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        for (int i = 0; i < trip.tramos!.length; i++) ...[
+                          Expanded(
+                            child: Builder(
+                              builder: (ctx) {
+                                final tr = trip.tramos![i];
+                                final isDone = tr['estado'] == 'completado';
+                                final isCurrent = tr['estado'] == 'en_ruta';
+                                final color = isDone
+                                    ? Colors.greenAccent
+                                    : (isCurrent ? Colors.cyanAccent : Colors.white24);
+
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: color.withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: color.withValues(alpha: 0.5)),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            isDone
+                                                ? Icons.check_circle
+                                                : (isCurrent ? Icons.play_arrow : Icons.radio_button_unchecked),
+                                            size: 12,
+                                            color: color,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Expanded(
+                                            child: Text(
+                                              tr['tipo'] == 'posicionamiento_vacio'
+                                                  ? 'T1: Vacío'
+                                                  : (tr['tipo'] == 'cargado' ? 'T2: Cargado' : 'Intermedio'),
+                                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        tr['destino'] ?? '',
+                                        style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w600),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          if (i < trip.tramos!.length - 1)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 4.0),
+                              child: Icon(Icons.arrow_forward_ios, size: 10, color: Colors.white24),
+                            ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
             // ── MONITOREO DE RUTA EN VIVO (Alertas de Romanas, Restricciones y Peajes) ──
             Builder(
               builder: (ctx) {
@@ -992,7 +1232,7 @@ class DriverDashboardScreen extends ConsumerWidget {
                 }
 
                 final inGeofence = unit.currentGeofence != null && unit.currentGeofence!.isNotEmpty;
-                final isIdle = (unit.isIgnitionOn == true) && unit.speed < 2;
+                final isIdle = unit.isRalenti;
 
                 if (isIdle) {
                   return Container(
@@ -1032,7 +1272,9 @@ class DriverDashboardScreen extends ConsumerWidget {
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            'Geocerca GPS: ${unit.currentGeofence}',
+                            unit.isEngineOff
+                                ? 'En ${unit.currentGeofence} • Motor Apagado'
+                                : 'Geocerca GPS: ${unit.currentGeofence}',
                             style: const TextStyle(color: Colors.greenAccent, fontSize: 11.5, fontWeight: FontWeight.bold),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -1041,7 +1283,7 @@ class DriverDashboardScreen extends ConsumerWidget {
                     ),
                   );
                 } else {
-                  final isRalenti = (unit.isIgnitionOn == true) && unit.speed < 2;
+                  final isRalenti = unit.isRalenti;
                   return Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
@@ -1066,9 +1308,9 @@ class DriverDashboardScreen extends ConsumerWidget {
                           child: Text(
                             isRalenti
                                 ? 'Motor Encendido • Modo Ralentí (0 km/h) • Cuidado Turbo'
-                                : (unit.status == 'online'
+                                : (unit.speed > 2.0
                                     ? 'GPS Conectado • En Ruta (${unit.speed.toStringAsFixed(0)} km/h)'
-                                    : 'GPS Conectado • Detenido'),
+                                    : 'GPS Conectado • Detenido (Motor Apagado)'),
                             style: TextStyle(
                               color: isRalenti ? Colors.orangeAccent : const Color(0xFF93C5FD), 
                               fontSize: 11.5, 
@@ -1087,7 +1329,7 @@ class DriverDashboardScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 10),
 
-            // Trazado de Ruta: Origen ➔ Destino (compacto y elegante)
+            // Trazado de Ruta Completa: Origen ➔ Cliente/Planta ➔ Puerto/Depósito
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
@@ -1114,19 +1356,47 @@ class DriverDashboardScreen extends ConsumerWidget {
                     padding: const EdgeInsets.only(left: 6.5, top: 2, bottom: 2),
                     child: Row(
                       children: [
-                        Container(width: 1.5, height: 14, color: Colors.white24),
+                        Container(width: 1.5, height: 16, color: Colors.white24),
                         const SizedBox(width: 14),
-                        Text('Cliente: ${trip.client}', style: const TextStyle(color: Colors.white60, fontSize: 11)),
+                        const Icon(Icons.business_outlined, size: 12, color: Colors.cyanAccent),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            'Carga: ${trip.client}',
+                            style: const TextStyle(color: Colors.cyanAccent, fontSize: 11.5, fontWeight: FontWeight.bold),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ],
                     ),
                   ),
+                  if (trip.paradasIntermedias != null && trip.paradasIntermedias!.isNotEmpty)
+                    for (final stop in trip.paradasIntermedias!)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 6.5, top: 2, bottom: 2),
+                        child: Row(
+                          children: [
+                            Container(width: 1.5, height: 16, color: Colors.white24),
+                            const SizedBox(width: 14),
+                            const Icon(Icons.alt_route, size: 12, color: Colors.amberAccent),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                'Parada: $stop',
+                                style: const TextStyle(color: Colors.amberAccent, fontSize: 11),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                   Row(
                     children: [
                       const Icon(Icons.location_on, size: 14, color: Colors.redAccent),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          trip.destination,
+                          trip.puntoDescarga ?? trip.destination,
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -1504,10 +1774,229 @@ class DriverDashboardScreen extends ConsumerWidget {
                       },
                     );
                   }),
+                  const Divider(color: Colors.white12, height: 24),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF13161C),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.alt_route, size: 16, color: Colors.blueAccent),
+                            SizedBox(width: 8),
+                            Text(
+                              'Gestión de Ruta en Curso',
+                              style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          '¿Hubo un cambio de planes o desvío imprevisto? Puedes agregar una parada intermedia y la misión satelital se reestructurará en tiempo real.',
+                          style: TextStyle(color: Colors.white60, fontSize: 11),
+                        ),
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF2563EB),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            icon: const Icon(Icons.add_location_alt_outlined, size: 16),
+                            label: const Text('AGREGAR PARADA INTERMEDIA', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _showAddIntermediateStopDialog(context, ref, trip);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showAddIntermediateStopDialog(
+    BuildContext context,
+    WidgetRef ref,
+    TripModel trip,
+  ) async {
+    final stopCtrl = TextEditingController();
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        bool isSaving = false;
+        return StatefulBuilder(
+          builder: (dialogCtx, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E222B),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.alt_route, color: Colors.blueAccent),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Agregar Parada Intermedia',
+                      style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Ingresa el punto o faena que visitarás antes de llegar al destino final. La misión satelital actualizará los tramos.',
+                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                    const SizedBox(height: 14),
+                    ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: stopCtrl,
+                      builder: (context, value, _) {
+                        return Autocomplete<String>(
+                          key: ValueKey('stop_autocomplete_${value.text}'),
+                          initialValue: value,
+                          optionsBuilder: (TextEditingValue textValue) {
+                            final query = textValue.text.trim();
+                            if (query.isEmpty) return const [];
+                            return ref.read(fuzzySearchProvider).search(query);
+                          },
+                          onSelected: (String selection) {
+                            stopCtrl.text = selection;
+                          },
+                          fieldViewBuilder: (fCtx, innerCtrl, focusNode, onEditingComplete) {
+                            innerCtrl.addListener(() {
+                              if (stopCtrl.text != innerCtrl.text) {
+                                stopCtrl.text = innerCtrl.text;
+                              }
+                            });
+                            return TextField(
+                              controller: innerCtrl,
+                              focusNode: focusNode,
+                              textCapitalization: TextCapitalization.characters,
+                              style: const TextStyle(color: Colors.white),
+                              decoration: InputDecoration(
+                                labelText: 'Punto / Planta / Romana',
+                                labelStyle: const TextStyle(color: Colors.white60),
+                                hintText: 'Ej: FORSAC, ORIZON, BASE...',
+                                hintStyle: const TextStyle(color: Colors.white24),
+                                filled: true,
+                                fillColor: const Color(0xFF13161C),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide.none,
+                                ),
+                                prefixIcon: const Icon(Icons.add_location, color: Colors.blueAccent),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                    if (trip.paradasIntermedias != null && trip.paradasIntermedias!.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Paradas actuales ya registradas:',
+                        style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 4),
+                      ...trip.paradasIntermedias!.map(
+                        (p) => Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2.0),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.check, size: 12, color: Colors.greenAccent),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(p, style: const TextStyle(color: Colors.white60, fontSize: 11)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSaving ? null : () => Navigator.pop(dialogCtx),
+                  child: const Text('CANCELAR', style: TextStyle(color: Colors.white60)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF2563EB),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          final stopText = stopCtrl.text.trim();
+                          if (stopText.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Por favor escribe o selecciona un punto'),
+                                backgroundColor: Colors.orange,
+                              ),
+                            );
+                            return;
+                          }
+
+                          setDialogState(() => isSaving = true);
+                          try {
+                            await ref.read(tripRepositoryProvider).addIntermediateStopToActiveTrip(
+                                  tripId: trip.id,
+                                  stopName: stopText,
+                                  currentTrip: trip,
+                                );
+                            if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('✓ Parada agregada: $stopText. Misión satelital reestructurada.'),
+                                  backgroundColor: const Color(0xFF2E7D32),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            setDialogState(() => isSaving = false);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                              );
+                            }
+                          }
+                        },
+                  child: isSaving
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text('AGREGAR Y REESTRUCTURAR', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -1844,37 +2333,18 @@ class DriverDashboardScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _showEndShiftDialog(BuildContext context, WidgetRef ref, ShiftModel shift) async {
-    final ctrl = TextEditingController();
+  Future<void> _showEndShiftDialog(
+    BuildContext context, 
+    WidgetRef ref, 
+    ShiftModel shift, {
+    List<TripModel>? completedTrips,
+  }) async {
     await showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Finalizar Jornada', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: ctrl,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(labelText: 'Odómetro Final', filled: true, fillColor: Colors.black26, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none)),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
-            onPressed: () {
-              if (ctrl.text.isNotEmpty) {
-                ref.read(tripRepositoryProvider).endShift(shift.id, int.parse(ctrl.text));
-                Navigator.pop(ctx);
-              }
-            },
-            child: const Text('CERRAR JORNADA'),
-          )
-        ],
+      barrierDismissible: false,
+      builder: (ctx) => _EndShiftDialog(
+        shift: shift,
+        completedTrips: completedTrips ?? [],
       ),
     );
   }
@@ -2985,6 +3455,421 @@ class _EndTripDialogState extends ConsumerState<_EndTripDialog> {
           child: _isFinalizing
               ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
               : const Text('FINALIZAR', style: TextStyle(fontWeight: FontWeight.bold)),
+        ),
+      ],
+    );
+  }
+}
+
+// ================= DIÁLOGO DE CIERRE Y CONCILIACIÓN DE JORNADA =================
+
+class _EndShiftDialog extends ConsumerStatefulWidget {
+  final ShiftModel shift;
+  final List<TripModel> completedTrips;
+
+  const _EndShiftDialog({
+    required this.shift,
+    required this.completedTrips,
+  });
+
+  @override
+  ConsumerState<_EndShiftDialog> createState() => _EndShiftDialogState();
+}
+
+class _EndShiftDialogState extends ConsumerState<_EndShiftDialog> {
+  final _ctrl = TextEditingController();
+  bool _isLoadingGps = true;
+  double? _gpsTotalKm;
+  String _unregisteredReason = 'Retorno a Base vacío';
+  bool _isSubmitting = false;
+
+  final List<String> _reasonOptions = [
+    'Retorno a Base vacío',
+    'Traslado a Taller / Mantención',
+    'Carga de Combustible / Servicios',
+    'Movimiento Operacional en Patio',
+    'Otro movimiento autorizado',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl.addListener(() => setState(() {}));
+    _fetchGpsDistance();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchGpsDistance() async {
+    try {
+      final modoGps = ref.read(modoGpsServiceProvider);
+      final dist = await modoGps.getGpsDistanceForInterval(
+        plate: widget.shift.patenteCamion,
+        startTime: widget.shift.startTime,
+        endTime: DateTime.now(),
+        idEmpresa: widget.shift.idEmpresa,
+      );
+      if (mounted) {
+        setState(() {
+          _gpsTotalKm = dist;
+          _isLoadingGps = false;
+          // Si el chofer aún no ha tipeado y el GPS arrojó distancia positiva, sugerir el odómetro calculado
+          if (_ctrl.text.isEmpty && dist != null && dist > 0) {
+            final suggested = widget.shift.startOdometer + dist.round();
+            _ctrl.text = suggested.toString();
+          }
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isLoadingGps = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tripsKm = widget.completedTrips.fold(0.0, (acc, t) => acc + (t.totalKm ?? 0.0));
+    final enteredOdo = int.tryParse(_ctrl.text.trim());
+    final bool hasValidOdo = enteredOdo != null && enteredOdo >= widget.shift.startOdometer;
+    
+    final int deltaOdo = hasValidOdo ? (enteredOdo - widget.shift.startOdometer) : 0;
+    final double unregisteredKm = (hasValidOdo && deltaOdo > tripsKm) ? (deltaOdo - tripsKm) : 0.0;
+    
+    double? variationPercent;
+    if (hasValidOdo && deltaOdo > 0 && _gpsTotalKm != null && _gpsTotalKm! > 0) {
+      variationPercent = ((deltaOdo - _gpsTotalKm!).abs() / deltaOdo) * 100.0;
+    }
+
+    final numberFormat = NumberFormat('#,###');
+
+    return AlertDialog(
+      backgroundColor: const Color(0xFF16181F),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Colors.white12)),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.redAccent.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.flag_circle, color: Colors.redAccent, size: 24),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Cierre de Jornada', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white)),
+                    Text('Conciliación de Kilometraje y Odómetro', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Camión: ${widget.shift.patenteCamion}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12)),
+                Text('Inicio: ${DateFormat('HH:mm').format(widget.shift.startTime)} hrs', style: const TextStyle(color: Colors.white60, fontSize: 11)),
+              ],
+            ),
+          ),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: SizedBox(
+          width: 440,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 1. Odómetro Inicial (Verificado)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E222B),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white10),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.speed, color: Colors.lightBlueAccent, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Odómetro Inicial (Verificado al inicio)', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                          Text(
+                            '${numberFormat.format(widget.shift.startOdometer)} KM',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+
+              // 2. Input Odómetro Final
+              TextFormField(
+                controller: _ctrl,
+                keyboardType: TextInputType.number,
+                autofocus: true,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: 'Odómetro Final (Verificar con Tablero)',
+                  hintText: 'Ingresa el kilometraje actual',
+                  helperText: _isLoadingGps
+                      ? 'Consultando telemetría GPS...'
+                      : (_gpsTotalKm != null ? 'GPS estimó aprox. ${numberFormat.format(widget.shift.startOdometer + _gpsTotalKm!.round())} KM' : null),
+                  helperStyle: const TextStyle(color: Colors.amberAccent, fontSize: 11),
+                  filled: true,
+                  fillColor: const Color(0xFF222632),
+                  prefixIcon: const Icon(Icons.pin_outlined, color: Colors.white70),
+                  suffixText: 'KM',
+                  suffixStyle: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white24)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white24)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.blueAccent, width: 2)),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // 3. Panel de Conciliación
+              if (hasValidOdo) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E222B),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white12),
+                  ),
+                  child: Column(
+                    children: [
+                      _buildMetricRow('Rodaje Total Tablero (Δ):', '${numberFormat.format(deltaOdo)} KM', isBold: true),
+                      const Divider(color: Colors.white10, height: 16),
+                      _buildMetricRow('Viajes Registrados (GPS):', '${tripsKm.toStringAsFixed(1)} KM (${widget.completedTrips.length} viajes)', color: Colors.greenAccent),
+                      const Divider(color: Colors.white10, height: 16),
+                      _buildMetricRow('Distancia Total Satelital:', _isLoadingGps ? 'Calculando...' : '${_gpsTotalKm?.toStringAsFixed(1) ?? '--'} KM', color: Colors.cyanAccent),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // 4. Alerta de Kilómetros No Registrados (Km Muertos)
+                if (unregisteredKm > 2.0) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.amber.withValues(alpha: 0.5), width: 1),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.alt_route, color: Colors.amberAccent, size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '+${unregisteredKm.toStringAsFixed(1)} KM no registrados en viajes',
+                                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.amberAccent, fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Diferencia entre el rodaje de tablero y los viajes formalizados. Se justificará como:',
+                          style: TextStyle(color: Colors.white70, fontSize: 11),
+                        ),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String>(
+                          initialValue: _unregisteredReason,
+                          dropdownColor: const Color(0xFF1E222B),
+                          decoration: InputDecoration(
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            filled: true,
+                            fillColor: const Color(0xFF14171F),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                          ),
+                          style: const TextStyle(color: Colors.white, fontSize: 12),
+                          items: _reasonOptions.map((opt) => DropdownMenuItem(value: opt, child: Text(opt))).toList(),
+                          onChanged: (val) {
+                            if (val != null) setState(() => _unregisteredReason = val);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+
+                // 5. Badge de % de Variación Tablero vs GPS
+                if (variationPercent != null) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                    decoration: BoxDecoration(
+                      color: variationPercent <= 3.0
+                          ? Colors.green.withValues(alpha: 0.15)
+                          : (variationPercent <= 8.0
+                              ? Colors.amber.withValues(alpha: 0.15)
+                              : Colors.red.withValues(alpha: 0.18)),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: variationPercent <= 3.0
+                            ? Colors.greenAccent.withValues(alpha: 0.5)
+                            : (variationPercent <= 8.0
+                                ? Colors.amberAccent.withValues(alpha: 0.5)
+                                : Colors.redAccent.withValues(alpha: 0.6)),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          variationPercent <= 3.0
+                              ? Icons.verified
+                              : (variationPercent <= 8.0 ? Icons.info_outline : Icons.warning_amber),
+                          color: variationPercent <= 3.0
+                              ? Colors.greenAccent
+                              : (variationPercent <= 8.0 ? Colors.amberAccent : Colors.redAccent),
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            variationPercent <= 3.0
+                                ? 'Variación ${variationPercent.toStringAsFixed(1)}% • Tablero y GPS se condicen perfectamente'
+                                : (variationPercent <= 8.0
+                                    ? 'Variación ${variationPercent.toStringAsFixed(1)}% • Tolerancia normal de rodado'
+                                    : 'Variación alta (${variationPercent.toStringAsFixed(1)}%) • Revisa si el odómetro final coincide con el camión'),
+                            style: TextStyle(
+                              color: variationPercent <= 3.0
+                                  ? Colors.greenAccent
+                                  : (variationPercent <= 8.0 ? Colors.amberAccent : Colors.redAccent),
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ] else if (_ctrl.text.isNotEmpty && (enteredOdo == null || enteredOdo < widget.shift.startOdometer)) ...[
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.redAccent.withValues(alpha: 0.4)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline, color: Colors.redAccent, size: 16),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'El odómetro final debe ser mayor o igual al inicial (${numberFormat.format(widget.shift.startOdometer)} KM)',
+                          style: const TextStyle(color: Colors.redAccent, fontSize: 11),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      actions: [
+        TextButton(
+          onPressed: _isSubmitting ? null : () => Navigator.pop(context),
+          child: const Text('Cancelar', style: TextStyle(color: Colors.white60)),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.redAccent,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          onPressed: (!hasValidOdo || _isSubmitting)
+              ? null
+              : () async {
+                  setState(() => _isSubmitting = true);
+                  final messenger = ScaffoldMessenger.of(context);
+                  final nav = Navigator.of(context);
+                  try {
+                    await ref.read(tripRepositoryProvider).endShift(
+                      widget.shift.id,
+                      enteredOdo,
+                      tripsKm: tripsKm,
+                      totalGpsKm: _gpsTotalKm,
+                      unregisteredKm: unregisteredKm > 0 ? unregisteredKm : 0.0,
+                      unregisteredReason: unregisteredKm > 2.0 ? _unregisteredReason : null,
+                      odometerVariationPercent: variationPercent,
+                    );
+                    if (mounted) {
+                      nav.pop();
+                      messenger.showSnackBar(
+                        const SnackBar(
+                          content: Text('✓ Jornada cerrada y kilometraje conciliado exitosamente.'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      setState(() => _isSubmitting = false);
+                      messenger.showSnackBar(
+                        SnackBar(content: Text('Error al cerrar jornada: $e'), backgroundColor: Colors.red),
+                      );
+                    }
+                  }
+                },
+          child: _isSubmitting
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+              : const Text('CONFIRMAR Y FINALIZAR JORNADA', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMetricRow(String label, String value, {bool isBold = false, Color? color}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+        Text(
+          value,
+          style: TextStyle(
+            color: color ?? Colors.white,
+            fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
+            fontSize: isBold ? 14 : 12,
+          ),
         ),
       ],
     );
