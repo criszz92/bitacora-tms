@@ -469,6 +469,35 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
                                 Expanded(child: _buildTextField(_ppmCtrl, 'Tasa PPM Mensual (%)', 'Ej: 1.5')),
                               ],
                             ),
+                            const SizedBox(height: 16),
+                            DropdownButtonFormField<double>(
+                              initialValue: [80.0, 50.0, 31.0].contains(double.tryParse(_recuperacionIepdCtrl.text))
+                                  ? double.tryParse(_recuperacionIepdCtrl.text)
+                                  : 80.0,
+                              dropdownColor: const Color(0xFF1E1E1E),
+                              style: const TextStyle(color: Colors.white, fontSize: 13),
+                              decoration: InputDecoration(
+                                labelText: 'Tramo Recuperación Diésel (Ley 19.764)',
+                                labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
+                                helperText: '80% (Ventas ≤ 2.400 UF), 50% (≤ 6.000 UF), 31% (> 6.000 UF)',
+                                helperStyle: const TextStyle(color: Colors.white54, fontSize: 11),
+                                filled: true,
+                                fillColor: const Color(0xFF161A22),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                              ),
+                              items: const [
+                                DropdownMenuItem(value: 80.0, child: Text('80% - Ventas ≤ 2.400 UF (Micro y Pequeña Empresa)')),
+                                DropdownMenuItem(value: 50.0, child: Text('50% - Ventas 2.401 a 6.000 UF (Mediana Empresa)')),
+                                DropdownMenuItem(value: 31.0, child: Text('31% - Ventas > 6.000 UF (Mediana/Gran Empresa)')),
+                              ],
+                              onChanged: (val) {
+                                if (val != null) {
+                                  setState(() {
+                                    _recuperacionIepdCtrl.text = val.toStringAsFixed(0);
+                                  });
+                                }
+                              },
+                            ),
                             const SizedBox(height: 6),
                             const Text(
                               'El Remanente Acumulado se descuenta automáticamente del IVA débito mes a mes hasta agotarse.',
