@@ -994,6 +994,7 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
         ? _destCtrl.text 
         : _puntoDescargaCtrl.text;
     final suggested = RouteTariffBaselineService.getSuggestedTariff(
+      mandante: _mandanteCtrl.text,
       origin: _originCtrl.text,
       client: _clientCtrl.text,
       destination: destination,
@@ -1001,9 +1002,15 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
     );
 
     final rawVal = double.tryParse(_valueCtrl.text.replaceAll('.', '')) ?? 0.0;
-    final routeKey = '${_originCtrl.text.trim().toUpperCase()} ➔ ${_clientCtrl.text.trim().toUpperCase()} ➔ ${destination.trim().toUpperCase()}';
     final anomaly = rawVal > 0 
-        ? RouteTariffBaselineService.evaluateTariff(routeKey: routeKey, enteredValue: rawVal, baseline: baseline)
+        ? RouteTariffBaselineService.evaluateTariff(
+            mandante: _mandanteCtrl.text,
+            origin: _originCtrl.text,
+            client: _clientCtrl.text,
+            destination: destination,
+            enteredValue: rawVal,
+            baseline: baseline,
+          )
         : RouteTariffAnomaly.normal;
 
     return Column(
@@ -1046,15 +1053,17 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
           validator: (v) =>
               (v == null || v.trim().isEmpty) ? 'El valor es obligatorio' : null,
         ),
-        if (suggested != null && _valueCtrl.text.isNotEmpty && !anomaly.isAnomaly) ...[
+        if (suggested != null && rawVal >= 10000 && !anomaly.isAnomaly && anomaly.severity == 'normal') ...[
           const SizedBox(height: 6),
           Row(
             children: [
               const Icon(Icons.verified_outlined, size: 14, color: Color(0xFF4CAF50)),
               const SizedBox(width: 6),
-              Text(
-                'Tarifa dentro del promedio histórico para esta ruta (\$${NumberFormat('#,###', 'es_CL').format(suggested.toInt())}).',
-                style: const TextStyle(color: Color(0xFF81C784), fontSize: 11),
+              Expanded(
+                child: Text(
+                  anomaly.message,
+                  style: const TextStyle(color: Color(0xFF81C784), fontSize: 11),
+                ),
               ),
             ],
           ),
