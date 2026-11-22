@@ -672,9 +672,12 @@ class ChileanFinancialCalculator {
         : 0;
     final double costoFijoChofer = costoFijoDiario * diasViaje;
 
-    // 7. Recuperación Ley 19.764
+    // 7. Recuperación Ley 19.764 (Aplica el porcentaje de recuperación legal según tramo anual de ventas en UTM)
     final double utmToUse = customUtmValue ?? config.valorUTM;
-    final double recuperacionLey19764 = litrosConsumidos * (1.5 * utmToUse / 1000);
+    final double pctRecup = (config.porcentajeRecuperacionIepd > 0) 
+        ? (config.porcentajeRecuperacionIepd / 100.0) 
+        : 0.80;
+    final double recuperacionLey19764 = litrosConsumidos * (1.5 * utmToUse / 1000.0) * pctRecup;
 
     // 8. Costo total real (suma de todos los costos operativos)
     final double costoTotalReal = combustibleNeto +
@@ -684,10 +687,15 @@ class ChileanFinancialCalculator {
         mantenimiento +
         costoFijoChofer;
 
-    // 9. Margen Neto Real "al bolsillo"
-    final double ivaNetoPagar = ivaDebito - creditoIvaCombustible - recuperacionLey19764;
-    final double resultadoOperacional = tarifaPropuesta - costoTotalReal;
-    final double margenNetoReal = resultadoOperacional - ivaNetoPagar;
+    // 9. Margen Neto Real (El crédito tributario Ley 19.764 alivia directamente la caja fiscal de combustible)
+    final double costoEfectivoCombustible = (combustibleNeto - recuperacionLey19764).clamp(0.0, double.infinity);
+    final double costoOperativoEfectivo = costoEfectivoCombustible +
+        peajesEfectivo +
+        comision +
+        viaticoManual +
+        mantenimiento +
+        costoFijoChofer;
+    final double margenNetoReal = tarifaPropuesta - costoOperativoEfectivo;
 
     // 10. Indicadores
     final double margenPorcentaje = tarifaPropuesta > 0 

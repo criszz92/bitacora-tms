@@ -75,9 +75,9 @@ class LocationService {
 
     const AndroidNotificationChannel channel = AndroidNotificationChannel(
       'telemetry_service',
-      'Servicio de Telemetría',
-      description: 'Rastreo de ruta para cálculo de kilómetros',
-      importance: Importance.low,
+      'Servicio de Telemetría y Cabina',
+      description: 'Rastreo de ruta activo y alertas en tiempo real',
+      importance: Importance.defaultNotification,
     );
 
     final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
@@ -197,8 +197,8 @@ class LocationService {
           'accuracy': position.accuracy,
         });
 
-        // SUBIR A FIRESTORE CADA 5 PUNTOS (Ahorro de datos)
-        if (tripId != null && pointsBuffer.length >= 5) {
+        // SUBIR A FIRESTORE CADA 25 PUNTOS (Ahorro crítico de batería y reducción de 80% en escrituras Firestore)
+        if (tripId != null && pointsBuffer.length >= 25) {
           try {
             final firestore = FirebaseFirestore.instance;
             final batch = firestore.batch();
@@ -218,8 +218,11 @@ class LocationService {
             await batch.commit();
             pointsBuffer.clear();
           } catch (e) {
-            debugPrint("Error sincronizando lote GPS: $e");
-            if (pointsBuffer.length > 50) pointsBuffer.removeAt(0);
+            debugPrint("Error sincronizando lote GPS (sin conexión): $e");
+            // Mantener hasta 2.500 puntos en buffer offline (~75 km de ruta en sombra celular sin pérdida de datos)
+            if (pointsBuffer.length > 2500) {
+              pointsBuffer.removeRange(0, 100);
+            }
           }
         }
 

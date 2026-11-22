@@ -7,6 +7,9 @@ import '../../domain/models/trip_model.dart';
 import '../../domain/services/fuzzy_search_service.dart';
 import '../../domain/services/container_validator.dart';
 import '../../domain/services/route_mission_service.dart';
+import 'package:intl/intl.dart';
+import '../../domain/services/route_tariff_baseline_service.dart';
+import '../../../admin/presentation/providers/admin_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../admin/domain/models/service_request_model.dart';
 import '../providers/trip_draft_provider.dart';
@@ -983,29 +986,116 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
     );
   }
 
-  // ─── Campo valor CLP ────────────────────────────────────────────────────────
+  // ─── Campo valor CLP con Detección Antifraude y Sugerencia Histórica ────────
 
   Widget _buildValueField() {
-    return TextFormField(
-      controller: _valueCtrl,
-      keyboardType: TextInputType.number,
-      inputFormatters: [
-        FilteringTextInputFormatter.digitsOnly,
-        _ThousandsSeparatorFormatter(),
+    final baseline = ref.watch(routeTariffBaselineProvider);
+    final destination = _destinationCtrl.text.isNotEmpty 
+        ? _destinationCtrl.text 
+        : (_puntoDescarga ?? '');
+    final suggested = RouteTariffBaselineService.getSuggestedTariff(
+      origin: _originCtrl.text,
+      client: _clientCtrl.text,
+      destination: destination,
+      baseline: baseline,
+    );
+
+    final rawVal = double.tryParse(_valueCtrl.text.replaceAll('.', '')) ?? 0.0;
+    final routeKey = '${_originCtrl.text.trim().toUpperCase()} ➔ ${_clientCtrl.text.trim().toUpperCase()} ➔ ${destination.trim().toUpperCase()}';
+    final anomaly = rawVal > 0 
+        ? RouteTariffBaselineService.evaluateTariff(routeKey: routeKey, enteredValue: rawVal, baseline: baseline)
+        : RouteTariffAnomaly.normal;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextFormField(
+          controller: _valueCtrl,
+          keyboardType: TextInputType.number,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            _ThousandsSeparatorFormatter(),
+          ],
+          decoration: InputDecoration(
+            labelText: 'Valor del Servicio',
+            prefixText: '\$ ',
+            hintText: suggested != null ? NumberFormat('#,###', 'es_CL').format(suggested.toInt()) : '1.200.000',
+            filled: true,
+            fillColor: const Color(0xFF161A22),
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none),
+            prefixIcon: const Icon(Icons.attach_money, color: Color(0xFFFFFFFF)),
+            suffixIcon: suggested != null && _valueCtrl.text.isEmpty
+                ? TextButton.icon(
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                    ),
+                    onPressed: () {
+                      _valueCtrl.text = NumberFormat('#,###', 'es_CL').format(suggested.toInt());
+                      setState(() {});
+                    },
+                    icon: const Icon(Icons.auto_awesome, size: 16, color: Colors.amberAccent),
+                    label: Text(
+                      'Sugerir: \$${NumberFormat('#,###', 'es_CL').format(suggested.toInt())}',
+                      style: const TextStyle(color: Colors.amberAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                  )
+                : null,
+          ),
+          validator: (v) =>
+              (v == null || v.trim().isEmpty) ? 'El valor es obligatorio' : null,
+        ),
+        if (suggested != null && _valueCtrl.text.isNotEmpty && !anomaly.isAnomaly) ...[
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              const Icon(Icons.verified_outlined, size: 14, color: Color(0xFF4CAF50)),
+              const SizedBox(width: 6),
+              Text(
+                'Tarifa dentro del promedio histórico para esta ruta (\$${NumberFormat('#,###', 'es_CL').format(suggested.toInt())}).',
+                style: const TextStyle(color: Color(0xFF81C784), fontSize: 11),
+              ),
+            ],
+          ),
+        ],
+        if (anomaly.isAnomaly) ...[
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: anomaly.isCritical
+                  ? Colors.redAccent.withValues(alpha: 0.12)
+                  : Colors.amber.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: anomaly.isCritical ? Colors.redAccent : Colors.amber,
+                width: 0.8,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  anomaly.isCritical ? Icons.warning_amber_rounded : Icons.info_outline,
+                  size: 16,
+                  color: anomaly.isCritical ? Colors.redAccent : Colors.amber,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    anomaly.message,
+                    style: TextStyle(
+                      color: anomaly.isCritical ? Colors.redAccent : Colors.amber,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
-      decoration: InputDecoration(
-        labelText: 'Valor del Servicio',
-        prefixText: '\$ ',
-        hintText: '1.200.000',
-        filled: true,
-        fillColor: const Color(0xFF161A22),
-        border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none),
-        prefixIcon: const Icon(Icons.attach_money, color: Color(0xFFFFFFFF)),
-      ),
-      validator: (v) =>
-          (v == null || v.trim().isEmpty) ? 'El valor es obligatorio' : null,
     );
   }
 

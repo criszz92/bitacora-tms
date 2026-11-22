@@ -108,7 +108,7 @@ exports.syncLiotGps = functions.pubsub.schedule("every 2 minutes").onRun(async (
 
 // ─── HELPER FUNCTIONS PARA NOTIFICACIONES PUSH ──────────────────────────────────
 
-async function notifyAdmins(idEmpresa, title, body) {
+async function notifyAdmins(idEmpresa, title, body, data = {}) {
   const usersSnapshot = await admin.firestore().collection("usuarios")
     .where("idEmpresa", "==", idEmpresa)
     .where("rol", "==", "ADMIN")
@@ -116,14 +116,29 @@ async function notifyAdmins(idEmpresa, title, body) {
 
   const tokens = [];
   usersSnapshot.forEach(doc => {
-    const data = doc.data();
-    if (data.fcmToken) tokens.push(data.fcmToken);
+    const d = doc.data();
+    if (d.fcmToken) tokens.push(d.fcmToken);
   });
 
   if (tokens.length > 0) {
     await admin.messaging().sendEachForMulticast({
       tokens,
-      notification: { title, body }
+      notification: { title, body },
+      data: {
+        click_action: "FLUTTER_NOTIFICATION_CLICK",
+        title: String(title),
+        body: String(body),
+        ...data
+      },
+      android: {
+        priority: "high",
+        notification: {
+          channelId: "bitacora_binaural_v3",
+          sound: "bitacora_alert",
+          priority: "max",
+          visibility: "public"
+        }
+      }
     });
   }
 }

@@ -281,24 +281,35 @@ class AdminRepository {
     });
   }
 
-  /// Genera una liquidación atómicamente y marca los viajes como "Liquidada"
+  /// Genera una liquidación de forma transaccional (ACID) y previene duplicidad por concurrencia
   Future<void> createLiquidacion(LiquidacionModel liq) async {
-    final batch = _db.batch();
+    await _db.runTransaction((transaction) async {
+      // 1. Validar que ninguno de los viajes haya sido liquidado previamente por otro operador
+      for (final tripId in liq.tripIds) {
+        final tripRef = _db.collection('viajes').doc(tripId);
+        final snap = await transaction.get(tripRef);
+        if (snap.exists) {
+          final data = snap.data();
+          if (data?['status'] == 'Liquidada') {
+            final cntr = data?['containerNumber'] ?? data?['guideNumber'] ?? tripId;
+            throw Exception('El viaje $cntr ya fue liquidado por otro usuario en otra operación.');
+          }
+        }
+      }
 
-    // Guardar liquidación
-    final liqRef = _db.collection('liquidaciones').doc(liq.id);
-    batch.set(liqRef, liq.toMap());
+      // 2. Guardar liquidación
+      final liqRef = _db.collection('liquidaciones').doc(liq.id);
+      transaction.set(liqRef, liq.toMap());
 
-    // Actualizar estado de los viajes a 'Liquidada'
-    for (final tripId in liq.tripIds) {
-      final tripRef = _db.collection('viajes').doc(tripId);
-      batch.update(tripRef, {
-        'status': 'Liquidada',
-        'liquidacionId': liq.id, // Referencia inversa
-      });
-    }
-
-    await batch.commit();
+      // 3. Actualizar estado de los viajes a 'Liquidada'
+      for (final tripId in liq.tripIds) {
+        final tripRef = _db.collection('viajes').doc(tripId);
+        transaction.update(tripRef, {
+          'status': 'Liquidada',
+          'liquidacionId': liq.id, // Referencia inversa
+        });
+      }
+    });
   }
 
   /// Elimina una liquidación y devuelve los viajes a su estado anterior

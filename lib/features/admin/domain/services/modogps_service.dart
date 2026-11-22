@@ -9,19 +9,23 @@ import 'wialon_caller.dart';
 
 final modoGpsServiceProvider = Provider<ModoGpsService>((ref) => ModoGpsService());
 
-/// Proveedor para observar en vivo un vehículo por patente (ej: "JH-BZ-64")
-final singleVehicleGpsProvider = StreamProvider.family<GpsUnit?, String>((ref, plate) async* {
+/// Proveedor para observar en vivo un vehículo por patente (ej: "JH-BZ-64") con autoDispose para evitar fugas de memoria
+final singleVehicleGpsProvider = StreamProvider.autoDispose.family<GpsUnit?, String>((ref, plate) async* {
   final service = ref.read(modoGpsServiceProvider);
   final cleanTarget = plate.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase();
+  bool isDisposed = false;
+  ref.onDispose(() {
+    isDisposed = true;
+  });
 
-  while (true) {
+  while (!isDisposed) {
     try {
       final units = await service.fetchFleetData();
       final match = units.cast<GpsUnit?>().firstWhere(
         (u) => u != null && u.plate.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase() == cleanTarget,
         orElse: () => null,
       );
-      yield match;
+      if (!isDisposed) yield match;
     } catch (_) {}
     await Future.delayed(const Duration(seconds: 8));
   }

@@ -10,6 +10,7 @@ import '../../domain/models/recurring_expense_model.dart';
 import '../../domain/models/company_config_model.dart';
 import '../../../../core/utils/number_utils.dart';
 import '../../domain/services/modogps_service.dart';
+import '../../../trips/domain/services/route_tariff_baseline_service.dart';
 
 class KpiDashboardView extends ConsumerWidget {
   const KpiDashboardView({super.key});
@@ -530,10 +531,17 @@ class KpiDashboardView extends ConsumerWidget {
   // --- LISTAS Y DIÁLOGOS DE MÁXIMA ESTABILIDAD Y SEGURIDAD NUMÉRICA ---
 
   Widget _buildTripsList(List trips, BuildContext context, WidgetRef ref, List<VehicleModel> vehicles) {
+    final baseline = ref.watch(routeTariffBaselineProvider);
     return Column(children: trips.map<Widget>((t) {
       final vehicle = vehicles.firstWhere(
         (v) => v.id == t.vehicleId || v.patente == t.vehicleId, 
         orElse: () => VehicleModel(id: '', patente: t.vehicleId ?? 'S/P', idEmpresa: '')
+      );
+      final anomaly = baseline.evaluateTariff(
+        origin: t.origen ?? '',
+        client: t.client ?? '',
+        destination: t.destino ?? '',
+        enteredValue: (t.value ?? 0).toDouble(),
       );
       return InkWell(
         onTap: () => _showEditTripDialog(context, ref, t, vehicles),
@@ -545,10 +553,68 @@ class KpiDashboardView extends ConsumerWidget {
             Container(width: 8, height: 8, decoration: BoxDecoration(color: (t.billingType ?? '') == 'OS' ? Colors.white38 : Colors.orange, shape: BoxShape.circle)),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [Expanded(child: Text(t.displayRoute3Steps, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13), overflow: TextOverflow.ellipsis)), const SizedBox(width: 8), Text(vehicle.patente, style: const TextStyle(color: Colors.white38, fontSize: 10))]),
-              Text('[${DateFormat('dd/MM').format(t.startDate)}] ${t.client ?? ""} | ${(t.containerNumber != null && t.containerNumber!.isNotEmpty) ? t.containerNumber : (t.guideNumber ?? "S/ID")}', 
-                  style: const TextStyle(color: Colors.grey, fontSize: 11)),
+              Row(children: [
+                Expanded(child: Text(t.displayRoute3Steps, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13), overflow: TextOverflow.ellipsis)), 
+                const SizedBox(width: 8), 
+                Text(vehicle.patente, style: const TextStyle(color: Colors.white38, fontSize: 10))
+              ]),
+              Row(children: [
+                Expanded(
+                  child: Text(
+                    '[${DateFormat('dd/MM').format(t.startDate)}] ${t.client ?? ""}' +
+                        ' | ' +
+                        ((t.containerNumber != null && t.containerNumber!.isNotEmpty) ? t.containerNumber! : (t.guideNumber ?? "S/ID")),
+                    style: const TextStyle(color: Colors.grey, fontSize: 11),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (anomaly.isAnomaly) ...[
+                  const SizedBox(width: 6),
+                  Tooltip(
+                    message: anomaly.reason,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: anomaly.isCritical 
+                            ? Colors.redAccent.withValues(alpha: 0.15) 
+                            : Colors.amber.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: anomaly.isCritical 
+                              ? Colors.redAccent 
+                              : Colors.amber, 
+                          width: 0.8
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.warning_amber_rounded, 
+                            size: 11, 
+                            color: anomaly.isCritical 
+                                ? Colors.redAccent 
+                                : Colors.amber
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            anomaly.isCritical ? 'Tarifa Anómala' : 'Revisar Tarifa',
+                            style: TextStyle(
+                              fontSize: 9, 
+                              fontWeight: FontWeight.bold,
+                              color: anomaly.isCritical 
+                                  ? Colors.redAccent 
+                                  : Colors.amber
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ]),
             ])),
+            const SizedBox(width: 8),
             Text(_fmt((t.value ?? 0) + (t.extraCostos ?? 0) + (t.sobreEstadia ?? 0)), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ]),
         ),
@@ -898,6 +964,43 @@ class KpiDashboardView extends ConsumerWidget {
                           _buildField(clientCtrl, 'Cliente'),
                           const SizedBox(height: 14),
                           _buildNumericField(valueCtrl, 'Valor Base (\$)'),
+                          Builder(builder: (_) {
+                            final baseline = ref.read(routeTariffBaselineProvider);
+                            final anomaly = baseline.evaluateTariff(
+                              origin: originCtrl.text,
+                              client: clientCtrl.text,
+                              destination: destCtrl.text,
+                              enteredValue: NumberUtils.tryParseDouble(valueCtrl.text) ?? 0,
+                            );
+                            final suggested = baseline.getSuggestedTariff(
+                              origin: originCtrl.text,
+                              client: clientCtrl.text,
+                              destination: destCtrl.text,
+                            );
+                            if (anomaly.isAnomaly) {
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 4, bottom: 8),
+                                child: Text(
+                                  anomaly.reason,
+                                  style: TextStyle(
+                                    color: anomaly.isCritical ? Colors.redAccent : Colors.amber,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              );
+                            }
+                            if (suggested != null) {
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 4, bottom: 8),
+                                child: Text(
+                                  '✓ En rango histórico (Promedio: ${_fmt(suggested)})',
+                                  style: const TextStyle(color: Colors.greenAccent, fontSize: 11),
+                                ),
+                              );
+                            }
+                            return const SizedBox.shrink();
+                          }),
                           const SizedBox(height: 14),
                           _buildNumericField(extraCtrl, 'Extra Costos (\$)'),
                           const SizedBox(height: 14),

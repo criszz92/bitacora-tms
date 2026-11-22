@@ -403,7 +403,7 @@ class ZiyuService {
   }) {
     final results = <ReconciliationResult>[];
     final osBitacoraTrips = bitacoraTrips
-        .where((t) => t.billingType == 'OS' && t.status != 'En Ruta' && !t.isRetiroAnticipado && t.tipoMovimiento != 'retiro_anticipado' && t.tipoMovimiento != 'traslado_mantenimiento')
+        .where((t) => t.billingType == 'OS' && t.status != 'En Ruta' && t.value > 0 && !t.isRetiroAnticipado && t.tipoMovimiento != 'retiro_anticipado' && t.tipoMovimiento != 'traslado_mantenimiento')
         .toList();
 
     // Priorizar viajes con valor facturable mayor a cero para que no colisionen con retiros

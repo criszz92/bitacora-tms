@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../trips/domain/services/route_tariff_baseline_service.dart';
 import '../../data/repositories/admin_repository.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../trips/domain/models/trip_model.dart';
@@ -151,6 +152,12 @@ final allTripsProvider = StreamProvider<List<TripModel>>((ref) {
   final user = ref.watch(currentUserProfileProvider).value;
   if (user == null) return Stream.value([]);
   return ref.read(adminRepositoryProvider).watchAllTrips(user.idEmpresa);
+});
+
+/// Línea base histórica consolidada de tarifas por ruta (ORIGEN ➔ CLIENTE ➔ DESTINO) para detección de fraude
+final routeTariffBaselineProvider = Provider<Map<String, RouteTariffStats>>((ref) {
+  final trips = ref.watch(allTripsProvider).value ?? ref.watch(monthlyTripsProvider).value ?? [];
+  return RouteTariffBaselineService.buildRouteBaseline(trips);
 });
 
 final allExpensesProvider = StreamProvider<List<ExpenseModel>>((ref) {

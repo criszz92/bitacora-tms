@@ -32,11 +32,16 @@ service cloud.firestore {
     // Verifica si el usuario es SUPER_ADMIN / Maestro de la plataforma
     function isSuperAdmin() {
       let userData = get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
-      return userData.rol == 'SUPER_ADMIN' || 
+      return request.auth.token.isSuperAdmin == true ||
+             userData.rol == 'SUPER_ADMIN' || 
              userData.isSuperAdmin == true || 
-             (userData.rol == 'ADMIN' && (request.auth.token.email.matches('.*inostroza.*') || 
-                                          request.auth.token.email.matches('.*heirlog.*') || 
-                                          userData.idEmpresa == 'heirlog'));
+             (userData.rol == 'ADMIN' && (
+               request.auth.token.email == 'cristian.inostroza@gmail.com' ||
+               request.auth.token.email == 'tte.inostroza@gmail.com' ||
+               request.auth.token.email == 'admin@heirlog.cl' ||
+               request.auth.token.email == 'contacto@heirlog.cl' ||
+               userData.idEmpresa == 'heirlog'
+             ));
     }
 
     // Verifica si el usuario es dueño del documento (asumiendo campo idChofer)
@@ -101,9 +106,16 @@ service cloud.firestore {
 
     match /viajes/{docId} {
       allow read: if isAuthenticated() && isSameEmpresa();
+      // Choferes y administradores pueden crear viajes con su valor inicial correspondiente
       allow create: if isAuthenticated() && isCreatingForSameEmpresa() 
                     && request.resource.data.value is number;
-      allow update, delete: if isAuthenticated() && isSameEmpresa() && (isOwner() || isCompanyAdmin());
+      // Admins pueden actualizar cualquier campo. Choferes (isOwner) NO pueden corregir ni alterar valores financieros
+      allow update: if isAuthenticated() && isSameEmpresa() && (
+        isCompanyAdmin() || 
+        (isOwner() && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['value', 'extraCostos', 'sobreEstadia', 'idEmpresa', 'billingType', 'comision']))
+      );
+      // Solo administradores pueden eliminar un viaje (evita borrado fraudulento)
+      allow delete: if isAuthenticated() && isSameEmpresa() && isCompanyAdmin();
     }
 
     match /gastos/{docId} {
@@ -143,9 +155,9 @@ service cloud.firestore {
       allow create: if isAuthenticated() && isCreatingForSameEmpresa();
     }
 
-    // 6. Secretos (Solo lectura para ADMIN)
+    // 6. Secretos (Solo lectura para SuperAdmin o Admin de la propia empresa)
     match /secrets/{docId} {
-      allow read: if isAuthenticated() && isCompanyAdmin();
+      allow read: if isAuthenticated() && (isSuperAdmin() || (isCompanyAdmin() && docId == getUserEmpresa()));
       allow write: if false; // Nadie escribe desde la app
     }
     // 7. Solicitudes de Servicio (IA) - Aislado por empresa
