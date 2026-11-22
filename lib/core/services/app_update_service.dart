@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:ota_update/ota_update.dart';
@@ -136,40 +135,5 @@ class AppUpdateService {
       'mandatory': mandatory,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
-  }
-
-  /// Sube un APK a Firebase Storage (100% gratuito) y publica la versión en Firestore
-  static Future<String> uploadAndPublishApk({
-    required Uint8List apkBytes,
-    required int buildNumber,
-    required String versionName,
-    required String releaseNotes,
-    bool mandatory = false,
-  }) async {
-    final storageRef = FirebaseStorage.instance
-        .ref()
-        .child('app_releases')
-        .child('bitacora-tms-v$versionName+$buildNumber.apk');
-
-    final metadata = SettableMetadata(
-      contentType: 'application/vnd.android.package-archive',
-      customMetadata: {
-        'versionName': versionName,
-        'buildNumber': buildNumber.toString(),
-      },
-    );
-
-    final uploadTask = await storageRef.putData(apkBytes, metadata);
-    final downloadUrl = await uploadTask.ref.getDownloadURL();
-
-    await publishAppVersion(
-      buildNumber: buildNumber,
-      versionName: versionName,
-      apkUrl: downloadUrl,
-      releaseNotes: releaseNotes,
-      mandatory: mandatory,
-    );
-
-    return downloadUrl;
   }
 }

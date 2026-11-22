@@ -32,7 +32,7 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
   final _ppmCtrl = TextEditingController();
   final _remanenteCtrl = TextEditingController();
   final _recuperacionIepdCtrl = TextEditingController();
-  bool _isUploadingApk = false;
+  bool _isActivatingOta = false;
 
   // Emisor
   final _razonSocialCtrl = TextEditingController();
@@ -549,13 +549,35 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
                           'Incluye: Endurecimiento de reglas de seguridad, radar de tarifas por ruta, deducción IEPD Ley 19.764 y buffer GPS de alta resiliencia.',
                           style: TextStyle(color: Colors.white60, fontSize: 12),
                         ),
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.black26,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.white10),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.link, color: Colors.amber, size: 16),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Canal Oficial: GitHub Releases (Direct CDN v1.1.0)',
+                                  style: TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'monospace'),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                         const SizedBox(height: 16),
-                        if (_isUploadingApk) ...[
+                        if (_isActivatingOta) ...[
                           const Row(
                             children: [
                               SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange)),
                               SizedBox(width: 12),
-                              Text('Subiendo APK a la nube y publicando versión... Por favor espera.', style: TextStyle(color: Colors.orangeAccent, fontSize: 13, fontWeight: FontWeight.bold)),
+                              Text('Notificando a la flota... Por favor espera.', style: TextStyle(color: Colors.orangeAccent, fontSize: 13, fontWeight: FontWeight.bold)),
                             ],
                           ),
                         ] else ...[
@@ -566,57 +588,39 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
                               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                             ),
-                            icon: const Icon(Icons.file_upload),
+                            icon: const Icon(Icons.cloud_done_rounded),
                             label: const Text(
-                              'SUBIR ARCHIVO APK (.APK) Y ACTIVAR ACTUALIZACIÓN OTA',
+                              'ACTIVAR / FORZAR ACTUALIZACIÓN OTA v1.1.0 EN FLOTA',
                               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                             ),
                             onPressed: () async {
+                              setState(() => _isActivatingOta = true);
                               try {
-                                final result = await FilePicker.pickFiles(
-                                  type: FileType.custom,
-                                  allowedExtensions: ['apk'],
-                                  withData: true,
-                                );
-                                if (result == null || result.files.isEmpty) return;
-                                final fileBytes = result.files.first.bytes;
-                                if (fileBytes == null) {
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('No se pudieron leer los datos del APK seleccionado.'), backgroundColor: Colors.red),
-                                    );
-                                  }
-                                  return;
-                                }
-
-                                setState(() => _isUploadingApk = true);
-
-                                final downloadUrl = await AppUpdateService.uploadAndPublishApk(
-                                  apkBytes: fileBytes,
+                                await AppUpdateService.publishAppVersion(
                                   buildNumber: 11,
                                   versionName: '1.1.0',
+                                  apkUrl: 'https://github.com/criszz92/bitacora-tms/releases/download/v1.1.0/bitacora-tms-v1.1.0.apk',
                                   releaseNotes: 'Actualización obligatoria v1.1.0: Endurecimiento de seguridad, radar de tarifas, Ley 19.764 y telemetría.',
                                   mandatory: true,
                                 );
 
-                                setState(() => _isUploadingApk = false);
-
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('✓ APK subido y Versión 1.1.0 (Build 11) activada con éxito. Enlace: $downloadUrl'),
+                                    const SnackBar(
+                                      content: Text('✓ Actualización v1.1.0 (Build 11) activada en GitHub Releases para todos los conductores.'),
                                       backgroundColor: Colors.green,
-                                      duration: const Duration(seconds: 6),
+                                      duration: Duration(seconds: 5),
                                     ),
                                   );
                                 }
                               } catch (e) {
-                                setState(() => _isUploadingApk = false);
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Error al subir APK: $e'), backgroundColor: Colors.red),
+                                    SnackBar(content: Text('Error al activar actualización: $e'), backgroundColor: Colors.red),
                                   );
                                 }
+                              } finally {
+                                if (mounted) setState(() => _isActivatingOta = false);
                               }
                             },
                           ),
