@@ -32,6 +32,21 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
 }
 
+/// Resultado de la verificación de alertas y sonidos
+class PushTestResult {
+  final bool isWeb;
+  final bool success;
+  final String message;
+  final String? error;
+
+  const PushTestResult({
+    required this.isWeb,
+    required this.success,
+    required this.message,
+    this.error,
+  });
+}
+
 class PushNotificationService {
   static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   static final FlutterLocalNotificationsPlugin _localNotificationsPlugin =
@@ -52,14 +67,14 @@ class PushNotificationService {
         InitializationSettings(android: initializationSettingsAndroid);
     await _localNotificationsPlugin.initialize(settings: initializationSettings);
 
-    // 2. Crear NotificationChannel v3 de alta prioridad en Android con tono binaural
+    // 2. Crear NotificationChannel v4 de alta prioridad en Android con tono binaural
     final androidImplementation = _localNotificationsPlugin
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
     if (androidImplementation != null) {
       await androidImplementation.createNotificationChannel(
         const AndroidNotificationChannel(
-          'bitacora_binaural_v3',
-          'Alertas Inteligentes de Ruta (Binaural)',
+          'bitacora_binaural_v4',
+          'Alertas Inteligentes de Ruta (Binaural 528Hz)',
           description:
               'Canal prioritario para advertencias de romanas, peajes y restricciones con tono binaural 528Hz',
           importance: Importance.max,
@@ -140,28 +155,65 @@ class PushNotificationService {
   }
 
   /// Emite una alerta de prueba en el altavoz / notificación local y sincroniza el token FCM.
-  /// Retorna false si está corriendo en Web (donde no aplican notificaciones locales nativas de Android).
-  static Future<bool> testAlertNotification() async {
-    if (kIsWeb) return false;
+  static Future<PushTestResult> testAlertNotification() async {
+    if (kIsWeb) {
+      return const PushTestResult(
+        isWeb: true,
+        success: true,
+        message: 'ℹ️ Acceso Web / PWA: Las notificaciones nativas en segundo plano y tonos con pantalla bloqueada requieren la APK instalada. Puedes descargar la APK oficial desde el menú.',
+      );
+    }
 
     try {
       final androidImpl = _localNotificationsPlugin
           .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-      final enabled = await androidImpl?.areNotificationsEnabled() ?? true;
-      if (!enabled) {
-        await androidImpl?.requestNotificationsPermission();
+      if (androidImpl != null) {
+        final areEnabled = await androidImpl.areNotificationsEnabled();
+        if (areEnabled == false) {
+          final granted = await androidImpl.requestNotificationsPermission();
+          if (granted != true) {
+            return const PushTestResult(
+              isWeb: false,
+              success: false,
+              message: '⚠️ Permiso de notificaciones deshabilitado en Android. Actívalas en Ajustes > Aplicaciones > HEIRLOG-TMS.',
+            );
+          }
+        }
+
+        // Asegurar que el canal v4 esté registrado antes de emitir
+        await androidImpl.createNotificationChannel(
+          const AndroidNotificationChannel(
+            'bitacora_binaural_v4',
+            'Alertas Inteligentes de Ruta (Binaural 528Hz)',
+            description:
+                'Canal prioritario para advertencias de romanas, peajes y restricciones con tono binaural 528Hz',
+            importance: Importance.max,
+            playSound: true,
+            sound: RawResourceAndroidNotificationSound('bitacora_alert'),
+            enableVibration: true,
+          ),
+        );
       }
 
       await showCustomNotification(
         id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        title: '🔔 Alerta Bitácora TMS (Canal v3)',
-        body: 'Tono binaural 528Hz activo. Notificación de alta prioridad verificada.',
+        title: '🔔 Alerta Bitácora TMS (Nativo)',
+        body: 'Altavoz y canal binaural 528Hz activo. Notificación de alta prioridad verificada en tu Android.',
       );
       await syncToken();
-      return true;
+      return const PushTestResult(
+        isWeb: false,
+        success: true,
+        message: '✓ Alerta binaural emitida al altavoz (APK Android Nativa Activa).',
+      );
     } catch (e) {
       debugPrint('Error en testAlertNotification: $e');
-      return false;
+      return PushTestResult(
+        isWeb: false,
+        success: false,
+        message: 'Error al emitir sonido en Android: $e',
+        error: e.toString(),
+      );
     }
   }
 
@@ -197,10 +249,10 @@ class PushNotificationService {
     }
   }
 
-  /// Canal exclusivo con sonido armónico binaural propio de Bitácora TMS (v3 limpio)
+  /// Canal exclusivo con sonido armónico binaural propio de Bitácora TMS (v4 limpio)
   static final AndroidNotificationDetails _binauralAlertChannel = AndroidNotificationDetails(
-    'bitacora_binaural_v3',
-    'Alertas Inteligentes de Ruta (Binaural)',
+    'bitacora_binaural_v4',
+    'Alertas Inteligentes de Ruta (Binaural 528Hz)',
     channelDescription:
         'Canal prioritario para advertencias de romanas, peajes y restricciones con tono binaural 528Hz',
     importance: Importance.max,

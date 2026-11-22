@@ -45,7 +45,7 @@
         </activity>
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="bitacora_binaural_v3" />
+            android:value="bitacora_binaural_v4" />
 
         <!-- Proveedor de archivos para instalación segura OTA (Over The Air) -->
         <provider

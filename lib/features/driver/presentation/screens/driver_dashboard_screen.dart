@@ -27,6 +27,8 @@ import '../../../../core/services/push_notification_service.dart';
 import '../../../../core/services/location_service.dart';
 import '../../../trips/domain/services/fuzzy_search_service.dart';
 import 'dart:ui';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/glass_container.dart';
 
@@ -548,24 +550,27 @@ class DriverDashboardScreen extends ConsumerWidget {
                     subtitle: 'Verificar altavoz y canal binaural',
                     onTap: () async {
                       context.pop();
-                      final isMobile = await PushNotificationService.testAlertNotification();
+                      final result = await PushNotificationService.testAlertNotification();
                       if (context.mounted) {
-                        if (!isMobile) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('ℹ️ En navegador Web las notificaciones locales de Android están deshabilitadas. Esta prueba emite sonido en la APK instalada en el teléfono Android.'),
-                              backgroundColor: Colors.blueAccent,
-                              duration: Duration(seconds: 4),
-                            ),
-                          );
-                        } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Alerta binaural emitida al altavoz y Token sincronizado.'),
-                              backgroundColor: Color(0xFF2E7D32),
-                            ),
-                          );
-                        }
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(result.message),
+                            backgroundColor: result.success
+                                ? (result.isWeb ? Colors.blueAccent : const Color(0xFF2E7D32))
+                                : Colors.amber.shade900,
+                            duration: Duration(seconds: result.isWeb ? 7 : 4),
+                            action: result.isWeb
+                                ? SnackBarAction(
+                                    label: 'DESCARGAR APK',
+                                    textColor: Colors.amberAccent,
+                                    onPressed: () => launchUrl(
+                                      Uri.parse('https://github.com/criszz92/bitacora-tms/releases/download/v1.1.0/bitacora-tms-v1.1.0.apk'),
+                                      mode: LaunchMode.externalApplication,
+                                    ),
+                                  )
+                                : null,
+                          ),
+                        );
                       }
                     },
                   ),
@@ -607,7 +612,85 @@ class DriverDashboardScreen extends ConsumerWidget {
                     ),
                   ],
 
-                  const SizedBox(height: 16),
+                   const SizedBox(height: 16),
+                  // Tarjeta informativa de plataforma
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14.0),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: kIsWeb ? Colors.blue.withValues(alpha: 0.08) : Colors.green.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: kIsWeb ? Colors.blueAccent.withValues(alpha: 0.25) : Colors.greenAccent.withValues(alpha: 0.25),
+                          width: 0.8,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                kIsWeb ? Icons.language_rounded : Icons.android_rounded,
+                                size: 16,
+                                color: kIsWeb ? Colors.blueAccent : Colors.greenAccent,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  kIsWeb ? 'Acceso Web / PWA' : 'APK Nativa Android',
+                                  style: TextStyle(
+                                    color: kIsWeb ? Colors.blueAccent : Colors.greenAccent,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Text(
+                                  'v1.1.0',
+                                  style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            kIsWeb
+                                ? 'Estás conectado desde el navegador. Para habilitar GPS continuo en segundo plano y alertas con altavoz, instala la APK.'
+                                : 'Instalación nativa con motor GPS en segundo plano y alertas prioritarias activas.',
+                            style: const TextStyle(color: Colors.white54, fontSize: 11),
+                          ),
+                          if (kIsWeb) ...[
+                            const SizedBox(height: 8),
+                            InkWell(
+                              onTap: () => launchUrl(
+                                Uri.parse('https://github.com/criszz92/bitacora-tms/releases/download/v1.1.0/bitacora-tms-v1.1.0.apk'),
+                                mode: LaunchMode.externalApplication,
+                              ),
+                              child: const Row(
+                                children: [
+                                  Icon(Icons.download_for_offline_rounded, size: 14, color: Colors.amberAccent),
+                                  SizedBox(width: 6),
+                                  Text(
+                                    'Descargar APK Nativo Oficial ➔',
+                                    style: TextStyle(color: Colors.amberAccent, fontSize: 11, fontWeight: FontWeight.bold, decoration: TextDecoration.underline),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
                     child: Container(

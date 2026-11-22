@@ -270,81 +270,508 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
     final isLong = km >= config.umbralKilometrosViatico;
     final viatico = isLong ? (driver.montoViaticoLargo ?? 10000) : (driver.montoViaticoLocal ?? 6500);
     final isNoRevenue = !t.isOperativo;
+    final hasFreight = t.isOperativo && t.value > 0;
+    final dateFormatted = DateFormat('EEE dd/MM', 'es_CL').format(t.startDate);
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTap: () => _showEditTripDriverDialog(context, t),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: const Color(0xFF161616),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: isPrimary ? Colors.white10 : Colors.white.withValues(alpha: 0.05)),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161A22),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: t.isRetiroAnticipado
+              ? Colors.amber.withValues(alpha: 0.35)
+              : (t.isMantenimiento
+                  ? Colors.cyan.withValues(alpha: 0.35)
+                  : (isPrimary ? Colors.white24 : Colors.white10)),
+          width: 1.0,
         ),
-        child: Row(
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => _showTripDetailSheet(context, t, config, driver, isPrimary: isPrimary),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 1. HEADER ROW: FECHA + BADGE TIPO + VIÁTICO
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.event_outlined, size: 12, color: Colors.white70),
+                        const SizedBox(width: 4),
+                        Text(
+                          dateFormatted.toUpperCase(),
+                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+
+                  if (t.isRetiroAnticipado)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: Colors.amber.withValues(alpha: 0.5), width: 0.8),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.inventory_2_outlined, size: 11, color: Colors.amberAccent),
+                          SizedBox(width: 4),
+                          Text('RETIRO VACÍO', style: TextStyle(color: Colors.amberAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    )
+                  else if (t.isMantenimiento)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.cyan.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: Colors.cyan.withValues(alpha: 0.5), width: 0.8),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.build_circle_outlined, size: 11, color: Colors.cyanAccent),
+                          SizedBox(width: 4),
+                          Text('MANTENCIÓN', style: TextStyle(color: Colors.cyanAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    )
+                  else
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.35), width: 0.8),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.local_shipping_outlined, size: 11, color: Colors.greenAccent),
+                          SizedBox(width: 4),
+                          Text('OPERATIVO', style: TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+
+                  const Spacer(),
+
+                  if (isNoRevenue)
+                    const Text('Sin Viático (\$0)', style: TextStyle(color: Colors.white38, fontSize: 11, fontStyle: FontStyle.italic))
+                  else if (isPrimary)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        'Viático: ${_fmt(viatico.toDouble())}',
+                        style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                    )
+                  else
+                    const Text('En Jornada', style: TextStyle(color: Colors.white54, fontSize: 11, fontStyle: FontStyle.italic)),
+                ],
+              ),
+
+              const SizedBox(height: 10),
+
+              // 2. CLIENTE (SI APLICA)
+              if (t.client.isNotEmpty && t.client.toUpperCase() != 'RETIRO ANTICIPADO' && t.client.toUpperCase() != 'MANTENIMIENTO') ...[
                 Row(
                   children: [
-                    Text('${t.startDate.day}/${t.startDate.month}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
-                    if (isNoRevenue) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                        decoration: BoxDecoration(
-                          color: (t.isRetiroAnticipado ? Colors.amber : Colors.cyan).withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: (t.isRetiroAnticipado ? Colors.amber : Colors.cyan).withValues(alpha: 0.4), width: 0.8),
+                    const Icon(Icons.business_rounded, color: Colors.amber, size: 16),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        t.client.toUpperCase(),
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
+
+              // 3. RUTA VISUAL CLARA
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.25),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('🟢 ', style: TextStyle(fontSize: 10)),
+                        Expanded(
+                          child: Text(
+                            t.origin.trim().isNotEmpty ? t.origin.trim() : 'ORIGEN',
+                            style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600),
+                          ),
                         ),
-                        child: Text(
-                          t.isRetiroAnticipado ? 'RETIRO ANTICIPADO' : (t.isMantenimiento ? 'MANTENIMIENTO' : 'MOVIMIENTO INTERNO'),
+                      ],
+                    ),
+                    if (t.paradasIntermedias != null && t.paradasIntermedias!.isNotEmpty)
+                      for (final p in t.paradasIntermedias!)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(' ↳ 🏢 ', style: TextStyle(fontSize: 10)),
+                              Expanded(
+                                child: Text(
+                                  p.trim(),
+                                  style: const TextStyle(color: Colors.amberAccent, fontSize: 12, fontWeight: FontWeight.w500),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('🏁 ', style: TextStyle(fontSize: 10)),
+                          Expanded(
+                            child: Text(
+                              (t.puntoDescarga != null && t.puntoDescarga!.trim().isNotEmpty)
+                                  ? t.puntoDescarga!.trim()
+                                  : (t.destination.trim().isNotEmpty ? t.destination.trim() : 'DESTINO'),
+                              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              // 4. IDENTIFICADORES Y CHIPS
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  if (t.guideNumber != null && t.guideNumber!.isNotEmpty)
+                    _buildChip(Icons.description_outlined, 'Guía: ${t.guideNumber}', Colors.white70),
+                  if (t.containerNumber != null && t.containerNumber!.isNotEmpty)
+                    _buildChip(Icons.crop_square_rounded, 'Cont: ${t.containerNumber}', Colors.cyanAccent),
+                  if (t.bookingNumber != null && t.bookingNumber!.isNotEmpty)
+                    _buildChip(Icons.bookmark_outline_rounded, 'Bkg: ${t.bookingNumber}', Colors.purpleAccent),
+                  if (t.vehicleId != null && t.vehicleId!.isNotEmpty)
+                    _buildChip(Icons.drive_eta_outlined, t.vehicleId!, Colors.white70),
+                ],
+              ),
+
+              const SizedBox(height: 10),
+
+              // 5. FOOTER: KILOMETRAJE + FLETE + BOTONES
+              Divider(color: Colors.white.withValues(alpha: 0.08), height: 1),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: (isLong ? Colors.orange : Colors.blue).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: (isLong ? Colors.orangeAccent : Colors.blueAccent).withValues(alpha: 0.4),
+                        width: 0.8,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.route, size: 12, color: isLong ? Colors.orangeAccent : Colors.blueAccent),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${km.toStringAsFixed(1)} KM',
                           style: TextStyle(
-                            color: t.isRetiroAnticipado ? Colors.amberAccent : Colors.cyanAccent,
-                            fontSize: 9,
+                            color: isLong ? Colors.orangeAccent : Colors.blueAccent,
+                            fontSize: 11,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(width: 8),
+
+                  if (hasFreight)
+                    Text(
+                      'Flete: ${_fmt(t.value)}',
+                      style: const TextStyle(color: Colors.amberAccent, fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+
+                  const Spacer(),
+
+                  InkWell(
+                    onTap: () => _showEditTripDriverDialog(context, t),
+                    borderRadius: BorderRadius.circular(6),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.edit_outlined, size: 14, color: Colors.white70),
+                          SizedBox(width: 4),
+                          Text('Editar', style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600)),
+                        ],
                       ),
-                    ],
-                    if (t.guideNumber != null && t.guideNumber!.isNotEmpty) ...[
-                      const SizedBox(width: 8),
-                      Text('Guía: ${t.guideNumber}', style: const TextStyle(color: Colors.white38, fontSize: 10)),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(t.displayRoute3Steps, style: TextStyle(
-                  color: isPrimary ? Colors.white : Colors.white38, 
-                  fontWeight: isPrimary ? FontWeight.bold : FontWeight.normal
-                )),
-              ],
-            ),
-            const Spacer(),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('${km.toStringAsFixed(1)} KM', style: TextStyle(color: isLong ? Colors.orangeAccent : Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold)),
-                    const SizedBox(width: 6),
-                    const Icon(Icons.edit, size: 12, color: Colors.white38),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                if (isNoRevenue)
-                  const Text('\$0 (Sin Viático)', style: TextStyle(color: Colors.white38, fontSize: 11, fontStyle: FontStyle.italic))
-                else if (isPrimary)
-                  Text(_fmt(viatico.toDouble()), style: const TextStyle(color: Colors.greenAccent, fontSize: 13, fontWeight: FontWeight.bold))
-                else
-                  const Text('Incluido en jornada', style: TextStyle(color: Colors.grey, fontSize: 10, fontStyle: FontStyle.italic)),
-              ],
-            ),
-          ],
+                    ),
+                  ),
+
+                  const SizedBox(width: 6),
+                  const Icon(Icons.arrow_forward_ios, size: 11, color: Colors.white38),
+                ],
+              ),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildChip(IconData icon, String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.white12, width: 0.6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: color),
+          const SizedBox(width: 4),
+          Text(text, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
+
+  void _showTripDetailSheet(BuildContext context, TripModel t, CompanyConfigModel config, UserModel driver, {bool isPrimary = true}) {
+    final km = t.totalKm ?? 0;
+    final isLong = km >= config.umbralKilometrosViatico;
+    final viatico = isLong ? (driver.montoViaticoLargo ?? 10000) : (driver.montoViaticoLocal ?? 6500);
+    final isNoRevenue = !t.isOperativo;
+    final dateStr = DateFormat('EEEE dd \'de\' MMMM, yyyy', 'es_CL').format(t.startDate);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: const BoxDecoration(
+          color: Color(0xFF161A22),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border(top: BorderSide(color: Colors.white24, width: 1)),
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Ficha Detallada del Viaje', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white54),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              Text(dateStr[0].toUpperCase() + dateStr.substring(1), style: const TextStyle(color: Colors.white54, fontSize: 13)),
+              const SizedBox(height: 16),
+
+              _detailRow('Cliente / Mandante', t.client.isNotEmpty ? t.client : 'Sin cliente asignado', Icons.business_rounded, Colors.amber),
+              _detailRow('Tipo Movimiento', t.isRetiroAnticipado ? 'Retiro Anticipado (Vacío)' : (t.isMantenimiento ? 'Mantenimiento / Taller' : 'Operativo (Flete Comercial)'), Icons.local_shipping_outlined, Colors.greenAccent),
+              if (t.status.isNotEmpty)
+                _detailRow('Estado Operativo', t.status, Icons.verified_outlined, Colors.blueAccent),
+
+              const Divider(color: Colors.white12, height: 24),
+
+              _detailRow('Nº Guía de Despacho', (t.guideNumber != null && t.guideNumber!.isNotEmpty) ? t.guideNumber! : 'Pendiente / No registrada', Icons.description_outlined, Colors.white70),
+              if (t.containerNumber != null && t.containerNumber!.isNotEmpty)
+                _detailRow('Contenedor (ISO 6346)', t.containerNumber!, Icons.crop_square_rounded, Colors.cyanAccent),
+              if (t.bookingNumber != null && t.bookingNumber!.isNotEmpty)
+                _detailRow('Booking', t.bookingNumber!, Icons.bookmark_border_rounded, Colors.purpleAccent),
+              if (t.vehicleId != null && t.vehicleId!.isNotEmpty)
+                _detailRow('Patente Camión', t.vehicleId!, Icons.drive_eta_outlined, Colors.orangeAccent),
+
+              const Divider(color: Colors.white12, height: 24),
+
+              const Text('Ruta Registrada', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.black26,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.white10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('🟢 Origen: ${t.origin.isNotEmpty ? t.origin : "Base/Casa"}', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                    if (t.paradasIntermedias != null && t.paradasIntermedias!.isNotEmpty)
+                      for (final p in t.paradasIntermedias!)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text('  ↳ 🏢 Parada: $p', style: const TextStyle(color: Colors.amberAccent, fontSize: 13)),
+                        ),
+                    const SizedBox(height: 4),
+                    Text('🏁 Destino / Descarga: ${(t.puntoDescarga != null && t.puntoDescarga!.isNotEmpty) ? t.puntoDescarga! : t.destination}', style: const TextStyle(color: Colors.greenAccent, fontSize: 13, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+
+              const Divider(color: Colors.white12, height: 24),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: _detailMetricCard(
+                      'Distancia',
+                      '${km.toStringAsFixed(1)} KM',
+                      isLong ? 'Ruta Larga (≥ ${config.umbralKilometrosViatico} KM)' : 'Ruta Local',
+                      isLong ? Colors.orangeAccent : Colors.blueAccent,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _detailMetricCard(
+                      'Viático Conductor',
+                      isNoRevenue ? '\$0' : _fmt(viatico.toDouble()),
+                      isNoRevenue ? 'Sin viático comercial' : (isPrimary ? 'Asignado a este viaje' : 'Incluido en jornada'),
+                      Colors.greenAccent,
+                    ),
+                  ),
+                ],
+              ),
+              if (t.isOperativo && t.value > 0) ...[
+                const SizedBox(height: 12),
+                _detailMetricCard(
+                  'Valor Facturación Flete',
+                  _fmt(t.value),
+                  'Tarifa del servicio de transporte',
+                  Colors.amberAccent,
+                ),
+              ],
+
+              const SizedBox(height: 24),
+
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.black,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: const Icon(Icons.edit, size: 18),
+                  label: const Text('EDITAR KILOMETRAJE / GUÍA', style: TextStyle(fontWeight: FontWeight.bold)),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _showEditTripDriverDialog(context, t);
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value, IconData icon, Color iconColor) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: iconColor),
+          const SizedBox(width: 10),
+          Text('$label: ', style: const TextStyle(color: Colors.white54, fontSize: 13)),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailMetricCard(String title, String value, String subtitle, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+          const SizedBox(height: 4),
+          Text(value, style: TextStyle(color: color, fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 2),
+          Text(subtitle, style: const TextStyle(color: Colors.white38, fontSize: 10)),
+        ],
       ),
     );
   }
