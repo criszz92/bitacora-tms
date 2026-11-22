@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:ota_update/ota_update.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Información de actualización remota
 class AppUpdateInfo {
@@ -25,17 +27,25 @@ class AppUpdateInfo {
 class UpdateProgress {
   final OtaStatus status;
   final String progress; // "0" a "100"
+  final String? detailText;
 
-  const UpdateProgress({required this.status, required this.progress});
+  const UpdateProgress({
+    required this.status,
+    required this.progress,
+    this.detailText,
+  });
 }
 
 /// Servicio que gestiona la verificación e instalación automática del APK
 class AppUpdateService {
   static const String _collection = 'app_version';
   static const String _docId = 'android_driver';
+  static const String _prefKeyPostponedBuild = 'postponed_update_build';
+  static const String _prefKeyPostponedDate = 'postponed_update_date';
 
   /// Comprueba si existe una versión más nueva en Firestore
-  static Future<AppUpdateInfo?> checkForUpdate() async {
+  /// [ignorePostponed]: Si es true (ej: desde "Buscar Actualizaciones" manual), ignora si el chofer pulsó "Más Tarde"
+  static Future<AppUpdateInfo?> checkForUpdate({bool ignorePostponed = false}) async {
     // Solo aplica para Android nativo
     if (kIsWeb) return null;
 
@@ -54,6 +64,15 @@ class AppUpdateService {
       final currentBuild = int.tryParse(packageInfo.buildNumber) ?? 1;
 
       if (latestBuild > currentBuild && apkUrl.isNotEmpty) {
+        // Si no es obligatoria y no estamos forzando la búsqueda manual:
+        if (!mandatory && !ignorePostponed) {
+          final isPostponed = await _isUpdatePostponed(latestBuild);
+          if (isPostponed) {
+            debugPrint('[AppUpdateService] Actualización no crítica pospuesta por el usuario.');
+            return null;
+          }
+        }
+
         return AppUpdateInfo(
           latestBuildNumber: latestBuild,
           latestVersionName: latestName,
@@ -68,14 +87,32 @@ class AppUpdateService {
     return null;
   }
 
+  /// Guarda que el usuario pospuso la actualización durante el día
+  static Future<void> postponeUpdate(int buildNumber) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_prefKeyPostponedBuild, buildNumber);
+    await prefs.setString(_prefKeyPostponedDate, DateTime.now().toIso8601String().substring(0, 10));
+  }
+
+  /// Verifica si el usuario ya pospuso esta versión en el mismo día
+  static Future<bool> _isUpdatePostponed(int buildNumber) async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedBuild = prefs.getInt(_prefKeyPostponedBuild);
+    final savedDate = prefs.getString(_prefKeyPostponedDate);
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+
+    return savedBuild == buildNumber && savedDate == today;
+  }
+
   /// Inicia la descarga e instalación OTA del APK en Android
   static Stream<UpdateProgress> executeOtaUpdate(String apkUrl) async* {
     try {
-      // ota_update descarga en background a la carpeta de descargas segura de Android
-      // y dispara automáticamente el Intent del instalador nativo del sistema.
       final stream = OtaUpdate().execute(apkUrl, destinationFilename: 'bitacora-tms.apk');
       await for (final event in stream) {
-        yield UpdateProgress(status: event.status, progress: event.value ?? '0');
+        yield UpdateProgress(
+          status: event.status,
+          progress: event.value ?? '0',
+        );
       }
     } catch (e) {
       debugPrint('[AppUpdateService] Error durante descarga OTA: $e');
@@ -109,11 +146,20 @@ class AppUpdateService {
     required String releaseNotes,
     bool mandatory = false,
   }) async {
-    final ref = FirebaseStorage.instance.ref('releases/bitacora-tms-v$versionName.apk');
-    final uploadTask = await ref.putData(
-      apkBytes,
-      SettableMetadata(contentType: 'application/vnd.android.package-archive'),
+    final storageRef = FirebaseStorage.instance
+        .ref()
+        .child('app_releases')
+        .child('bitacora-tms-v$versionName+$buildNumber.apk');
+
+    final metadata = SettableMetadata(
+      contentType: 'application/vnd.android.package-archive',
+      customMetadata: {
+        'versionName': versionName,
+        'buildNumber': buildNumber.toString(),
+      },
     );
+
+    final uploadTask = await storageRef.putData(apkBytes, metadata);
     final downloadUrl = await uploadTask.ref.getDownloadURL();
 
     await publishAppVersion(
@@ -127,4 +173,3 @@ class AppUpdateService {
     return downloadUrl;
   }
 }
-

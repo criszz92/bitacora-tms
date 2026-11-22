@@ -7,6 +7,7 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import 'package:bitacora/features/admin/presentation/providers/admin_provider.dart';
 import 'package:bitacora/features/admin/domain/models/company_config_model.dart';
 import 'package:bitacora/core/theme/app_theme.dart';
+import '../widgets/viaticos_calendar_picker_modal.dart';
 
 class ViaticosRequestScreen extends ConsumerStatefulWidget {
   const ViaticosRequestScreen({super.key});
@@ -23,23 +24,11 @@ class _ViaticosRequestScreenState extends ConsumerState<ViaticosRequestScreen> {
   // ─── Selección de fechas ────────────────────────────────────────────────────
 
   Future<void> _selectDateRange() async {
-    final range = await showDateRangePicker(
+    final existingViaticos = ref.read(viaticosProvider).value ?? [];
+    final range = await ViaticosCalendarPickerModal.show(
       context: context,
-      firstDate: DateTime(2024),
-      lastDate: DateTime.now(),
-      helpText: 'Selecciona los días a cobrar',
-      saveText: 'CONFIRMAR',
-      builder: (context, child) => Theme(
-        data: ThemeData.dark().copyWith(
-          colorScheme: const ColorScheme.dark(
-            primary: AppColors.primary,
-            onPrimary: AppColors.background,
-            surface: AppColors.surface,
-            onSurface: Colors.white,
-          ),
-        ),
-        child: child!,
-      ),
+      existingViaticos: existingViaticos,
+      initialRange: _selectedRange,
     );
     if (range != null) setState(() => _selectedRange = range);
   }

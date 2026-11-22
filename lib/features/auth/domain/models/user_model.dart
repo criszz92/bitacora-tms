@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class UserModel {
   final String uid;
   final String idEmpresa; // El núcleo del Multi-tenant (Aislamiento de datos)
@@ -23,6 +25,11 @@ class UserModel {
   final Map<String, bool>? configuracionPagos;
   final String? patenteAsignada;
   final String? fcmToken; // Token de Firebase Cloud Messaging
+
+  // Documentación y Perfil Operativo
+  final DateTime? fechaVencimientoLicencia;
+  final DateTime? fechaVencimientoCedula;
+  final String? fotoPerfilUrl;
 
   /// Determina si el usuario tiene privilegios de Usuario Maestro / SuperAdmin
   bool get isSuperAdmin =>
@@ -51,9 +58,19 @@ class UserModel {
     this.configuracionPagos,
     this.patenteAsignada,
     this.fcmToken,
+    this.fechaVencimientoLicencia,
+    this.fechaVencimientoCedula,
+    this.fotoPerfilUrl,
   });
 
   factory UserModel.fromMap(Map<String, dynamic> map, String documentId) {
+    DateTime? parseDate(dynamic val) {
+      if (val == null) return null;
+      if (val is Timestamp) return val.toDate();
+      if (val is String) return DateTime.tryParse(val);
+      return null;
+    }
+
     return UserModel(
       uid: documentId,
       idEmpresa: map['idEmpresa'] ?? '',
@@ -75,6 +92,9 @@ class UserModel {
           : null,
       patenteAsignada: map['patenteAsignada'],
       fcmToken: map['fcmToken'],
+      fechaVencimientoLicencia: parseDate(map['fechaVencimientoLicencia']),
+      fechaVencimientoCedula: parseDate(map['fechaVencimientoCedula']),
+      fotoPerfilUrl: map['fotoPerfilUrl'],
     );
   }
 
@@ -97,6 +117,11 @@ class UserModel {
       if (configuracionPagos != null) 'configuracionPagos': configuracionPagos,
       if (patenteAsignada != null) 'patenteAsignada': patenteAsignada,
       if (fcmToken != null) 'fcmToken': fcmToken,
+      if (fechaVencimientoLicencia != null)
+        'fechaVencimientoLicencia': Timestamp.fromDate(fechaVencimientoLicencia!),
+      if (fechaVencimientoCedula != null)
+        'fechaVencimientoCedula': Timestamp.fromDate(fechaVencimientoCedula!),
+      if (fotoPerfilUrl != null) 'fotoPerfilUrl': fotoPerfilUrl,
     };
   }
 }

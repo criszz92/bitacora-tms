@@ -1,3 +1,4 @@
+import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -257,7 +258,11 @@ class _ConductoresViewState extends ConsumerState<ConductoresView> {
                   const SizedBox(height: 2),
                   Wrap(
                     spacing: 4,
-                    children: (c.licencias ?? []).take(2).map((l) => _licenseBadge(l)).toList(),
+                    children: [
+                      ...(c.licencias ?? []).take(2).map((l) => _licenseBadge(l)),
+                      if (c.fechaVencimientoLicencia != null) _docExpiryIndicator(c.fechaVencimientoLicencia, 'Lic'),
+                      if (c.fechaVencimientoCedula != null) _docExpiryIndicator(c.fechaVencimientoCedula, 'CI'),
+                    ],
                   ),
                 ],
               ),
@@ -297,6 +302,34 @@ class _ConductoresViewState extends ConsumerState<ConductoresView> {
           const Icon(Icons.chevron_right, size: 16, color: Colors.white24),
         ],
       ),
+    );
+  }
+
+  
+  Widget _docExpiryIndicator(DateTime? date, String label) {
+    if (date == null) return const SizedBox.shrink();
+    final now = DateTime.now();
+    final diff = date.difference(now).inDays;
+    final Color color;
+    final String statusText;
+    if (diff < 0) {
+      color = Colors.redAccent;
+      statusText = 'VENCIDO';
+    } else if (diff <= 30) {
+      color = const Color(0xFFF59E0B);
+      statusText = 'Vence en ${diff}d';
+    } else {
+      color = const Color(0xFF10B981);
+      statusText = 'Vigente';
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: 0.5), width: 0.5),
+      ),
+      child: Text('$label: $statusText', style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold)),
     );
   }
 
@@ -403,12 +436,16 @@ class _DriverEditFormState extends State<_DriverEditForm> {
   late TextEditingController _tasaAFPController;
   late TextEditingController _tasaSaludController;
   late Map<String, bool> _toggles;
+  DateTime? _fechaVencimientoLicencia;
+  DateTime? _fechaVencimientoCedula;
 
   @override
   void initState() {
     super.initState();
     final c = widget.chofer;
     _rutController = TextEditingController(text: c.rut);
+    _fechaVencimientoLicencia = c.fechaVencimientoLicencia;
+    _fechaVencimientoCedula = c.fechaVencimientoCedula;
     _sueldoController = TextEditingController(text: (c.sueldoBase ?? widget.config?.sueldoMinimo ?? 539000).toInt().toString());
     _viaticoLocalController = TextEditingController(text: (c.montoViaticoLocal ?? 6500).toInt().toString());
     _viaticoLargoController = TextEditingController(text: (c.montoViaticoLargo ?? 10000).toInt().toString());
@@ -465,6 +502,64 @@ class _DriverEditFormState extends State<_DriverEditForm> {
           ),
           
           const SizedBox(height: 32),
+          
+          const SizedBox(height: 16),
+          const Text('Vencimiento de Documentación', style: TextStyle(color: Colors.grey, fontSize: 12)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _datePickerTile(
+                  title: 'Licencia Conducir',
+                  date: _fechaVencimientoLicencia,
+                  onPick: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _fechaVencimientoLicencia ?? DateTime.now().add(const Duration(days: 365)),
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2040),
+                      builder: (ctx, child) => Theme(
+                        data: ThemeData.dark().copyWith(
+                          colorScheme: const ColorScheme.dark(
+                            primary: Color(0xFFF59E0B),
+                            surface: Color(0xFF161A22),
+                          ),
+                        ),
+                        child: child!,
+                      ),
+                    );
+                    if (picked != null) setState(() => _fechaVencimientoLicencia = picked);
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _datePickerTile(
+                  title: 'Cédula de Identidad',
+                  date: _fechaVencimientoCedula,
+                  onPick: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _fechaVencimientoCedula ?? DateTime.now().add(const Duration(days: 365)),
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2040),
+                      builder: (ctx, child) => Theme(
+                        data: ThemeData.dark().copyWith(
+                          colorScheme: const ColorScheme.dark(
+                            primary: Color(0xFFF59E0B),
+                            surface: Color(0xFF161A22),
+                          ),
+                        ),
+                        child: child!,
+                      ),
+                    );
+                    if (picked != null) setState(() => _fechaVencimientoCedula = picked);
+                  },
+                ),
+              ),
+            ],
+          ),
+
           _section('CONFIGURACIÓN DE VIÁTICOS'),
           _input(r'Monto Local ($)', _viaticoLocalController, Icons.location_on_outlined),
           const SizedBox(height: 16),
@@ -560,9 +655,53 @@ class _DriverEditFormState extends State<_DriverEditForm> {
         baseImponible: _baseImponible,
         empresaAsumeLeyes: _empresaAsumeLeyes,
         configuracionPagos: _toggles,
+        fechaVencimientoLicencia: _fechaVencimientoLicencia,
+        fechaVencimientoCedula: _fechaVencimientoCedula,
+        fotoPerfilUrl: widget.chofer.fotoPerfilUrl,
       );
       widget.onSaved(updated);
     }
+  }
+
+  
+  Widget _datePickerTile({required String title, required DateTime? date, required VoidCallback onPick}) {
+    final formatted = date != null ? DateFormat('dd/MM/yyyy').format(date) : 'Sin asignar';
+    final isExpired = date != null && date.isBefore(DateTime.now());
+    return InkWell(
+      onTap: onPick,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: isExpired ? Colors.redAccent.withValues(alpha: 0.5) : Colors.white12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: const TextStyle(color: Colors.grey, fontSize: 10)),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(Icons.calendar_today, size: 14, color: isExpired ? Colors.redAccent : const Color(0xFFF59E0B)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    formatted,
+                    style: TextStyle(
+                      color: isExpired ? Colors.redAccent : Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _section(String title) {

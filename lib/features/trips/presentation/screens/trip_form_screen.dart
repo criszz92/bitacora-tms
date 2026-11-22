@@ -869,52 +869,46 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
   }) {
     const medlog = 'MEDLOG TRUCK';
 
-    return ValueListenableBuilder<TextEditingValue>(
-      valueListenable: controller,
-      builder: (context, value, _) {
-        return Autocomplete<String>(
-          key: ValueKey('${controller.hashCode}_${value.text}'),
-          initialValue: value,
-          optionsBuilder: (TextEditingValue textValue) {
-            final query = textValue.text.trim();
+    return Autocomplete<String>(
+      initialValue: controller.value,
+      optionsBuilder: (TextEditingValue textValue) {
+        final query = textValue.text.trim();
 
-            if (alwaysPinMedlog) {
-              if (query.isEmpty) return [medlog];
-              final results = ref.read(fuzzySearchProvider).search(query);
-              final rest = results.where((r) => r != medlog).toList();
-              return [medlog, ...rest];
-            }
+        if (alwaysPinMedlog) {
+          if (query.isEmpty) return [medlog];
+          final results = ref.read(fuzzySearchProvider).search(query);
+          final rest = results.where((r) => r != medlog).toList();
+          return [medlog, ...rest];
+        }
 
-            if (query.isEmpty) return const [];
-            return ref.read(fuzzySearchProvider).search(query);
-          },
-          onSelected: (String selection) {
-            controller.text = selection;
-          },
-          fieldViewBuilder: (ctx, innerCtrl, focusNode, onEditingComplete) {
-            innerCtrl.addListener(() {
-              if (controller.text != innerCtrl.text) {
-                controller.text = innerCtrl.text;
-              }
-            });
-            return TextFormField(
-              controller: innerCtrl,
-              focusNode: focusNode,
-              textCapitalization: TextCapitalization.characters,
-              decoration: InputDecoration(
-                labelText: label,
-                filled: true,
-                fillColor: const Color(0xFF161A22),
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none),
-                prefixIcon: Icon(icon, color: const Color(0xFFE0E0E0)),
-              ),
-              validator: isRequired
-                  ? (v) => (v == null || v.trim().isEmpty) ? 'Campo obligatorio' : null
-                  : null,
-            );
-          },
+        if (query.isEmpty) return const [];
+        return ref.read(fuzzySearchProvider).search(query);
+      },
+      onSelected: (String selection) {
+        controller.text = selection;
+      },
+      fieldViewBuilder: (ctx, innerCtrl, focusNode, onEditingComplete) {
+        innerCtrl.addListener(() {
+          if (controller.text != innerCtrl.text) {
+            controller.value = innerCtrl.value;
+          }
+        });
+        return TextFormField(
+          controller: innerCtrl,
+          focusNode: focusNode,
+          textCapitalization: TextCapitalization.characters,
+          decoration: InputDecoration(
+            labelText: label,
+            filled: true,
+            fillColor: const Color(0xFF161A22),
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none),
+            prefixIcon: Icon(icon, color: const Color(0xFFE0E0E0)),
+          ),
+          validator: isRequired
+              ? (v) => (v == null || v.trim().isEmpty) ? 'Campo obligatorio' : null
+              : null,
         );
       },
     );

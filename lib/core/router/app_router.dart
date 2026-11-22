@@ -1,3 +1,4 @@
+import '../../features/driver/presentation/screens/driver_profile_screen.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -119,6 +120,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/retro-trip',
         builder: (context, state) => const RetroTripFormScreen(),
+      ),
+      GoRoute(
+        path: '/driver-profile',
+        builder: (context, state) => const DriverProfileScreen(),
       ),
       GoRoute(
         path: '/monthly-summary',

@@ -316,7 +316,7 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text(t.destination, style: TextStyle(
+                Text(t.displayRoute3Steps, style: TextStyle(
                   color: isPrimary ? Colors.white : Colors.white38, 
                   fontWeight: isPrimary ? FontWeight.bold : FontWeight.normal
                 )),
@@ -368,7 +368,7 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('${trip.origin} → ${trip.destination}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+              Text(trip.displayRoute3Steps, style: const TextStyle(color: Colors.grey, fontSize: 13)),
               const SizedBox(height: 16),
               TextFormField(
                 controller: guideCtrl,

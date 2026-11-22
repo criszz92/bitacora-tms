@@ -52,6 +52,50 @@ class TripModel {
 
   bool get hasMultipleTramos => tramos != null && tramos!.length > 1;
 
+  /// Genera la ruta desglosada en 3 pasos: INICIO ➔ CLIENTE(S) ➔ PUERTO/DESTINO
+  String get displayRoute3Steps {
+    final start = origin.trim().isNotEmpty ? origin.trim() : 'INICIO';
+    final end = (puntoDescarga != null && puntoDescarga!.trim().isNotEmpty)
+        ? puntoDescarga!.trim()
+        : (destination.trim().isNotEmpty ? destination.trim() : 'DESTINO');
+
+    final List<String> intermediateClients = [];
+    if (paradasIntermedias != null && paradasIntermedias!.isNotEmpty) {
+      for (final p in paradasIntermedias!) {
+        final pTrim = p.trim();
+        if (pTrim.isNotEmpty && !intermediateClients.contains(pTrim)) {
+          intermediateClients.add(pTrim);
+        }
+      }
+    }
+
+    final cTrim = client.trim();
+    if (cTrim.isNotEmpty &&
+        cTrim.toUpperCase() != 'RETIRO ANTICIPADO' &&
+        cTrim.toUpperCase() != 'MANTENIMIENTO' &&
+        cTrim.toUpperCase() != 'MOVIMIENTO INTERNO' &&
+        cTrim.toUpperCase() != start.toUpperCase() &&
+        cTrim.toUpperCase() != end.toUpperCase()) {
+      if (!intermediateClients.contains(cTrim)) {
+        intermediateClients.insert(0, cTrim);
+      }
+    }
+
+    if (intermediateClients.isNotEmpty) {
+      final clientsStr = intermediateClients.join(' / ');
+      return '$start ➔ $clientsStr ➔ $end';
+    }
+
+    if (isRetiroAnticipado) {
+      return '$start ➔ [RETIRO VACÍO] ➔ $end';
+    }
+    if (isMantenimiento) {
+      return '$start ➔ [MANTENCIÓN] ➔ $end';
+    }
+
+    return '$start ➔ $end';
+  }
+
   TripModel({
     required this.id,
     required this.idEmpresa,

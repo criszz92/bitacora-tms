@@ -128,15 +128,38 @@ async function notifyAdmins(idEmpresa, title, body) {
   }
 }
 
-async function notifyDriver(idChofer, title, body) {
+async function notifyDriver(idChofer, title, body, data = {}) {
   const userDoc = await admin.firestore().collection("usuarios").doc(idChofer).get();
   if (userDoc.exists) {
     const token = userDoc.data().fcmToken;
     if (token) {
-      await admin.messaging().send({
-        token,
-        notification: { title, body }
-      });
+      try {
+        await admin.messaging().send({
+          token,
+          notification: { title, body },
+          data: {
+            click_action: "FLUTTER_NOTIFICATION_CLICK",
+            title: String(title),
+            body: String(body),
+            ...data
+          },
+          android: {
+            priority: "high",
+            notification: {
+              channelId: "bitacora_binaural_v3",
+              sound: "bitacora_alert",
+              defaultSound: false,
+              priority: "max",
+              visibility: "public"
+            }
+          }
+        });
+        console.log(`Notificación FCM enviada a chofer ${idChofer}: ${title}`);
+      } catch (err) {
+        console.error(`Error enviando FCM a chofer ${idChofer}:`, err.message);
+      }
+    } else {
+      console.warn(`Chofer ${idChofer} no tiene fcmToken en Firestore.`);
     }
   }
 }
@@ -252,3 +275,52 @@ exports.dailyDocumentCheck = functions.pubsub.schedule("every day 08:00").onRun(
 
   return null;
 });
+
+// ─── NOTIFICACIÓN DE SERVICIO ASIGNADO A CONDUCTOR ───────────────────────────
+
+exports.onServiceRequestUpdated = functions.firestore
+  .document("service_requests/{requestId}")
+  .onWrite(async (change, context) => {
+    if (!change.after.exists) return null;
+    const before = change.before.exists ? change.before.data() : null;
+    const after = change.after.data();
+
+    if (after.status === "assigned" && after.assignedTo) {
+      const wasAssignedBefore = before && before.status === "assigned" && before.assignedTo === after.assignedTo;
+      if (!wasAssignedBefore) {
+        const title = "📦 ¡Nuevo Servicio Asignado!";
+        const body = `${after.clientName || "Cliente"}: ${after.origin || "Origen"} ➔ ${after.destination || "Destino"}`;
+        await notifyDriver(after.assignedTo, title, body, {
+          requestId: context.params.requestId,
+          type: "service_assignment"
+        });
+      }
+    }
+    return null;
+  });
+
+// ─── NOTIFICACIÓN DE ESTADO DE VIÁTICOS ───────────────────────────────────────
+
+exports.onViaticoUpdated = functions.firestore
+  .document("viaticos/{viaticoId}")
+  .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
+
+    if (before.estado !== after.estado && after.idChofer) {
+      let title = "💵 Actualización de Viático";
+      let body = `Tu solicitud por $${after.monto || 0} ha cambiado a: ${after.estado}`;
+      if (after.estado === "aprobado" || after.estado === "Aprobado") {
+        title = "✅ Viático Aprobado";
+        body = `Tu rendición por $${after.monto || 0} ha sido aprobada.`;
+      } else if (after.estado === "rechazado" || after.estado === "Rechazado") {
+        title = "❌ Viático Rechazado";
+        body = `Tu rendición por $${after.monto || 0} ha sido rechazada.`;
+      }
+      await notifyDriver(after.idChofer, title, body, {
+        viaticoId: context.params.viaticoId,
+        type: "viatico_status"
+      });
+    }
+    return null;
+  });

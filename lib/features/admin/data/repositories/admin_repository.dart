@@ -78,7 +78,10 @@ class AdminRepository {
         .where('status', isEqualTo: 'Finalizado')
         .get();
         
-    return snapshot.docs.map((d) => TripModel.fromMap(d.data(), d.id)).toList();
+    return snapshot.docs
+        .map((d) => TripModel.fromMap(d.data(), d.id))
+        .where((t) => !t.isRetiroAnticipado && t.tipoMovimiento != 'retiro_anticipado' && t.tipoMovimiento != 'traslado_mantenimiento')
+        .toList();
   }
 
   /// Retorna todos los gastos del mes indicado para la empresa.

@@ -1,93 +1,208 @@
-import 'dart:typed_data';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import '../../firebase_options.dart';
+
+/// Top-level background message handler para Firebase Cloud Messaging.
+/// Se ejecuta cuando la app está en segundo plano o completamente cerrada.
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (_) {
+    // Si ya fue inicializado, continuar
+  }
+
+  debugPrint('FCM Background: Mensaje recibido: ${message.messageId}');
+  final notification = message.notification;
+  final title = notification?.title ?? message.data['title'] ?? 'Bitácora TMS';
+  final body = notification?.body ?? message.data['body'] ?? '';
+
+  if (title.isNotEmpty || body.isNotEmpty) {
+    await PushNotificationService.showCustomNotification(
+      id: notification?.hashCode ?? DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      title: title,
+      body: body,
+    );
+  }
+}
 
 class PushNotificationService {
   static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
-  static final FlutterLocalNotificationsPlugin _localNotificationsPlugin = FlutterLocalNotificationsPlugin();
+  static final FlutterLocalNotificationsPlugin _localNotificationsPlugin =
+      FlutterLocalNotificationsPlugin();
+
+  static FlutterLocalNotificationsPlugin get localNotificationsPlugin => _localNotificationsPlugin;
+
+  static bool _initialized = false;
 
   static Future<void> initialize() async {
-    // 1. Solicitar permisos para iOS/Android
+    if (_initialized) return;
+    _initialized = true;
+
+    // 1. Configurar notificaciones locales
+    const AndroidInitializationSettings initializationSettingsAndroid =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const InitializationSettings initializationSettings =
+        InitializationSettings(android: initializationSettingsAndroid);
+    await _localNotificationsPlugin.initialize(settings: initializationSettings);
+
+    // 2. Crear NotificationChannel v3 de alta prioridad en Android con tono binaural
+    final androidImplementation = _localNotificationsPlugin
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    if (androidImplementation != null) {
+      await androidImplementation.createNotificationChannel(
+        const AndroidNotificationChannel(
+          'bitacora_binaural_v3',
+          'Alertas Inteligentes de Ruta (Binaural)',
+          description:
+              'Canal prioritario para advertencias de romanas, peajes y restricciones con tono binaural 528Hz',
+          importance: Importance.max,
+          playSound: true,
+          sound: RawResourceAndroidNotificationSound('bitacora_alert'),
+          enableVibration: true,
+        ),
+      );
+
+      // Solicitar permisos de notificación explícitos para Android 13+ (API 33+)
+      await androidImplementation.requestNotificationsPermission();
+    }
+
+    // 3. Solicitar permisos en Firebase Messaging
     NotificationSettings settings = await _messaging.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+      provisional: false,
+    );
+
+    debugPrint('FCM AuthorizationStatus: ${settings.authorizationStatus}');
+
+    // 4. Mostrar notificaciones como HUD/banner incluso si la app está en primer plano
+    await _messaging.setForegroundNotificationPresentationOptions(
       alert: true,
       badge: true,
       sound: true,
     );
 
-    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-      debugPrint('FCM: Permisos de notificación concedidos.');
-      
-      // 2. Obtener el token FCM del dispositivo
-      String? token = await _messaging.getToken();
+    // 5. Escuchar mensajes en FOREGROUND (Primer plano)
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      debugPrint('FCM: Mensaje recibido en FOREGROUND: ${message.messageId}');
+      _showLocalNotification(message);
+    });
+
+    // 6. Escuchar cuando se refresca el token FCM
+    _messaging.onTokenRefresh.listen((token) {
+      debugPrint('FCM: Token refrescado: $token');
+      _saveTokenToFirestore(token);
+    });
+
+    // 7. Sincronización continua de token con FirebaseAuth:
+    // En cuanto el chofer se loguea o restaura su sesión, se persiste el token en su doc de Firestore
+    FirebaseAuth.instance.authStateChanges().listen((user) async {
+      if (user != null) {
+        debugPrint('FCM: Usuario autenticado (${user.uid}), sincronizando token...');
+        final token = await _messaging.getToken();
+        if (token != null) {
+          await _saveTokenToFirestore(token, uid: user.uid);
+        }
+      }
+    });
+
+    // 8. Intentar obtener y guardar el token inmediatamente si ya hay sesión activa
+    try {
+      final token = await _messaging.getToken();
       if (token != null) {
-        debugPrint('FCM Token: $token');
+        debugPrint('FCM Token inicial: $token');
         await _saveTokenToFirestore(token);
       }
-
-      // Escuchar si el token cambia
-      _messaging.onTokenRefresh.listen(_saveTokenToFirestore);
-
-      // 3. Configurar notificaciones locales para cuando la app está en FOREGROUND
-      const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
-      const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
-      await _localNotificationsPlugin.initialize(settings: initializationSettings);
-
-      // Crear explícitamente el NotificationChannel de alta prioridad en Android
-      final androidImplementation = _localNotificationsPlugin
-          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-      if (androidImplementation != null) {
-        await androidImplementation.createNotificationChannel(
-          const AndroidNotificationChannel(
-            'bitacora_binaural_alert_v2',
-            'Alertas Inteligentes de Ruta (Binaural)',
-            description: 'Canal prioritario para advertencias de romanas, peajes y restricciones con tono binaural 528Hz',
-            importance: Importance.max,
-            playSound: true,
-            sound: RawResourceAndroidNotificationSound('bitacora_alert'),
-            enableVibration: true,
-          ),
-        );
-      }
-
-      // 4. Escuchar mensajes en FOREGROUND
-      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-        debugPrint('FCM: Mensaje recibido en FOREGROUND: ${message.messageId}');
-        _showLocalNotification(message);
-      });
-    } else {
-      debugPrint('FCM: Permisos de notificación denegados.');
+    } catch (e) {
+      debugPrint('FCM: Error al obtener token inicial: $e');
     }
   }
 
-  static Future<void> _saveTokenToFirestore(String token) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      await FirebaseFirestore.instance.collection('usuarios').doc(user.uid).update({
-        'fcmToken': token,
-      });
-      debugPrint('FCM Token actualizado en Firestore para el usuario ${user.uid}.');
+  /// Fuerza la sincronización del token FCM para el usuario actual (usado tras login exitoso)
+  static Future<void> syncToken() async {
+    try {
+      final token = await _messaging.getToken();
+      final user = FirebaseAuth.instance.currentUser;
+      if (token != null && user != null) {
+        await _saveTokenToFirestore(token, uid: user.uid);
+      }
+    } catch (e) {
+      debugPrint('FCM: Error en syncToken: $e');
+    }
+  }
+
+  /// Emite una alerta de prueba en el altavoz / notificación local y sincroniza el token FCM.
+  /// Retorna false si está corriendo en Web (donde no aplican notificaciones locales nativas de Android).
+  static Future<bool> testAlertNotification() async {
+    if (kIsWeb) return false;
+
+    try {
+      final androidImpl = _localNotificationsPlugin
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      final enabled = await androidImpl?.areNotificationsEnabled() ?? true;
+      if (!enabled) {
+        await androidImpl?.requestNotificationsPermission();
+      }
+
+      await showCustomNotification(
+        id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        title: '🔔 Alerta Bitácora TMS (Canal v3)',
+        body: 'Tono binaural 528Hz activo. Notificación de alta prioridad verificada.',
+      );
+      await syncToken();
+      return true;
+    } catch (e) {
+      debugPrint('Error en testAlertNotification: $e');
+      return false;
+    }
+  }
+
+  static Future<void> _saveTokenToFirestore(String token, {String? uid}) async {
+    final targetUid = uid ?? FirebaseAuth.instance.currentUser?.uid;
+    if (targetUid != null) {
+      try {
+        await FirebaseFirestore.instance.collection('usuarios').doc(targetUid).set({
+          'fcmToken': token,
+          'fcmUpdatedAt': FieldValue.serverTimestamp(),
+          'platform': defaultTargetPlatform.name,
+        }, SetOptions(merge: true));
+        debugPrint('FCM Token guardado en Firestore para usuario $targetUid.');
+      } catch (e) {
+        debugPrint('FCM Error al guardar token en Firestore: $e');
+      }
+    } else {
+      debugPrint('FCM: No hay usuario autenticado para asociar el token todavía.');
     }
   }
 
   static void _showLocalNotification(RemoteMessage message) {
     final notification = message.notification;
-    if (notification == null) return;
+    final title = notification?.title ?? message.data['title'] ?? 'Bitácora TMS';
+    final body = notification?.body ?? message.data['body'] ?? '';
 
-    showCustomNotification(
-      id: notification.hashCode,
-      title: notification.title ?? 'Notificación Bitácora',
-      body: notification.body ?? '',
-    );
+    if (title.isNotEmpty || body.isNotEmpty) {
+      showCustomNotification(
+        id: notification?.hashCode ?? DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        title: title,
+        body: body,
+      );
+    }
   }
 
-  /// Canal exclusivo con sonido armónico binaural propio de Bitácora TMS
+  /// Canal exclusivo con sonido armónico binaural propio de Bitácora TMS (v3 limpio)
   static final AndroidNotificationDetails _binauralAlertChannel = AndroidNotificationDetails(
-    'bitacora_binaural_alert_v2',
+    'bitacora_binaural_v3',
     'Alertas Inteligentes de Ruta (Binaural)',
-    channelDescription: 'Canal prioritario para advertencias de romanas, peajes y restricciones con tono binaural 528Hz',
+    channelDescription:
+        'Canal prioritario para advertencias de romanas, peajes y restricciones con tono binaural 528Hz',
     importance: Importance.max,
     priority: Priority.high,
     icon: '@mipmap/ic_launcher',
@@ -95,7 +210,7 @@ class PushNotificationService {
     vibrationPattern: Int64List.fromList([0, 250, 150, 400]),
     playSound: true,
     sound: const RawResourceAndroidNotificationSound('bitacora_alert'),
-    audioAttributesUsage: AudioAttributesUsage.alarm,
+    audioAttributesUsage: AudioAttributesUsage.notification,
   );
 
   /// Dispara una alerta sonora y visual que activa la pantalla y suena fuerte con el tono binaural

@@ -452,7 +452,7 @@ class _ZiyuConciliationViewState extends ConsumerState<ZiyuConciliationView> {
                   Text('Ziyu: [${r.ziyuRecord!.date != null ? DateFormat('dd/MM').format(r.ziyuRecord!.date!) : '-'}] ${r.ziyuRecord!.origin ?? ''} → ${r.ziyuRecord!.destination ?? ''} | \$${r.ziyuRecord!.value ?? '-'}',
                       style: const TextStyle(color: Colors.grey, fontSize: 12)),
                 if (r.tripModel != null)
-                  Text('Bitácora: [${DateFormat('dd/MM').format(r.tripModel.startDate)}] ${r.tripModel.origin} → ${r.tripModel.destination} | \$${r.tripModel.value}',
+                  Text('Bitácora: [${DateFormat('dd/MM').format(r.tripModel.startDate)}] ${r.tripModel.displayRoute3Steps} | \$${r.tripModel.value.toInt()}',
                       style: const TextStyle(color: Colors.grey, fontSize: 12)),
               ],
             ),

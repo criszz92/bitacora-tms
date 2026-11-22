@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'core/theme/app_theme.dart';
 import 'core/router/app_router.dart';
@@ -9,6 +10,7 @@ import 'firebase_options.dart';
 import 'features/trips/domain/services/fuzzy_search_service.dart';
 import 'features/trips/domain/services/distance_service.dart';
 import 'core/services/push_notification_service.dart';
+import 'core/services/location_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,9 +20,11 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // Inicializar Notificaciones Push solo en móvil
+  // Inicializar Notificaciones Push y Servicio Background solo en móvil
   if (!kIsWeb) {
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
     await PushNotificationService.initialize();
+    await LocationService.initializeService();
   }
 
   // Pre-carga los 3.647 clientes de Ziyu en RAM al iniciar la app.

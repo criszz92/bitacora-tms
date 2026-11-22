@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/models/user_model.dart';
 import '../../data/repositories/auth_repository.dart';
+import '../../../../core/services/push_notification_service.dart';
+import '../../../../core/services/location_service.dart';
 
 // ─── Firebase Auth state ──────────────────────────────────────────────────────
 
@@ -44,6 +46,7 @@ class AuthService {
 
   Future<void> signInWithEmail(String email, String password) async {
     await _auth.signInWithEmailAndPassword(email: email, password: password);
+    await PushNotificationService.syncToken();
   }
 
   Future<void> signUpWithEmail(String email, String password) async {
@@ -51,6 +54,7 @@ class AuthService {
   }
 
   Future<void> signOut() async {
+    await LocationService.stopKeepAlive();
     await _auth.signOut();
   }
 }

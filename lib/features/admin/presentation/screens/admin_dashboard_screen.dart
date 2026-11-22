@@ -1,3 +1,4 @@
+import 'package:bitacora/features/admin/presentation/widgets/driver_efficiency_matrix_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -100,6 +101,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       (Icons.local_shipping_outlined, 'Flota', 0),
       (Icons.build_circle_outlined, 'Mantenimiento', 0),
       (Icons.group_outlined, 'Conductores', 0),
+      (Icons.leaderboard_outlined, 'Matriz Eficiencia', 0),
       (Icons.settings_outlined, 'Configuración', 0),
     ];
 
@@ -198,7 +200,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
 
   Widget _buildMainContent() {
     return IndexedStack(
-      index: _selectedIndex.clamp(0, 14),
+      index: _selectedIndex.clamp(0, 15),
       children: const [
         KpiDashboardView(),
         MonthlyReportsView(),
@@ -214,6 +216,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
         FlotaAdminView(),
         MantenimientoAdminView(),
         ConductoresView(),
+        DriverEfficiencyMatrixView(),
         ConfigAdminView(),
       ],
     );

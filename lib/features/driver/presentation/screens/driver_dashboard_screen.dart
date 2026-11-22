@@ -24,6 +24,7 @@ import '../../../trips/domain/models/expense_model.dart';
 import '../../../../core/services/app_update_service.dart';
 import '../../../../core/widgets/app_update_dialog.dart';
 import '../../../../core/services/push_notification_service.dart';
+import '../../../../core/services/location_service.dart';
 import '../../../trips/domain/services/fuzzy_search_service.dart';
 import 'dart:ui';
 import '../../../../core/theme/app_theme.dart';
@@ -34,11 +35,31 @@ class DriverDashboardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Comprobar silenciosamente si existe una nueva versión de la app
+    // Mantener la app viva en segundo plano (Foreground Service) mientras haya una jornada activa
+    ref.listen<AsyncValue<ShiftModel?>>(activeShiftProvider, (previous, next) {
+      final shift = next.value;
+      if (shift != null) {
+        LocationService.startKeepAlive(
+          title: 'Bitácora TMS - Jornada Activa',
+          content: 'Camión: ${shift.patenteCamion} • Monitoreo Activo',
+        );
+      } else {
+        LocationService.stopKeepAlive();
+      }
+    });
+
+    // Comprobar silenciosamente si existe una nueva versión de la app y verificar servicio background
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final update = await AppUpdateService.checkForUpdate();
       if (update != null && context.mounted) {
         AppUpdateDialog.show(context, update);
+      }
+      final currentShift = ref.read(activeShiftProvider).value;
+      if (currentShift != null) {
+        LocationService.startKeepAlive(
+          title: 'Bitácora TMS - Jornada Activa',
+          content: 'Camión: ${currentShift.patenteCamion} • Monitoreo Activo',
+        );
       }
     });
 
@@ -476,6 +497,16 @@ class DriverDashboardScreen extends ConsumerWidget {
                   // SECCIÓN: GESTIÓN Y FLOTA
                   _buildDrawerSectionHeader('GESTIÓN Y FLOTA'),
                   _buildDrawerItem(
+                    icon: Icons.badge_outlined,
+                    iconColor: AppColors.primary,
+                    title: 'Mi Perfil & Ficha',
+                    subtitle: 'Licencia, documentos y puntaje',
+                    onTap: () {
+                      context.pop();
+                      context.push('/driver-profile');
+                    },
+                  ),
+                  _buildDrawerItem(
                     icon: Icons.analytics_outlined,
                     iconColor: const Color(0xFF60A5FA),
                     title: 'Resumen del Mes',
@@ -511,13 +542,41 @@ class DriverDashboardScreen extends ConsumerWidget {
                   // SECCIÓN: SISTEMA
                   _buildDrawerSectionHeader('SISTEMA'),
                   _buildDrawerItem(
+                    icon: Icons.notifications_active_rounded,
+                    iconColor: AppColors.primary,
+                    title: 'Probar Alerta & Sonido',
+                    subtitle: 'Verificar altavoz y canal binaural',
+                    onTap: () async {
+                      context.pop();
+                      final isMobile = await PushNotificationService.testAlertNotification();
+                      if (context.mounted) {
+                        if (!isMobile) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('ℹ️ En navegador Web las notificaciones locales de Android están deshabilitadas. Esta prueba emite sonido en la APK instalada en el teléfono Android.'),
+                              backgroundColor: Colors.blueAccent,
+                              duration: Duration(seconds: 4),
+                            ),
+                          );
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Alerta binaural emitida al altavoz y Token sincronizado.'),
+                              backgroundColor: Color(0xFF2E7D32),
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                  _buildDrawerItem(
                     icon: Icons.system_update_alt_rounded,
                     iconColor: AppColors.success,
                     title: 'Buscar Actualizaciones',
                     subtitle: 'Verificar versión del sistema',
                     onTap: () async {
                       context.pop();
-                      final update = await AppUpdateService.checkForUpdate();
+                      final update = await AppUpdateService.checkForUpdate(ignorePostponed: true);
                       if (context.mounted) {
                         if (update != null) {
                           AppUpdateDialog.show(context, update);
@@ -2219,46 +2278,40 @@ class DriverDashboardScreen extends ConsumerWidget {
                       style: TextStyle(color: Colors.white70, fontSize: 12),
                     ),
                     const SizedBox(height: 14),
-                    ValueListenableBuilder<TextEditingValue>(
-                      valueListenable: stopCtrl,
-                      builder: (context, value, _) {
-                        return Autocomplete<String>(
-                          key: ValueKey('stop_autocomplete_${value.text}'),
-                          initialValue: value,
-                          optionsBuilder: (TextEditingValue textValue) {
-                            final query = textValue.text.trim();
-                            if (query.isEmpty) return const [];
-                            return ref.read(fuzzySearchProvider).search(query);
-                          },
-                          onSelected: (String selection) {
-                            stopCtrl.text = selection;
-                          },
-                          fieldViewBuilder: (fCtx, innerCtrl, focusNode, onEditingComplete) {
-                            innerCtrl.addListener(() {
-                              if (stopCtrl.text != innerCtrl.text) {
-                                stopCtrl.text = innerCtrl.text;
-                              }
-                            });
-                            return TextField(
-                              controller: innerCtrl,
-                              focusNode: focusNode,
-                              textCapitalization: TextCapitalization.characters,
-                              style: const TextStyle(color: Colors.white),
-                              decoration: InputDecoration(
-                                labelText: 'Punto / Planta / Romana',
-                                labelStyle: const TextStyle(color: Colors.white60),
-                                hintText: 'Ej: FORSAC, ORIZON, BASE...',
-                                hintStyle: const TextStyle(color: Colors.white24),
-                                filled: true,
-                                fillColor: const Color(0xFF13161C),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                  borderSide: BorderSide.none,
-                                ),
-                                prefixIcon: const Icon(Icons.add_location, color: Colors.blueAccent),
-                              ),
-                            );
-                          },
+                    Autocomplete<String>(
+                      initialValue: stopCtrl.value,
+                      optionsBuilder: (TextEditingValue textValue) {
+                        final query = textValue.text.trim();
+                        if (query.isEmpty) return const [];
+                        return ref.read(fuzzySearchProvider).search(query);
+                      },
+                      onSelected: (String selection) {
+                        stopCtrl.text = selection;
+                      },
+                      fieldViewBuilder: (fCtx, innerCtrl, focusNode, onEditingComplete) {
+                        innerCtrl.addListener(() {
+                          if (stopCtrl.text != innerCtrl.text) {
+                            stopCtrl.value = innerCtrl.value;
+                          }
+                        });
+                        return TextField(
+                          controller: innerCtrl,
+                          focusNode: focusNode,
+                          textCapitalization: TextCapitalization.characters,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            labelText: 'Punto / Planta / Romana',
+                            labelStyle: const TextStyle(color: Colors.white60),
+                            hintText: 'Ej: FORSAC, ORIZON, BASE...',
+                            hintStyle: const TextStyle(color: Colors.white24),
+                            filled: true,
+                            fillColor: const Color(0xFF13161C),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide.none,
+                            ),
+                            prefixIcon: const Icon(Icons.add_location, color: Colors.blueAccent),
+                          ),
                         );
                       },
                     ),
@@ -2909,6 +2962,7 @@ class _EndTripDialogState extends ConsumerState<_EndTripDialog> {
       final modoGps = ref.read(modoGpsServiceProvider);
       final activeShift = ref.read(activeShiftProvider).value;
       final endTime = widget.trip.endDate ?? DateTime.now();
+      final startTime = widget.trip.startDate;
 
       // 1. Cargar catálogo universal de peajes
       try {
@@ -2938,7 +2992,7 @@ class _EndTripDialogState extends ConsumerState<_EndTripDialog> {
       // 3. Consultar intervalo GPS
       final hTrip = await modoGps.fetchTripInterval(
         plate: widget.targetPlate,
-        startTime: widget.trip.startDate,
+        startTime: startTime,
         endTime: endTime,
         idEmpresa: activeShift?.idEmpresa,
       );

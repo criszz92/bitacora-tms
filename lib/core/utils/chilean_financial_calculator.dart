@@ -520,7 +520,7 @@ class ChileanFinancialCalculator {
     final Map<String, List<Map<String, double>>> routeStats = {};
 
     for (final trip in allTrips) {
-      final routeKey = '${trip.origin} -> ${trip.destination}';
+      final routeKey = trip.displayRoute3Steps;
       final vid = trip.vehicleId ?? 'N/A';
       final tripKm = trip.totalKm ?? 0;
       

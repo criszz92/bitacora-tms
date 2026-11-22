@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../firebase_options.dart';
 
 /// Resultado detallado de la solicitud de permisos GPS.
 enum LocationPermissionResult {
@@ -115,7 +116,9 @@ class LocationService {
 
     // Inicializar Firebase en el isolate de background
     try {
-      await Firebase.initializeApp();
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
     } catch (_) {
       // Ya podría estar inicializado
     }
@@ -127,13 +130,22 @@ class LocationService {
       service.stopSelf();
     });
 
+    service.on('updateNotification').listen((event) {
+      if (service is AndroidServiceInstance && event != null) {
+        service.setForegroundNotificationInfo(
+          title: event['title']?.toString() ?? "Bitácora TMS",
+          content: event['content']?.toString() ?? "Segundo plano activo",
+        );
+      }
+    });
+
     final List<Map<String, dynamic>> pointsBuffer = [];
 
     // Actualizar notificación inmediatamente para confirmar que el servicio arrancó
     if (service is AndroidServiceInstance) {
       service.setForegroundNotificationInfo(
-        title: "Bitácora - Viaje en Progreso",
-        content: "GPS activo — esperando señal...",
+        title: "Bitácora TMS - Turno Activo",
+        content: "Monitoreo de ruta y alertas activo",
       );
     }
 
@@ -303,5 +315,27 @@ class LocationService {
     await prefs.remove(_currentTripIdKey);
     
     return distanceToReturn;
+  }
+
+  /// Inicia el Foreground Service para evitar que Android mate la app mientras el chofer está en turno
+  static Future<void> startKeepAlive({String? title, String? content}) async {
+    final service = FlutterBackgroundService();
+    final isRunning = await service.isRunning();
+    if (!isRunning) {
+      await service.startService();
+    }
+    service.invoke('updateNotification', {
+      'title': title ?? 'Bitácora TMS - Turno Activo',
+      'content': content ?? 'Monitoreo de ruta y alertas activo',
+    });
+  }
+
+  /// Detiene el Foreground Service cuando se cierra el turno o la sesión
+  static Future<void> stopKeepAlive() async {
+    final service = FlutterBackgroundService();
+    final isRunning = await service.isRunning();
+    if (isRunning) {
+      service.invoke('stopService');
+    }
   }
 }

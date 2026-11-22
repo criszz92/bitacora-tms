@@ -32,8 +32,20 @@ class KpiDashboardView extends ConsumerWidget {
     final summary = summaryAsync.value ?? {};
     final dieselUsed = summary['precioDieselNeto'] ?? config?.precioDieselNeto ?? 800.0;
 
-    final trips = (tripsAsync.value ?? []).where((t) => selectedVehicleId == null || t.vehicleId == selectedVehicleId).toList();
-    final expenses = (expensesAsync.value ?? []).where((e) => selectedVehicleId == null || e.vehicleId == selectedVehicleId).toList();
+    // Normalización bidireccional (ID interno vs Patente física)
+    final selectedVehicleObj = vehicles.where((v) => v.id == selectedVehicleId || v.patente == selectedVehicleId).firstOrNull;
+    final targetPlate = selectedVehicleObj?.patente;
+    final targetId = selectedVehicleObj?.id ?? selectedVehicleId;
+
+    bool matchesVehicle(String? entityVehicleId) {
+      if (selectedVehicleId == null) return true;
+      if (entityVehicleId == null || entityVehicleId.isEmpty) return false;
+      return entityVehicleId == targetId || 
+             (targetPlate != null && entityVehicleId.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase() == targetPlate.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase());
+    }
+
+    final trips = (tripsAsync.value ?? []).where((t) => matchesVehicle(t.vehicleId)).toList();
+    final expenses = (expensesAsync.value ?? []).where((e) => matchesVehicle(e.vehicleId)).toList();
     final allMonthlyTrips = tripsAsync.value ?? [];
 
     return SingleChildScrollView(
@@ -533,7 +545,7 @@ class KpiDashboardView extends ConsumerWidget {
             Container(width: 8, height: 8, decoration: BoxDecoration(color: (t.billingType ?? '') == 'OS' ? Colors.white38 : Colors.orange, shape: BoxShape.circle)),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [Text('${t.origin ?? ""} → ${t.destination ?? ""}', style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)), const SizedBox(width: 8), Text(vehicle.patente, style: const TextStyle(color: Colors.white38, fontSize: 10))]),
+              Row(children: [Expanded(child: Text(t.displayRoute3Steps, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13), overflow: TextOverflow.ellipsis)), const SizedBox(width: 8), Text(vehicle.patente, style: const TextStyle(color: Colors.white38, fontSize: 10))]),
               Text('[${DateFormat('dd/MM').format(t.startDate)}] ${t.client ?? ""} | ${(t.containerNumber != null && t.containerNumber!.isNotEmpty) ? t.containerNumber : (t.guideNumber ?? "S/ID")}', 
                   style: const TextStyle(color: Colors.grey, fontSize: 11)),
             ])),
@@ -551,7 +563,7 @@ class KpiDashboardView extends ConsumerWidget {
       if (e.tripId != null && e.tripId!.isNotEmpty) {
         try {
           final trip = trips.firstWhere((t) => t.id == e.tripId);
-          linkedRoute = '${trip.origin} → ${trip.destination}';
+          linkedRoute = trip.displayRoute3Steps;
         } catch (_) {
           linkedRoute = 'Viaje no encontrado';
         }

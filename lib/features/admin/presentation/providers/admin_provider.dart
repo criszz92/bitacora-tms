@@ -247,16 +247,28 @@ final financialSummaryProvider = Provider<AsyncValue<Map<String, double>>>((ref)
   // Gatillamos la sincronización en segundo plano (si falta la UTM)
   ref.watch(utmSyncProvider);
 
-  final filteredTrips = selectedVehicleId == null ? trips : trips.where((t) => t.vehicleId == selectedVehicleId).toList();
-  final filteredExpenses = selectedVehicleId == null ? expenses : expenses.where((e) => e.vehicleId == selectedVehicleId).toList();
+  final vehicles = ref.watch(adminVehiclesProvider).value ?? [];
+
+  // Normalización bidireccional de camión para métricas financieras
+  final matchedVehicleObj = vehicles.where((v) => v.id == selectedVehicleId || v.patente == selectedVehicleId).firstOrNull;
+  final filterPlate = matchedVehicleObj?.patente.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase();
+  final filterId = matchedVehicleObj?.id ?? selectedVehicleId;
+
+  bool matchesVehicle(String? vId) {
+    if (selectedVehicleId == null) return true;
+    if (vId == null || vId.isEmpty) return false;
+    return vId == filterId || (filterPlate != null && vId.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase() == filterPlate);
+  }
+
+  final filteredTrips = selectedVehicleId == null ? trips : trips.where((t) => matchesVehicle(t.vehicleId)).toList();
+  final filteredExpenses = selectedVehicleId == null ? expenses : expenses.where((e) => matchesVehicle(e.vehicleId)).toList();
 
   // Obtenemos los valores específicos para este mes del historial
   final monthKey = "${month.year}-${month.month.toString().padLeft(2, '0')}";
   final utmValue = config.utmHistory[monthKey];
   final dieselValue = config.getDieselManualForMonth(monthKey);
 
-  final vehicles = ref.watch(adminVehiclesProvider).value ?? [];
-
+  
   // === CALCULO DE REMANENTE ACUMULADO DINAMICO HISTORICO ===
   // Si hay compras o saldo anterior en meses previos, calculamos cuanto remanente llega a este mes
   final allTrips = ref.watch(allTripsProvider).value ?? [];
