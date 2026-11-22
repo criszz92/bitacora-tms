@@ -77,7 +77,7 @@ class LocationService {
       'telemetry_service',
       'Servicio de Telemetría y Cabina',
       description: 'Rastreo de ruta activo y alertas en tiempo real',
-      importance: Importance.defaultNotification,
+      importance: Importance.defaultImportance,
     );
 
     final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();

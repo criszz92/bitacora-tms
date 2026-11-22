@@ -561,9 +561,7 @@ class KpiDashboardView extends ConsumerWidget {
               Row(children: [
                 Expanded(
                   child: Text(
-                    '[${DateFormat('dd/MM').format(t.startDate)}] ${t.client ?? ""}' +
-                        ' | ' +
-                        ((t.containerNumber != null && t.containerNumber!.isNotEmpty) ? t.containerNumber! : (t.guideNumber ?? "S/ID")),
+                    '[${DateFormat('dd/MM').format(t.startDate)}] ${t.client ?? ""} | ${(t.containerNumber != null && t.containerNumber!.isNotEmpty) ? t.containerNumber! : (t.guideNumber ?? "S/ID")}',
                     style: const TextStyle(color: Colors.grey, fontSize: 11),
                     overflow: TextOverflow.ellipsis,
                   ),

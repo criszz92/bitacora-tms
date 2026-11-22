@@ -990,9 +990,9 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
 
   Widget _buildValueField() {
     final baseline = ref.watch(routeTariffBaselineProvider);
-    final destination = _destinationCtrl.text.isNotEmpty 
-        ? _destinationCtrl.text 
-        : (_puntoDescarga ?? '');
+    final destination = _destCtrl.text.isNotEmpty 
+        ? _destCtrl.text 
+        : _puntoDescargaCtrl.text;
     final suggested = RouteTariffBaselineService.getSuggestedTariff(
       origin: _originCtrl.text,
       client: _clientCtrl.text,
