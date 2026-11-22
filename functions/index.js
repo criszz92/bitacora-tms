@@ -339,3 +339,34 @@ exports.onViaticoUpdated = functions.firestore
     }
     return null;
   });
+
+/**
+ * Publica o fuerza la actualización remota de versión de la app de choferes en Firestore.
+ * Puede ser invocada vía HTTPS GET/POST o webhook.
+ */
+exports.publishAppUpdate = functions.https.onRequest(async (req, res) => {
+  try {
+    const buildNumber = parseInt(req.query.build || req.body?.build || "11");
+    const versionName = req.query.version || req.body?.version || "1.1.0";
+    const apkUrl = req.query.url || req.body?.url || "https://firebasestorage.googleapis.com/v0/b/bitacora-tms.appspot.com/o/app_releases%2Fbitacora-tms-v1.1.0%2B11.apk?alt=media";
+    const releaseNotes = req.query.notes || req.body?.notes || "Actualización v1.1.0: Endurecimiento de reglas de seguridad, radar de tarifas por ruta, deducción IEPD Ley 19.764 y optimizaciones de telemetría.";
+    const mandatory = req.query.mandatory === "true" || req.body?.mandatory === true;
+
+    await admin.firestore().collection("app_version").doc("android_driver").set({
+      buildNumber,
+      versionName,
+      apkUrl,
+      releaseNotes,
+      mandatory,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    return res.status(200).json({
+      status: "success",
+      message: "Versión de app actualizada correctamente en Firestore",
+      published: { buildNumber, versionName, apkUrl, mandatory, releaseNotes }
+    });
+  } catch (error) {
+    return res.status(500).json({ status: "error", message: error.message });
+  }
+});

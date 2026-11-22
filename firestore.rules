@@ -207,10 +207,10 @@ service cloud.firestore {
 
     // 11. Control de Versiones y Actualización en Línea (OTA)
     // Lectura pública/abierta para que la app siempre pueda verificar si hay una nueva versión
-    // Escritura restringida exclusivamente al SuperAdmin
+    // Escritura permitida para Administradores de empresa y SuperAdmin
     match /app_version/{docId} {
       allow read: if true;
-      allow write: if isAuthenticated() && isSuperAdmin();
+      allow write: if isAuthenticated() && (isCompanyAdmin() || isSuperAdmin());
     }
   }
 }

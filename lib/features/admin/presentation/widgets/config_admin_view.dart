@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image/image.dart' as img;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -511,6 +512,90 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
                 ],
               ),
               const SizedBox(height: 24),
+              // --- SECCIÓN CONTROL DE ACTUALIZACIÓN EN LÍNEA (OTA) ---
+              _buildSectionCard(
+                title: 'Control de Versiones y Actualización en Línea (OTA)',
+                icon: Icons.system_update_alt,
+                children: [
+                  const Text(
+                    'Permite activar y forzar actualizaciones automáticas e inalámbricas en los celulares de todos los choferes.',
+                    style: TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.04),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.verified_outlined, color: Colors.greenAccent, size: 20),
+                            SizedBox(width: 8),
+                            Text(
+                              'Nueva Versión Lista: v1.1.0 (Build 11)',
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Incluye: Endurecimiento de reglas de seguridad, radar de tarifas por ruta, deducción IEPD Ley 19.764 y buffer GPS de alta resiliencia.',
+                          style: TextStyle(color: Colors.white60, fontSize: 12),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.orange,
+                            foregroundColor: Colors.black,
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          icon: const Icon(Icons.cloud_upload_rounded),
+                          label: const Text(
+                            'ACTIVAR ACTUALIZACIÓN OTA PARA TODOS LOS CONDUCTORES',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                          onPressed: () async {
+                            try {
+                              await FirebaseFirestore.instance.collection('app_version').doc('android_driver').set({
+                                'buildNumber': 11,
+                                'versionName': '1.1.0',
+                                'apkUrl': 'https://firebasestorage.googleapis.com/v0/b/bitacora-tms.appspot.com/o/app_releases%2Fbitacora-tms-v1.1.0%2B11.apk?alt=media',
+                                'releaseNotes': 'Actualización obligatoria v1.1.0: Endurecimiento de seguridad, radar de tarifas, Ley 19.764 y telemetría.',
+                                'mandatory': true,
+                                'updatedAt': FieldValue.serverTimestamp(),
+                              }, SetOptions(merge: true));
+
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('✓ Actualización v1.1.0 (Build 11) activada. Los conductores recibirán la actualización automáticamente al abrir la app.'),
+                                    backgroundColor: Colors.green,
+                                    duration: Duration(seconds: 5),
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Error al activar actualización: $e'), backgroundColor: Colors.red),
+                                );
+                              }
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
               // --- SECCIÓN PARÁMETROS DE MANTENIMIENTO DE FLOTA ---
               _buildSectionCard(
                 title: 'Parámetros de Mantenimiento de Flota',
@@ -579,7 +664,7 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text('Costo Total Estimado de Mantenimiento', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
-                        Text('\$${_maintenanceRules.fold(0.0, (sum, rule) => sum + ((rule['cost'] as double) / (rule['km'] as double))).toStringAsFixed(2)} / km', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+                        Text('\$${_maintenanceRules.fold(0.0, (total, rule) => total + ((rule['cost'] as double) / (rule['km'] as double))).toStringAsFixed(2)} / km', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
                       ],
                     ),
                   )
@@ -714,7 +799,7 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
                             ],
                           ),
                           Text(
-                            '\$${_recurringExpenses.where((g) => g.activo).fold<double>(0, (sum, g) => sum + g.monto).toStringAsFixed(0)} / mes',
+                            '\$${_recurringExpenses.where((g) => g.activo).fold<double>(0, (total, g) => total + g.monto).toStringAsFixed(0)} / mes',
                             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
                           ),
                         ],
