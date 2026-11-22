@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image/image.dart' as img;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +10,7 @@ import '../../domain/models/recurring_expense_model.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../trips/domain/models/vehicle_model.dart';
 import 'csv_importer_dialog.dart';
+import '../../../../core/services/app_update_service.dart';
 
 class ConfigAdminView extends ConsumerStatefulWidget {
   const ConfigAdminView({super.key});
@@ -32,6 +32,7 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
   final _ppmCtrl = TextEditingController();
   final _remanenteCtrl = TextEditingController();
   final _recuperacionIepdCtrl = TextEditingController();
+  bool _isUploadingApk = false;
 
   // Emisor
   final _razonSocialCtrl = TextEditingController();
@@ -549,47 +550,77 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
                           style: TextStyle(color: Colors.white60, fontSize: 12),
                         ),
                         const SizedBox(height: 16),
-                        ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.orange,
-                            foregroundColor: Colors.black,
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        if (_isUploadingApk) ...[
+                          const Row(
+                            children: [
+                              SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange)),
+                              SizedBox(width: 12),
+                              Text('Subiendo APK a la nube y publicando versión... Por favor espera.', style: TextStyle(color: Colors.orangeAccent, fontSize: 13, fontWeight: FontWeight.bold)),
+                            ],
                           ),
-                          icon: const Icon(Icons.cloud_upload_rounded),
-                          label: const Text(
-                            'ACTIVAR ACTUALIZACIÓN OTA PARA TODOS LOS CONDUCTORES',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                          ),
-                          onPressed: () async {
-                            try {
-                              await FirebaseFirestore.instance.collection('app_version').doc('android_driver').set({
-                                'buildNumber': 11,
-                                'versionName': '1.1.0',
-                                'apkUrl': 'https://firebasestorage.googleapis.com/v0/b/bitacora-tms.appspot.com/o/app_releases%2Fbitacora-tms-v1.1.0%2B11.apk?alt=media',
-                                'releaseNotes': 'Actualización obligatoria v1.1.0: Endurecimiento de seguridad, radar de tarifas, Ley 19.764 y telemetría.',
-                                'mandatory': true,
-                                'updatedAt': FieldValue.serverTimestamp(),
-                              }, SetOptions(merge: true));
+                        ] else ...[
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange,
+                              foregroundColor: Colors.black,
+                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            icon: const Icon(Icons.file_upload),
+                            label: const Text(
+                              'SUBIR ARCHIVO APK (.APK) Y ACTIVAR ACTUALIZACIÓN OTA',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                            onPressed: () async {
+                              try {
+                                final result = await FilePicker.pickFiles(
+                                  type: FileType.custom,
+                                  allowedExtensions: ['apk'],
+                                  withData: true,
+                                );
+                                if (result == null || result.files.isEmpty) return;
+                                final fileBytes = result.files.first.bytes;
+                                if (fileBytes == null) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('No se pudieron leer los datos del APK seleccionado.'), backgroundColor: Colors.red),
+                                    );
+                                  }
+                                  return;
+                                }
 
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('✓ Actualización v1.1.0 (Build 11) activada. Los conductores recibirán la actualización automáticamente al abrir la app.'),
-                                    backgroundColor: Colors.green,
-                                    duration: Duration(seconds: 5),
-                                  ),
+                                setState(() => _isUploadingApk = true);
+
+                                final downloadUrl = await AppUpdateService.uploadAndPublishApk(
+                                  apkBytes: fileBytes,
+                                  buildNumber: 11,
+                                  versionName: '1.1.0',
+                                  releaseNotes: 'Actualización obligatoria v1.1.0: Endurecimiento de seguridad, radar de tarifas, Ley 19.764 y telemetría.',
+                                  mandatory: true,
                                 );
+
+                                setState(() => _isUploadingApk = false);
+
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('✓ APK subido y Versión 1.1.0 (Build 11) activada con éxito. Enlace: $downloadUrl'),
+                                      backgroundColor: Colors.green,
+                                      duration: const Duration(seconds: 6),
+                                    ),
+                                  );
+                                }
+                              } catch (e) {
+                                setState(() => _isUploadingApk = false);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Error al subir APK: $e'), backgroundColor: Colors.red),
+                                  );
+                                }
                               }
-                            } catch (e) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Error al activar actualización: $e'), backgroundColor: Colors.red),
-                                );
-                              }
-                            }
-                          },
-                        ),
+                            },
+                          ),
+                        ],
                       ],
                     ),
                   ),

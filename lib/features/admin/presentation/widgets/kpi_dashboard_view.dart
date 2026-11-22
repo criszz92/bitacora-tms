@@ -530,7 +530,7 @@ class KpiDashboardView extends ConsumerWidget {
 
   // --- LISTAS Y DIÁLOGOS DE MÁXIMA ESTABILIDAD Y SEGURIDAD NUMÉRICA ---
 
-  Widget _buildTripsList(List trips, BuildContext context, WidgetRef ref, List<VehicleModel> vehicles) {
+  Widget _buildTripsList(List<TripModel> trips, BuildContext context, WidgetRef ref, List<VehicleModel> vehicles) {
     final baseline = ref.watch(routeTariffBaselineProvider);
     return Column(children: trips.map<Widget>((t) {
       final vehicle = vehicles.firstWhere(
@@ -538,10 +538,10 @@ class KpiDashboardView extends ConsumerWidget {
         orElse: () => VehicleModel(id: '', patente: t.vehicleId ?? 'S/P', idEmpresa: '')
       );
       final anomaly = baseline.evaluateTariff(
-        origin: t.origen ?? '',
-        client: t.client ?? '',
-        destination: t.destino ?? '',
-        enteredValue: (t.value ?? 0).toDouble(),
+        origin: t.origin,
+        client: t.client,
+        destination: t.destination,
+        enteredValue: t.value,
       );
       return InkWell(
         onTap: () => _showEditTripDialog(context, ref, t, vehicles),
@@ -550,7 +550,7 @@ class KpiDashboardView extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(10)),
           child: Row(children: [
-            Container(width: 8, height: 8, decoration: BoxDecoration(color: (t.billingType ?? '') == 'OS' ? Colors.white38 : Colors.orange, shape: BoxShape.circle)),
+            Container(width: 8, height: 8, decoration: BoxDecoration(color: t.billingType == 'OS' ? Colors.white38 : Colors.orange, shape: BoxShape.circle)),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
@@ -561,7 +561,7 @@ class KpiDashboardView extends ConsumerWidget {
               Row(children: [
                 Expanded(
                   child: Text(
-                    '[${DateFormat('dd/MM').format(t.startDate)}] ${t.client ?? ""} | ${(t.containerNumber != null && t.containerNumber!.isNotEmpty) ? t.containerNumber! : (t.guideNumber ?? "S/ID")}',
+                    '[${DateFormat('dd/MM').format(t.startDate)}] ${t.client} | ${(t.containerNumber != null && t.containerNumber!.isNotEmpty) ? t.containerNumber! : (t.guideNumber ?? "S/ID")}',
                     style: const TextStyle(color: Colors.grey, fontSize: 11),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -613,7 +613,7 @@ class KpiDashboardView extends ConsumerWidget {
               ]),
             ])),
             const SizedBox(width: 8),
-            Text(_fmt((t.value ?? 0) + (t.extraCostos ?? 0) + (t.sobreEstadia ?? 0)), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            Text(_fmt(t.value + (t.extraCostos ?? 0) + (t.sobreEstadia ?? 0)), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ]),
         ),
       );
