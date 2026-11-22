@@ -10,7 +10,10 @@ class RouteTariffStats {
   final double avgTariff;
   final double minTariff;
   final double maxTariff;
-  final double suggestedTariff;
+  final double suggestedTariff; // Tarifa Maestra / Moda Ponderada
+  final int frequencyCount;     // Cuántas veces se repite la tarifa maestra
+  final double confidenceScore; // % de viajes que coinciden con esta tarifa (0.0 a 1.0)
+  final double? avgKm;          // Distancia promedio en km para este corredor
 
   const RouteTariffStats({
     required this.routeKey,
@@ -19,6 +22,9 @@ class RouteTariffStats {
     required this.minTariff,
     required this.maxTariff,
     required this.suggestedTariff,
+    this.frequencyCount = 1,
+    this.confidenceScore = 1.0,
+    this.avgKm,
   });
 }
 
@@ -94,13 +100,18 @@ class RouteTariffBaselineService {
   /// Construye la línea base histórica a partir de todos los viajes registrados por la empresa
   /// Indexa por corredor comercial exacto (Mandante + Cliente + Destino), por corredor operativo
   /// (Cliente + Destino) y por cliente histórico.
+  /// Implementa selección por MODA PONDERADA (Tarifa que más veces se repite, con regla si >= 3-4 veces)
   static Map<String, RouteTariffStats> buildRouteBaseline(List<TripModel> trips) {
     final Map<String, List<double>> tariffsByRoute = {};
+    final Map<String, List<double>> kmsByRoute = {};
 
-    void addTariff(String key, double val) {
+    void addTariff(String key, double val, double? km) {
       final clean = key.trim().toUpperCase();
       if (clean.isEmpty) return;
       tariffsByRoute.putIfAbsent(clean, () => []).add(val);
+      if (km != null && km > 0) {
+        kmsByRoute.putIfAbsent(clean, () => []).add(km);
+      }
     }
 
     for (final trip in trips) {
@@ -115,27 +126,28 @@ class RouteTariffBaselineService {
               : trip.destination)
           .trim()
           .toUpperCase();
+      final km = trip.totalKm;
 
       // 1. Clave compuesta comercial exacta: MANDANTE + CLIENTE + DESTINO
       if (m.isNotEmpty && c.isNotEmpty && d.isNotEmpty) {
-        addTariff('MANDANTE:$m|CLIENTE:$c|DESTINO:$d', trip.value);
+        addTariff('MANDANTE:$m|CLIENTE:$c|DESTINO:$d', trip.value, km);
       }
 
       // 2. Corredor Operativo: CLIENTE + DESTINO
       if (c.isNotEmpty && d.isNotEmpty) {
-        addTariff('CLIENTE:$c|DESTINO:$d', trip.value);
+        addTariff('CLIENTE:$c|DESTINO:$d', trip.value, km);
       }
 
       // 3. Histórico por Cliente
       if (c.isNotEmpty && c != 'RETIRO ANTICIPADO' && c != 'MANTENIMIENTO') {
-        addTariff('CLIENTE:$c', trip.value);
+        addTariff('CLIENTE:$c', trip.value, km);
       }
 
       // 4. Clave 3 Pasos Tradicional
       final route3Steps = trip.displayRoute3Steps.trim().toUpperCase();
-      addTariff(route3Steps, trip.value);
+      addTariff(route3Steps, trip.value, km);
       if (o.isNotEmpty && c.isNotEmpty && d.isNotEmpty) {
-        addTariff('$o ➔ $c ➔ $d', trip.value);
+        addTariff('$o ➔ $c ➔ $d', trip.value, km);
       }
     }
 
@@ -151,10 +163,43 @@ class RouteTariffBaselineService {
       final min = values.first;
       final max = values.last;
 
-      // Mediana para mitigar valores atípicos
-      final median = total % 2 == 1
-          ? values[total ~/ 2]
-          : (values[(total ~/ 2) - 1] + values[total ~/ 2]) / 2.0;
+      // ── ALGORITMO DE MODA PONDERADA (Frecuencia de Repetición) ──
+      // Agrupamos tarifas dentro de una pequeña tolerancia (~$500 pesos por redondeos)
+      final Map<double, int> frequencies = {};
+      for (final val in values) {
+        // Redondear a la decena más cercana para unificar pequeñas variaciones
+        final rounded = (val / 100.0).roundToDouble() * 100.0;
+        frequencies[rounded] = (frequencies[rounded] ?? 0) + 1;
+      }
+
+      // Encontrar la tarifa con mayor frecuencia de repetición
+      double modeTariff = values.first;
+      int maxFreq = 0;
+      frequencies.forEach((tariffVal, count) {
+        if (count > maxFreq) {
+          maxFreq = count;
+          modeTariff = tariffVal;
+        }
+      });
+
+      // Si la moda tiene una frecuencia significativa (>= 3 repeticiones o >= 30% del volumen),
+      // esa es la REGLA MAESTRA. De lo contrario, usamos la mediana como fallback.
+      double suggested;
+      if (maxFreq >= 3 || (total >= 4 && (maxFreq / total) >= 0.4)) {
+        suggested = modeTariff;
+      } else {
+        // Mediana como fallback si no hay una moda clara
+        suggested = total % 2 == 1
+            ? values[total ~/ 2]
+            : (values[(total ~/ 2) - 1] + values[total ~/ 2]) / 2.0;
+      }
+
+      // Cálculo de Km promedio si existe
+      double? avgKm;
+      final kmList = kmsByRoute[route];
+      if (kmList != null && kmList.isNotEmpty) {
+        avgKm = kmList.fold<double>(0.0, (acc, k) => acc + k) / kmList.length;
+      }
 
       baseline[route] = RouteTariffStats(
         routeKey: route,
@@ -162,7 +207,10 @@ class RouteTariffBaselineService {
         avgTariff: avg,
         minTariff: min,
         maxTariff: max,
-        suggestedTariff: median,
+        suggestedTariff: suggested,
+        frequencyCount: maxFreq,
+        confidenceScore: total > 0 ? (maxFreq / total) : 1.0,
+        avgKm: avgKm,
       );
     });
 
@@ -257,8 +305,8 @@ class RouteTariffBaselineService {
     );
   }
 
-  /// Sugiere la tarifa más probable al seleccionar una ruta en el formulario
-  static double? getSuggestedTariff({
+  /// Retorna las estadísticas completas del mejor corredor o cliente disponible
+  static RouteTariffStats? getSuggestedStats({
     String? mandante,
     required String origin,
     required String client,
@@ -270,52 +318,55 @@ class RouteTariffBaselineService {
     final d = destination.trim().toUpperCase();
     final o = origin.trim().toUpperCase();
 
-    // Si no hay cliente, no podemos inferir una tarifa seria
     if (c.isEmpty || c == 'RETIRO ANTICIPADO' || c == 'MANTENIMIENTO') {
       return null;
     }
 
-    // Nivel 1: Coincidencia comercial exacta (Mandante + Cliente + Destino)
     if (m.isNotEmpty && d.isNotEmpty) {
       final keyExact = 'MANDANTE:$m|CLIENTE:$c|DESTINO:$d';
-      if (baseline.containsKey(keyExact)) {
-        return baseline[keyExact]!.suggestedTariff;
-      }
+      if (baseline.containsKey(keyExact)) return baseline[keyExact];
     }
 
-    // Nivel 2: Corredor de transporte (Cliente + Destino)
     if (d.isNotEmpty) {
       final keyCorredor = 'CLIENTE:$c|DESTINO:$d';
-      if (baseline.containsKey(keyCorredor)) {
-        return baseline[keyCorredor]!.suggestedTariff;
-      }
+      if (baseline.containsKey(keyCorredor)) return baseline[keyCorredor];
     }
 
-    // Nivel 3: Ruta de 3 pasos (Origen + Cliente + Destino)
     if (o.isNotEmpty && d.isNotEmpty) {
       final key3Steps = '$o ➔ $c ➔ $d';
-      if (baseline.containsKey(key3Steps)) {
-        return baseline[key3Steps]!.suggestedTariff;
-      }
+      if (baseline.containsKey(key3Steps)) return baseline[key3Steps];
     }
 
-    // Nivel 4: Histórico consolidado del Cliente
     final keyClient = 'CLIENTE:$c';
-    if (baseline.containsKey(keyClient)) {
-      return baseline[keyClient]!.suggestedTariff;
-    }
+    if (baseline.containsKey(keyClient)) return baseline[keyClient];
 
-    // Nivel 5: Búsqueda difusa por coincidencia de nombre de Cliente
     for (final entry in baseline.entries) {
       if (entry.key.startsWith('CLIENTE:')) {
         final clientInKey = entry.key.replaceFirst('CLIENTE:', '').split('|').first;
         if (clientInKey == c || (c.length >= 4 && (clientInKey.contains(c) || c.contains(clientInKey)))) {
-          return entry.value.suggestedTariff;
+          return entry.value;
         }
       }
     }
 
-    // Si el cliente no tiene registros, NUNCA prestar tarifa de otro cliente
     return null;
+  }
+
+  /// Sugiere la tarifa más probable al seleccionar una ruta en el formulario
+  static double? getSuggestedTariff({
+    String? mandante,
+    required String origin,
+    required String client,
+    required String destination,
+    required Map<String, RouteTariffStats> baseline,
+  }) {
+    final stats = getSuggestedStats(
+      mandante: mandante,
+      origin: origin,
+      client: client,
+      destination: destination,
+      baseline: baseline,
+    );
+    return stats?.suggestedTariff;
   }
 }

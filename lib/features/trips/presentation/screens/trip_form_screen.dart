@@ -993,13 +993,14 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
     final destination = _destCtrl.text.isNotEmpty 
         ? _destCtrl.text 
         : _puntoDescargaCtrl.text;
-    final suggested = RouteTariffBaselineService.getSuggestedTariff(
+    final suggestedStats = RouteTariffBaselineService.getSuggestedStats(
       mandante: _mandanteCtrl.text,
       origin: _originCtrl.text,
       client: _clientCtrl.text,
       destination: destination,
       baseline: baseline,
     );
+    final suggested = suggestedStats?.suggestedTariff;
 
     final rawVal = double.tryParse(_valueCtrl.text.replaceAll('.', '')) ?? 0.0;
     final anomaly = rawVal > 0 
@@ -1044,7 +1045,9 @@ class _TripFormScreenState extends ConsumerState<TripFormScreen> {
                     },
                     icon: const Icon(Icons.auto_awesome, size: 16, color: Colors.amberAccent),
                     label: Text(
-                      'Sugerir: \$${NumberFormat('#,###', 'es_CL').format(suggested.toInt())}',
+                      (suggestedStats != null && suggestedStats.frequencyCount >= 3)
+                          ? 'Regla: \$${NumberFormat('#,###', 'es_CL').format(suggested.toInt())} (${suggestedStats.frequencyCount}v)'
+                          : 'Sugerir: \$${NumberFormat('#,###', 'es_CL').format(suggested.toInt())}',
                       style: const TextStyle(color: Colors.amberAccent, fontSize: 11, fontWeight: FontWeight.bold),
                     ),
                   )

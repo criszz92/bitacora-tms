@@ -539,14 +539,14 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
                             Icon(Icons.verified_outlined, color: Colors.greenAccent, size: 20),
                             SizedBox(width: 8),
                             Text(
-                              'Nueva Versión Lista: v1.1.2 (Build 13)',
+                              'Nueva Versión Lista: v1.1.3 (Build 14)',
                               style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
                             ),
                           ],
                         ),
                         const SizedBox(height: 8),
                         const Text(
-                          'Incluye: Resolución de recursos de audio y keep.xml para alertas nativas, ficha completa de viajes, indicador de plataforma y radar inteligente de tarifas.',
+                          'Incluye: Matriz de tarifas por moda ponderada, resolución oficial de patentes en resumen y rediseño espacioso y legible de la Ficha del Conductor.',
                           style: TextStyle(color: Colors.white60, fontSize: 12),
                         ),
                         const SizedBox(height: 12),
@@ -563,7 +563,7 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
                               SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  'Canal Oficial: GitHub Releases (Direct CDN v1.1.2)',
+                                  'Canal Oficial: GitHub Releases (Direct CDN v1.1.3)',
                                   style: TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'monospace'),
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -590,24 +590,24 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
                             ),
                             icon: const Icon(Icons.cloud_done_rounded),
                             label: const Text(
-                              'ACTIVAR / FORZAR ACTUALIZACIÓN OTA v1.1.2 EN FLOTA',
+                              'ACTIVAR / FORZAR ACTUALIZACIÓN OTA v1.1.3 EN FLOTA',
                               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                             ),
                             onPressed: () async {
                               setState(() => _isActivatingOta = true);
                               try {
                                 await AppUpdateService.publishAppVersion(
-                                  buildNumber: 13,
-                                  versionName: '1.1.2',
-                                  apkUrl: 'https://github.com/criszz92/bitacora-tms/releases/download/v1.1.2/bitacora-tms-v1.1.2.apk',
-                                  releaseNotes: 'Actualización obligatoria v1.1.2: Resolución de audio de alertas nativas, ficha completa de viajes y cálculo inteligente de tarifas.',
+                                  buildNumber: 14,
+                                  versionName: '1.1.3',
+                                  apkUrl: 'https://github.com/criszz92/bitacora-tms/releases/download/v1.1.3/bitacora-tms-v1.1.3.apk',
+                                  releaseNotes: 'Actualización obligatoria v1.1.3: Matriz inteligente de tarifas (moda ponderada), resolución de patentes en resumen y rediseño legible de Ficha de Conductor.',
                                   mandatory: true,
                                 );
 
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
-                                      content: Text('✓ Actualización v1.1.2 (Build 13) activada en GitHub Releases para todos los conductores.'),
+                                      content: Text('✓ Actualización v1.1.3 (Build 14) activada en GitHub Releases para todos los conductores.'),
                                       backgroundColor: Colors.green,
                                       duration: Duration(seconds: 5),
                                     ),

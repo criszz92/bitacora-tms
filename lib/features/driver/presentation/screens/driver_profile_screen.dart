@@ -8,7 +8,6 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/domain/models/user_model.dart';
 import '../../../trips/presentation/providers/trip_provider.dart';
 import '../../../../core/theme/app_theme.dart';
-import '../../../../core/widgets/glass_container.dart';
 
 class DriverProfileScreen extends ConsumerStatefulWidget {
   const DriverProfileScreen({super.key});
@@ -316,7 +315,7 @@ class _DriverProfileScreenState extends ConsumerState<DriverProfileScreen> {
     return null;
   }
 
-  // ── 3. DATOS DE OPERACIÓN (SOLO LECTURA) ───────────────────────────────────
+  // ── 3. DATOS DE OPERACIÓN (TARJETA ESPACIOSA Y CLARA) ───────────────────────────
 
   Widget _buildInfoCard(UserModel user) {
     final licText = (user.licencias != null && user.licencias!.isNotEmpty)
@@ -331,134 +330,202 @@ class _DriverProfileScreenState extends ConsumerState<DriverProfileScreen> {
         ? DateFormat('dd/MM/yyyy').format(user.fechaVencimientoCedula!)
         : 'Sin fecha asignada';
 
-    return GlassContainer(
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161A22),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.badge, color: AppColors.primary, size: 16),
-              const SizedBox(width: 8),
-              const Text(
-                'DATOS DE HABILITACIÓN',
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.2,
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
                 ),
+                child: const Icon(Icons.badge_outlined, color: AppColors.primary, size: 20),
+              ),
+              const SizedBox(width: 12),
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'DATOS DE HABILITACIÓN',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.1,
+                    ),
+                  ),
+                  Text(
+                    'Registro oficial del conductor',
+                    style: TextStyle(color: Colors.white54, fontSize: 11),
+                  ),
+                ],
               ),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.white10,
-                  borderRadius: BorderRadius.circular(4),
+                  color: Colors.white.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(6),
                 ),
                 child: const Text(
-                  'SOLO LECTURA',
-                  style: TextStyle(color: Colors.white38, fontSize: 8, fontWeight: FontWeight.bold),
+                  'OFICIAL',
+                  style: TextStyle(color: Colors.white60, fontSize: 9, fontWeight: FontWeight.bold),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          _infoRow('Clase de Licencia', licText, Icons.drive_eta_outlined),
-          const Divider(color: Colors.white10, height: 20),
-          _infoRow('Vencimiento Licencia', fLic, Icons.calendar_month_outlined),
-          const Divider(color: Colors.white10, height: 20),
-          _infoRow('Vencimiento Cédula', fCI, Icons.credit_card_outlined),
-          const Divider(color: Colors.white10, height: 20),
-          _infoRow('Tracto Habitual', user.patenteAsignada ?? 'Por asignar', Icons.local_shipping_outlined),
-          const Divider(color: Colors.white10, height: 20),
-          _infoRow('Contrato', user.tipoContrato ?? 'Indefinido', Icons.description_outlined),
+          const SizedBox(height: 20),
+          _infoRow('Clase de Licencia', licText, Icons.drive_eta_outlined, Colors.amberAccent),
+          const Divider(color: Colors.white12, height: 26),
+          _infoRow('Vencimiento Licencia', fLic, Icons.calendar_month_outlined, Colors.blueAccent),
+          const Divider(color: Colors.white12, height: 26),
+          _infoRow('Vencimiento Cédula', fCI, Icons.credit_card_outlined, Colors.purpleAccent),
+          const Divider(color: Colors.white12, height: 26),
+          _infoRow('Tracto Habitual', user.patenteAsignada ?? 'Por asignar', Icons.local_shipping_outlined, Colors.orangeAccent),
+          const Divider(color: Colors.white12, height: 26),
+          _infoRow('Tipo de Contrato', user.tipoContrato ?? 'Indefinido', Icons.description_outlined, Colors.greenAccent),
         ],
       ),
     );
   }
 
-  Widget _infoRow(String label, String value, IconData icon) {
-    return Row(
-      children: [
-        Icon(icon, size: 16, color: Colors.white38),
-        const SizedBox(width: 10),
-        Text(
-          label,
-          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
-        ),
-        const Spacer(),
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
+  Widget _infoRow(String label, String value, IconData icon, Color iconColor) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 18, color: iconColor),
           ),
-        ),
-      ],
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500),
+            ),
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  // ── 4. ROAD MASTER SCORE ──────────────────────────────────────────────────
+  // ── 4. ROAD MASTER SCORE (AMPLIO Y LEGIBLE) ───────────────────────────────
 
   Widget _buildRoadMasterScoreCard(AsyncValue tripsAsync) {
-    // Calculamos métricas en base a viajes reales o defaults
-    int totalScore = 94;
-    int hitosScore = 38; // sobre 40
-    int combustibleScore = 28; // sobre 30
-    int jornadaScore = 28; // sobre 30
+    const int totalScore = 94;
+    const int hitosScore = 38; // sobre 40
+    const int combustibleScore = 28; // sobre 30
+    const int jornadaScore = 28; // sobre 30
 
-    return GlassContainer(
-      isActive: true,
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161A22),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.40)),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.12),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.workspace_premium, color: AppColors.primary, size: 20),
-                  SizedBox(width: 8),
-                  Text(
-                    'ROAD MASTER SCORE',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.5,
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
                     ),
+                    child: const Icon(Icons.workspace_premium_rounded, color: AppColors.primary, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'ROAD MASTER SCORE',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      Text(
+                        'Desempeño y cuidado operacional',
+                        style: TextStyle(color: Colors.white54, fontSize: 11),
+                      ),
+                    ],
                   ),
                 ],
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.15),
+                  color: AppColors.primary.withValues(alpha: 0.20),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
+                  border: Border.all(color: AppColors.primary),
                 ),
-                child: Text(
+                child: const Text(
                   '$totalScore / 100 PTS',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.primary,
                     fontWeight: FontWeight.w900,
-                    fontSize: 12,
+                    fontSize: 13,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           const Text(
             'Calificación de consistencia y cuidado operacional en ruta basada en tus registros.',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 11, height: 1.4),
+            style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 22),
           _scoreBar('Cumplimiento de Hitos en Ruta', hitosScore, 40, const Color(0xFF10B981)),
-          const SizedBox(height: 12),
+          const SizedBox(height: 18),
           _scoreBar('Calibración de Combustible (Km/L)', combustibleScore, 30, AppColors.primary),
-          const SizedBox(height: 12),
+          const SizedBox(height: 18),
           _scoreBar('Conciliación Odómetro de Jornada', jornadaScore, 30, const Color(0xFF38BDF8)),
         ],
       ),
@@ -473,17 +540,30 @@ class _DriverProfileScreenState extends ConsumerState<DriverProfileScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600)),
-            Text('$current / $max pts', style: TextStyle(color: barColor, fontSize: 11, fontWeight: FontWeight.bold)),
+            Text(
+              label,
+              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: barColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                '$current / $max pts',
+                style: TextStyle(color: barColor, fontSize: 11, fontWeight: FontWeight.bold),
+              ),
+            ),
           ],
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
         ClipRRect(
           borderRadius: BorderRadius.circular(6),
           child: LinearProgressIndicator(
             value: percent,
-            minHeight: 6,
-            backgroundColor: Colors.white10,
+            minHeight: 8,
+            backgroundColor: Colors.white12,
             valueColor: AlwaysStoppedAnimation<Color>(barColor),
           ),
         ),

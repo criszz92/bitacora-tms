@@ -273,6 +273,15 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
     final hasFreight = t.isOperativo && t.value > 0;
     final dateFormatted = DateFormat('EEE dd/MM', 'es_CL').format(t.startDate);
 
+    // Resolución limpia de Patente: si vehicleId es un ID de Firestore (ej: VEH-178...), busca la patente real en vehiclesProvider
+    final vehicles = ref.watch(vehiclesProvider).value ?? [];
+    String displayPlate = '';
+    if (t.vehicleId != null && t.vehicleId!.isNotEmpty) {
+      final rawVid = t.vehicleId!.trim();
+      final match = vehicles.where((v) => v.id == rawVid || v.patente.toUpperCase() == rawVid.toUpperCase()).firstOrNull;
+      displayPlate = match != null ? match.patente : (rawVid.startsWith('VEH-') ? (driver.patenteAsignada ?? rawVid) : rawVid);
+    }
+
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
@@ -493,8 +502,8 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
                     _buildChip(Icons.crop_square_rounded, 'Cont: ${t.containerNumber}', Colors.cyanAccent),
                   if (t.bookingNumber != null && t.bookingNumber!.isNotEmpty)
                     _buildChip(Icons.bookmark_outline_rounded, 'Bkg: ${t.bookingNumber}', Colors.purpleAccent),
-                  if (t.vehicleId != null && t.vehicleId!.isNotEmpty)
-                    _buildChip(Icons.drive_eta_outlined, t.vehicleId!, Colors.white70),
+                  if (displayPlate.isNotEmpty)
+                    _buildChip(Icons.local_shipping_outlined, displayPlate, Colors.orangeAccent),
                 ],
               ),
 
@@ -644,8 +653,15 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
                 _detailRow('Contenedor (ISO 6346)', t.containerNumber!, Icons.crop_square_rounded, Colors.cyanAccent),
               if (t.bookingNumber != null && t.bookingNumber!.isNotEmpty)
                 _detailRow('Booking', t.bookingNumber!, Icons.bookmark_border_rounded, Colors.purpleAccent),
-              if (t.vehicleId != null && t.vehicleId!.isNotEmpty)
-                _detailRow('Patente Camión', t.vehicleId!, Icons.drive_eta_outlined, Colors.orangeAccent),
+              if (t.vehicleId != null && t.vehicleId!.isNotEmpty) ...[
+                Builder(builder: (context) {
+                  final vehicles = ref.read(vehiclesProvider).value ?? [];
+                  final rawVid = t.vehicleId!.trim();
+                  final match = vehicles.where((v) => v.id == rawVid || v.patente.toUpperCase() == rawVid.toUpperCase()).firstOrNull;
+                  final plate = match != null ? '${match.patente} (${match.marca} ${match.modelo})' : (driver.patenteAsignada ?? rawVid);
+                  return _detailRow('Patente Camión', plate, Icons.local_shipping_outlined, Colors.orangeAccent);
+                }),
+              ],
 
               const Divider(color: Colors.white12, height: 24),
 
