@@ -22,6 +22,14 @@
 # Flutter plugin registrant (needed for background isolate plugin init)
 -keep class io.flutter.plugins.GeneratedPluginRegistrant { *; }
 
+# OTA Update plugin & FileProvider
+-keep class sk.fourq.otaupdate.** { *; }
+-keep class androidx.core.content.FileProvider { *; }
+-keep class okhttp3.** { *; }
+-keep interface okhttp3.** { *; }
+-dontwarn okhttp3.**
+-dontwarn okio.**
+
 # Preserve annotations used by Firebase / JSON serialization
 -keepattributes *Annotation*
 -keepattributes Signature

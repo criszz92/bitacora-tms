@@ -40,19 +40,25 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> {
     AppUpdateService.executeOtaUpdate(widget.updateInfo.apkUrl).listen(
       (event) {
         if (!mounted) return;
+        debugPrint('[OTA] Event status: ${event.status}, progress: ${event.progress}');
         switch (event.status) {
           case OtaStatus.DOWNLOADING:
             final pct = double.tryParse(event.progress) ?? 0.0;
             setState(() {
-              _progressValue = (pct / 100.0).clamp(0.0, 1.0);
-              _statusText = 'Descargando actualización: ${pct.toStringAsFixed(0)}%';
+              _progressValue = (pct / 100.0).clamp(0.01, 1.0);
+              _statusText = 'Descargando paquete oficial: ${pct.toStringAsFixed(0)}%';
             });
             break;
           case OtaStatus.INSTALLING:
+            setState(() {
+              _progressValue = 1.0;
+              _statusText = '📦 Verificando paquete e iniciando instalador Android...';
+            });
+            break;
           case OtaStatus.INSTALLATION_DONE:
             setState(() {
               _progressValue = 1.0;
-              _statusText = '✅ Descarga completa. Abriendo instalador de Android...';
+              _statusText = '✅ Actualización completada con éxito.';
             });
             break;
           case OtaStatus.ALREADY_RUNNING_ERROR:
@@ -63,7 +69,7 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> {
             break;
           case OtaStatus.PERMISSION_NOT_GRANTED_ERROR:
             setState(() {
-              _errorMessage = 'Permiso para instalar aplicaciones desconocido denegado en Ajustes.';
+              _errorMessage = 'Permiso para instalar aplicaciones desconocido denegado en Ajustes de Android.';
               _isDownloading = false;
             });
             break;
@@ -78,7 +84,7 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> {
           case OtaStatus.CHECKSUM_ERROR:
           case OtaStatus.INSTALLATION_ERROR:
             setState(() {
-              _errorMessage = 'Hubo una interrupción en la descarga. Pulsa "Reintentar Descarga".';
+              _errorMessage = 'Hubo una interrupción en la descarga (${event.status.name}). Pulsa "Reintentar Descarga".';
               _isDownloading = false;
             });
             break;
@@ -191,15 +197,38 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> {
                   value: _progressValue > 0 ? _progressValue : null,
                   backgroundColor: Colors.white12,
                   color: AppColors.primary,
-                  minHeight: 8,
+                  minHeight: 10,
                 ),
               ),
-              const SizedBox(height: 8),
-              Center(
-                child: Text(
-                  _statusText,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white70, fontSize: 11),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black38,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Colors.white10),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _statusText,
+                        style: const TextStyle(color: Colors.white70, fontSize: 11),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (_progressValue > 0)
+                      Text(
+                        '${(_progressValue * 100).toInt()}%',
+                        style: const TextStyle(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ],

@@ -36,9 +36,9 @@ android {
 
     buildTypes {
         release {
-            // Habilitar ofuscación y limpieza de recursos (R8/Proguard)
+            // Habilitar ofuscación R8 pero mantener nombres y recursos completos de Android
             isMinifyEnabled = true
-            isShrinkResources = true
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

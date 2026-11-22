@@ -180,19 +180,34 @@ class PushNotificationService {
           }
         }
 
-        // Asegurar que el canal v4 esté registrado antes de emitir
-        await androidImpl.createNotificationChannel(
-          const AndroidNotificationChannel(
-            'bitacora_binaural_v4',
-            'Alertas Inteligentes de Ruta (Binaural 528Hz)',
-            description:
-                'Canal prioritario para advertencias de romanas, peajes y restricciones con tono binaural 528Hz',
-            importance: Importance.max,
-            playSound: true,
-            sound: RawResourceAndroidNotificationSound('bitacora_alert'),
-            enableVibration: true,
-          ),
-        );
+        // Intentar registrar canal prioritario con tono bitacora_alert
+        try {
+          await androidImpl.createNotificationChannel(
+            const AndroidNotificationChannel(
+              'bitacora_binaural_v4',
+              'Alertas Inteligentes de Ruta (Binaural 528Hz)',
+              description:
+                  'Canal prioritario para advertencias de romanas, peajes y restricciones con tono binaural 528Hz',
+              importance: Importance.max,
+              playSound: true,
+              sound: RawResourceAndroidNotificationSound('bitacora_alert'),
+              enableVibration: true,
+            ),
+          );
+        } catch (channelErr) {
+          debugPrint('Aviso: Canal con sonido personalizado no pudo crearse, usando sonido por defecto: $channelErr');
+          await androidImpl.createNotificationChannel(
+            const AndroidNotificationChannel(
+              'bitacora_binaural_v4',
+              'Alertas Inteligentes de Ruta (Binaural 528Hz)',
+              description:
+                  'Canal prioritario para advertencias de romanas, peajes y restricciones',
+              importance: Importance.max,
+              playSound: true,
+              enableVibration: true,
+            ),
+          );
+        }
       }
 
       await showCustomNotification(
@@ -271,15 +286,36 @@ class PushNotificationService {
     required String title,
     required String body,
   }) async {
-    final NotificationDetails platformChannelSpecifics = NotificationDetails(
-      android: _binauralAlertChannel,
-    );
+    try {
+      final NotificationDetails platformChannelSpecifics = NotificationDetails(
+        android: _binauralAlertChannel,
+      );
 
-    await _localNotificationsPlugin.show(
-      id: id,
-      title: title,
-      body: body,
-      notificationDetails: platformChannelSpecifics,
-    );
+      await _localNotificationsPlugin.show(
+        id: id,
+        title: title,
+        body: body,
+        notificationDetails: platformChannelSpecifics,
+      );
+    } catch (e) {
+      debugPrint('Aviso: Falló notificación con sonido personalizado ($e), intentando con sonido estándar...');
+      const fallbackDetails = NotificationDetails(
+        android: AndroidNotificationDetails(
+          'bitacora_general_alerts',
+          'Alertas Bitácora TMS',
+          channelDescription: 'Canal general de notificaciones',
+          importance: Importance.max,
+          priority: Priority.high,
+          playSound: true,
+          enableVibration: true,
+        ),
+      );
+      await _localNotificationsPlugin.show(
+        id: id,
+        title: title,
+        body: body,
+        notificationDetails: fallbackDetails,
+      );
+    }
   }
 }

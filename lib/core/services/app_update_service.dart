@@ -106,7 +106,11 @@ class AppUpdateService {
   /// Inicia la descarga e instalación OTA del APK en Android
   static Stream<UpdateProgress> executeOtaUpdate(String apkUrl) async* {
     try {
-      final stream = OtaUpdate().execute(apkUrl, destinationFilename: 'bitacora-tms.apk');
+      final stream = OtaUpdate().execute(
+        apkUrl,
+        destinationFilename: 'bitacora-tms.apk',
+        usePackageInstaller: true,
+      );
       await for (final event in stream) {
         yield UpdateProgress(
           status: event.status,
