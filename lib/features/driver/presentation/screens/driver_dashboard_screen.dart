@@ -499,6 +499,16 @@ class DriverDashboardScreen extends ConsumerWidget {
                   // SECCIÓN: GESTIÓN Y FLOTA
                   _buildDrawerSectionHeader('GESTIÓN Y FLOTA'),
                   _buildDrawerItem(
+                    icon: Icons.radio_rounded,
+                    iconColor: AppColors.primary,
+                    title: 'Canal de Flota (PTT)',
+                    subtitle: 'Avisos oficiales y radio de choferes',
+                    onTap: () {
+                      context.pop();
+                      context.push('/fleet-chat');
+                    },
+                  ),
+                  _buildDrawerItem(
                     icon: Icons.badge_outlined,
                     iconColor: AppColors.primary,
                     title: 'Mi Perfil & Ficha',

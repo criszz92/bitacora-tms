@@ -1,4 +1,5 @@
 import '../../features/driver/presentation/screens/driver_profile_screen.dart';
+import '../../features/chat/presentation/screens/fleet_chat_screen.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -55,7 +56,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                              state.matchedLocation == '/add-trip' || 
                              state.matchedLocation == '/retro-trip' || 
                              state.matchedLocation == '/viaticos-request' || 
-                             state.matchedLocation == '/monthly-summary' || 
+                             state.matchedLocation == '/monthly-summary' ||
+                             state.matchedLocation == '/fleet-chat' || 
                              state.matchedLocation == '/start-shift';
         final isAdminPath = state.matchedLocation.startsWith('/admin');
 
@@ -120,6 +122,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/retro-trip',
         builder: (context, state) => const RetroTripFormScreen(),
+      ),
+      GoRoute(
+        path: '/fleet-chat',
+        builder: (context, state) => const FleetChatScreen(),
       ),
       GoRoute(
         path: '/driver-profile',

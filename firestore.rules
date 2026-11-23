@@ -71,6 +71,15 @@ service cloud.firestore {
       allow create: if isAuthenticated();
       allow read: if isAuthenticated() && getUserEmpresa() == empresaId;
       allow update: if isAuthenticated() && getUserEmpresa() == empresaId && isCompanyAdmin();
+
+      // Subcolección de mensajes del Canal de Flota y Avisos
+      match /mensajes/{mensajeId} {
+        allow read: if isAuthenticated() && getUserEmpresa() == empresaId;
+        allow create: if isAuthenticated() && getUserEmpresa() == empresaId;
+        // Permitir marcar como leído (arrayUnion) o administración
+        allow update: if isAuthenticated() && getUserEmpresa() == empresaId;
+        allow delete: if isAuthenticated() && getUserEmpresa() == empresaId && isCompanyAdmin();
+      }
     }
 
     // 3. Invitaciones

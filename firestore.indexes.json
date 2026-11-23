@@ -4,145 +4,274 @@
       "collectionGroup": "jornadas",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "idEmpresa", "order": "ASCENDING" },
-        { "fieldPath": "idChofer", "order": "ASCENDING" },
-        { "fieldPath": "status", "order": "ASCENDING" }
+        {
+          "fieldPath": "idEmpresa",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "idChofer",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "viajes",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "idEmpresa", "order": "ASCENDING" },
-        { "fieldPath": "idChofer", "order": "ASCENDING" },
-        { "fieldPath": "status", "order": "ASCENDING" }
+        {
+          "fieldPath": "idEmpresa",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "idChofer",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "viajes",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "idEmpresa", "order": "ASCENDING" },
-        { "fieldPath": "startDate", "order": "ASCENDING" }
+        {
+          "fieldPath": "idEmpresa",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startDate",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "gastos",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "idEmpresa", "order": "ASCENDING" },
-        { "fieldPath": "idChofer", "order": "ASCENDING" },
-        { "fieldPath": "date", "order": "DESCENDING" }
+        {
+          "fieldPath": "idEmpresa",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "idChofer",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "date",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "gastos",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "idEmpresa", "order": "ASCENDING" },
-        { "fieldPath": "date", "order": "ASCENDING" }
+        {
+          "fieldPath": "idEmpresa",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "date",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "viaticos",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "idEmpresa", "order": "ASCENDING" },
-        { "fieldPath": "creadoEn", "order": "DESCENDING" }
+        {
+          "fieldPath": "idEmpresa",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "creadoEn",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "viaticos",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "idEmpresa", "order": "ASCENDING" },
-        { "fieldPath": "idChofer", "order": "ASCENDING" },
-        { "fieldPath": "creadoEn", "order": "DESCENDING" }
+        {
+          "fieldPath": "idEmpresa",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "idChofer",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "creadoEn",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "liquidaciones",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "idEmpresa", "order": "ASCENDING" },
-        { "fieldPath": "fechaCreacion", "order": "ASCENDING" }
+        {
+          "fieldPath": "idEmpresa",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fechaCreacion",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "liquidaciones",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "idEmpresa", "order": "ASCENDING" },
-        { "fieldPath": "fechaCreacion", "order": "DESCENDING" }
+        {
+          "fieldPath": "idEmpresa",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fechaCreacion",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "usuarios",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "idEmpresa", "order": "ASCENDING" },
-        { "fieldPath": "rol", "order": "ASCENDING" }
+        {
+          "fieldPath": "idEmpresa",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "rol",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "incidencias",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "idEmpresa", "order": "ASCENDING" },
-        { "fieldPath": "fecha", "order": "DESCENDING" }
+        {
+          "fieldPath": "idEmpresa",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fecha",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "service_requests",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "cotizaciones",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "idEmpresa", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "idEmpresa",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "trip_summaries",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "plate", "order": "ASCENDING" },
-        { "fieldPath": "start_time", "order": "DESCENDING" }
+        {
+          "fieldPath": "plate",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "start_time",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "events",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "type", "order": "ASCENDING" },
-        { "fieldPath": "timestamp", "order": "DESCENDING" }
+        {
+          "fieldPath": "type",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "events",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "plate", "order": "ASCENDING" },
-        { "fieldPath": "type", "order": "ASCENDING" },
-        { "fieldPath": "timestamp", "order": "DESCENDING" }
+        {
+          "fieldPath": "plate",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "type",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "raw_positions",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "plate", "order": "ASCENDING" },
-        { "fieldPath": "ts", "order": "DESCENDING" }
+        {
+          "fieldPath": "plate",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ts",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "mensajes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "channelType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
       ]
     }
   ],
   "fieldOverrides": []
 }
-
-

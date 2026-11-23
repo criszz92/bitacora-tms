@@ -318,4 +318,28 @@ class PushNotificationService {
       );
     }
   }
+
+  /// Suscribe el dispositivo al tópico de la empresa para Avisos Masivos ($0 de costo y 0 lecturas)
+  static Future<void> subscribeToCompanyAnnouncements(String companyId) async {
+    if (kIsWeb) return;
+    try {
+      final topic = 'empresa_${companyId.trim().replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_')}_avisos';
+      await _messaging.subscribeToTopic(topic);
+      debugPrint('FCM: Suscrito con éxito al tópico de avisos: $topic');
+    } catch (e) {
+      debugPrint('FCM Error al suscribir a tópico: $e');
+    }
+  }
+
+  /// Cancela la suscripción al tópico
+  static Future<void> unsubscribeFromCompanyAnnouncements(String companyId) async {
+    if (kIsWeb) return;
+    try {
+      final topic = 'empresa_${companyId.trim().replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_')}_avisos';
+      await _messaging.unsubscribeFromTopic(topic);
+      debugPrint('FCM: Desuscrito del tópico de avisos: $topic');
+    } catch (e) {
+      debugPrint('FCM Error al desuscribir de tópico: $e');
+    }
+  }
 }
