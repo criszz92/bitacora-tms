@@ -285,9 +285,13 @@ class GpsHistoricalTrip {
   final List<GpsStop> stops;
   final GpsJourneyStart? journeyStart;
   final GpsJourneyEnd? journeyEnd;
+  final int idleMinutes;
+  final double idleFuelLiters;
 
   GpsHistoricalTrip({
     required this.plate,
+    this.idleMinutes = 0,
+    this.idleFuelLiters = 0.0,
     required this.startTime,
     required this.endTime,
     required this.totalDistanceKm,
@@ -785,29 +789,64 @@ class ModoGpsService {
           break;
         }
       }
-      matchedItem ??= items.first;
+      if (matchedItem == null) {
+        debugPrint('[ModoGPS] Patente "$cleanTarget" no encontrada en Wialon (${items.length} unidades).');
+        return null;
+      }
 
       final unitId = matchedItem['id'];
       if (unitId == null) return null;
 
-      // 2. Cargar mensajes del intervalo de fechas/horas
-      // Cargamos con flags=1 (posición) + flags=256 (parámetros de sensor/motor)
+      // 2. Cargar TODOS los mensajes del intervalo mediante paginación por tiempo
+      // Sin este bucle, Wialon corta a los primeros 2000 mensajes en viajes largos/multi-día.
       final timeFrom = startTime.millisecondsSinceEpoch ~/ 1000;
       final timeTo = endTime.millisecondsSinceEpoch ~/ 1000;
+      const int batchSize = 2000;
+      const int maxBatches = 25; // Hasta 50.000 mensajes
 
-      final loadParams = {
-        'itemId': unitId,
-        'timeFrom': timeFrom,
-        'timeTo': timeTo,
-        'flags': 1,
-        'flagsMask': 1,
-        'loadCount': 2000,
-      };
+      final List<dynamic> rawMsgs = [];
+      int currentFrom = timeFrom;
+      final Set<String> seenMsgKeys = {};
 
-      final mUrl = '$host/wialon/ajax.html?svc=messages/load_interval&params=${Uri.encodeComponent(jsonEncode(loadParams))}&sid=$eid';
-      final mRes = await callWialon(mUrl);
-      final rawMsgs = mRes['messages'] as List?;
-      if (rawMsgs == null || rawMsgs.isEmpty) return null;
+      for (int batch = 0; batch < maxBatches && currentFrom <= timeTo; batch++) {
+        final loadParams = {
+          'itemId': unitId,
+          'timeFrom': currentFrom,
+          'timeTo': timeTo,
+          'flags': 257,      // 1 (posición) + 256 (parámetros acc/din1)
+          'flagsMask': 257,
+          'loadCount': batchSize,
+        };
+
+        final mUrl = '$host/wialon/ajax.html?svc=messages/load_interval&params=${Uri.encodeComponent(jsonEncode(loadParams))}&sid=$eid';
+        final mRes = await callWialon(mUrl);
+        final batchMsgs = mRes['messages'] as List?;
+        if (batchMsgs == null || batchMsgs.isEmpty) break;
+
+        int? lastTsInBatch;
+        for (final msg in batchMsgs) {
+          if (msg is! Map) continue;
+          final ts = (msg['t'] as num?)?.toInt();
+          final pos = msg['pos'] as Map?;
+          final key = '${ts ?? 0}_${pos?['y'] ?? 0}_${pos?['x'] ?? 0}';
+          if (seenMsgKeys.add(key)) {
+            rawMsgs.add(msg);
+          }
+          if (ts != null) {
+            lastTsInBatch = ts;
+          }
+        }
+
+        // Si el lote trajo menos del máximo, ya no quedan más mensajes en el intervalo
+        if (batchMsgs.length < batchSize || lastTsInBatch == null) {
+          break;
+        }
+
+        // Avanzar ventana evitando loop infinito si todos los mensajes tienen el mismo segundo
+        currentFrom = lastTsInBatch > currentFrom ? lastTsInBatch : (currentFrom + 1);
+      }
+
+      if (rawMsgs.isEmpty) return null;
 
       final geofences = await fetchGeofences(idEmpresa: idEmpresa);
       final points = <GpsHistoricalPoint>[];
@@ -816,6 +855,8 @@ class ModoGpsService {
       double maxSpeed = 0.0;
       double speedSum = 0.0;
       int speedCount = 0;
+      int idleSeconds = 0;
+      DateTime? prevTs;
       LatLng? prevPos;
 
       String? currentZone;
@@ -876,8 +917,25 @@ class ModoGpsService {
         // ─────────────────────────────────────────────────────────────
 
         if (prevPos != null) {
-          totalDistMeters += GpsGeofence._haversineMeters(prevPos.latitude, prevPos.longitude, lat, lng);
+          final segMeters = GpsGeofence._haversineMeters(prevPos.latitude, prevPos.longitude, lat, lng);
+          // Filtrar saltos irreales por pérdida/rebote de señal (> 50 km entre dos mensajes seguidos)
+          if (segMeters < 50000) {
+            totalDistMeters += segMeters;
+          }
         }
+        if (prevTs != null) {
+          final msgParams = m['p'] as Map?;
+          final acc = (msgParams?['acc'] as num?) ??
+              (msgParams?['ACC'] as num?) ??
+              (msgParams?['din1'] as num?) ??
+              (msgParams?['in1'] as num?) ??
+              0;
+          final dtSec = timestamp.difference(prevTs).inSeconds;
+          if (acc > 0 && speed <= 3.0 && dtSec > 0 && dtSec <= 600) {
+            idleSeconds += dtSec;
+          }
+        }
+        prevTs = timestamp;
         prevPos = point;
 
         if (speed > maxSpeed) maxSpeed = speed;
@@ -1121,6 +1179,9 @@ class ModoGpsService {
             'duración=${duration.inHours}h ${duration.inMinutes % 60}m');
       }
 
+      final idleMinutes = (idleSeconds / 60).round();
+      final idleFuelLiters = (idleSeconds / 3600.0) * 2.0; // Base 2.0 L/h; la UI aplica matchedVehicle.consumoRalentiLitrosHora
+
       return GpsHistoricalTrip(
         plate: plate,
         startTime: startTime,
@@ -1136,6 +1197,8 @@ class ModoGpsService {
         stops: stops,
         journeyStart: journeyStart,
         journeyEnd: journeyEnd,
+        idleMinutes: idleMinutes,
+        idleFuelLiters: idleFuelLiters,
       );
     } catch (e) {
       debugPrint('[ModoGPS] Error fetchTripInterval: $e');

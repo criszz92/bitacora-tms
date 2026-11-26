@@ -10,6 +10,7 @@ import '../../domain/models/incidencia_model.dart';
 import '../../domain/models/company_config_model.dart';
 import '../../../../core/utils/chilean_holidays.dart';
 import '../../../../core/utils/chilean_financial_calculator.dart';
+import '../../../../core/utils/tms_backbone.dart';
 import 'monthly_report_exporter.dart';
 import 'create_incidencia_dialog.dart';
 
@@ -60,13 +61,13 @@ class _MonthlyReportsViewState extends ConsumerState<MonthlyReportsView> with Si
     final drivers = driversAsync.value ?? [];
     final summary = summaryAsync.value ?? {};
 
-    // Filtrado por unidad si se selecciona una específica
+    // Filtrado por unidad si se selecciona una específica (normalizado ID vs Patente)
     final filteredTrips = _filterVehicleId == null
         ? trips
-        : trips.where((t) => t.vehicleId == _filterVehicleId).toList();
+        : trips.where((t) => TmsBackbone.canonicalVehicleKey(t.vehicleId, vehicles) == _filterVehicleId).toList();
     final filteredExpenses = _filterVehicleId == null
         ? expenses
-        : expenses.where((e) => e.vehicleId == _filterVehicleId).toList();
+        : expenses.where((e) => TmsBackbone.canonicalVehicleKey(e.vehicleId, vehicles) == _filterVehicleId).toList();
 
     // ─── CÁLCULO DE HISTORIAL DE 3 MESES PARA COMPARATIVAS ───
     final List<Map<String, dynamic>> history3Months = _calculate3MonthsHistory(
@@ -88,8 +89,14 @@ class _MonthlyReportsViewState extends ConsumerState<MonthlyReportsView> with Si
       config,
     );
 
-    // ─── CÁLCULO DE MATRIZ DE RUTAS ───
-    final List<Map<String, dynamic>> routeStats = _calculateRouteStats(filteredTrips, filteredExpenses);
+    // ─── CÁLCULO DE MATRIZ DE RUTAS (Desde Columna Vertebral Única) ───
+    final List<Map<String, dynamic>> routeStats = _calculateRouteStats(
+      filteredTrips,
+      filteredExpenses,
+      drivers,
+      vehicles,
+      config,
+    );
 
     final monthName = DateFormat('MMMM yyyy', 'es_CL').format(selectedMonth).toUpperCase();
 
@@ -664,7 +671,9 @@ class _MonthlyReportsViewState extends ConsumerState<MonthlyReportsView> with Si
         }
       }
 
-      final rendimiento = (litros > 0 && km > 0) ? (km / litros) : 0.0;
+      // Rendimiento real vigente (entre estanques llenos o configurado del camión),
+      // evitando dividir KM/LitrosComprados cuando el estanque aún conserva saldo.
+      final rendimiento = TmsBackbone.resolveVehicleEfficiency(v);
 
       // Días en Taller calculados por incidencias del mes
       final vIncidencias = incidencias.where((i) {
@@ -704,33 +713,30 @@ class _MonthlyReportsViewState extends ConsumerState<MonthlyReportsView> with Si
     }).toList();
   }
 
-  List<Map<String, dynamic>> _calculateRouteStats(List<TripModel> trips, List<ExpenseModel> expenses) {
-    final Map<String, List<TripModel>> grouped = {};
-    for (final t in trips) {
-      final key = '${t.origin} -> ${t.destination}';
-      grouped.putIfAbsent(key, () => []).add(t);
-    }
+  List<Map<String, dynamic>> _calculateRouteStats(
+    List<TripModel> trips,
+    List<ExpenseModel> expenses,
+    List<UserModel> drivers,
+    List<VehicleModel> vehicles,
+    CompanyConfigModel config,
+  ) {
+    final profitability = ChileanFinancialCalculator.calculateRouteProfitability(
+      allTrips: trips,
+      allExpenses: expenses,
+      allDrivers: drivers,
+      config: config,
+      vehicles: vehicles,
+    );
 
-    return grouped.entries.map((e) {
-      final routeKey = e.key;
-      final rTrips = e.value;
-      double ingresoTotal = 0;
-      double kmTotal = 0;
-
-      for (final t in rTrips) {
-        ingresoTotal += t.value + (t.extraCostos ?? 0) + (t.sobreEstadia ?? 0);
-        kmTotal += (t.totalKm ?? 0);
-      }
-
-      // Costo directo estimado por KM promedio
-      final costoDirecto = kmTotal * 650.0; // Diésel + Peajes promedio
-      final margen = ingresoTotal - costoDirecto;
-      final rentabilidad = ingresoTotal > 0 ? (margen / ingresoTotal) * 100 : 0.0;
+    return profitability.map((r) {
+      final costoDirecto = r.totalFuelCost + r.totalTolls + r.totalViaticos + r.totalPersonal + r.totalMaintenance;
+      final margen = r.netMargin;
+      final rentabilidad = r.totalIncome > 0 ? (margen / r.totalIncome) * 100 : 0.0;
 
       return {
-        'ruta': routeKey,
-        'frecuencia': rTrips.length,
-        'ingreso': ingresoTotal,
+        'ruta': r.route,
+        'frecuencia': r.tripCount,
+        'ingreso': r.totalIncome,
         'costo': costoDirecto,
         'margen': margen,
         'rentabilidad': rentabilidad,

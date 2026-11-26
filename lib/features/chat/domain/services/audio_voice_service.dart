@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -96,11 +97,22 @@ class AudioVoiceService {
     } catch (_) {}
   }
 
-  /// Reproduce un audio desde URL de Storage (solo bajo demanda)
-  Future<void> playAudio(String url) async {
+  /// Reproduce un audio, ya sea URL remota o Base64 directo
+  Future<void> playAudio(String audioSource) async {
     try {
       await _audioPlayer.stop();
-      await _audioPlayer.setUrl(url);
+
+      if (audioSource.startsWith('http://') || audioSource.startsWith('https://')) {
+        await _audioPlayer.setUrl(audioSource);
+      } else {
+        // Reproducir desde Base64 decodificando a archivo temporal local
+        final bytes = base64Decode(audioSource);
+        final tempDir = await getTemporaryDirectory();
+        final tempFile = File('${tempDir.path}/playback_${DateTime.now().millisecondsSinceEpoch}.m4a');
+        await tempFile.writeAsBytes(bytes);
+        await _audioPlayer.setFilePath(tempFile.path);
+      }
+
       await _audioPlayer.play();
     } catch (e) {
       debugPrint('Error reproduciendo audio: $e');
@@ -118,4 +130,3 @@ class AudioVoiceService {
     _audioPlayer.dispose();
   }
 }
-

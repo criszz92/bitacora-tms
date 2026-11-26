@@ -517,6 +517,7 @@ class AnalyticsView extends ConsumerWidget {
                                 'ING: ${NumberFormat.compactCurrency(symbol: r'$', decimalDigits: 0).format(route.totalIncome)} | '
                                 'COMB: ${NumberFormat.compactCurrency(symbol: r'$', decimalDigits: 0).format(route.totalFuelCost)} | '
                                 'PEAJE: ${NumberFormat.compactCurrency(symbol: r'$', decimalDigits: 0).format(route.totalTolls)} | '
+                                'VIAT: ${NumberFormat.compactCurrency(symbol: r'$', decimalDigits: 0).format(route.totalViaticos)} | '
                                 'PERS: ${NumberFormat.compactCurrency(symbol: r'$', decimalDigits: 0).format(route.totalPersonal)} | '
                                 'MANT: ${NumberFormat.compactCurrency(symbol: r'$', decimalDigits: 0).format(route.totalMaintenance)}',
                                 style: const TextStyle(color: Colors.white24, fontSize: 9),

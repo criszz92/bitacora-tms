@@ -133,8 +133,9 @@ async function notifyAdmins(idEmpresa, title, body, data = {}) {
       android: {
         priority: "high",
         notification: {
-          channelId: "bitacora_binaural_v3",
+          channelId: "bitacora_binaural_v4",
           sound: "bitacora_alert",
+          defaultSound: false,
           priority: "max",
           visibility: "public"
         }
@@ -161,7 +162,7 @@ async function notifyDriver(idChofer, title, body, data = {}) {
           android: {
             priority: "high",
             notification: {
-              channelId: "bitacora_binaural_v3",
+              channelId: "bitacora_binaural_v4",
               sound: "bitacora_alert",
               defaultSound: false,
               priority: "max",
@@ -193,16 +194,18 @@ exports.onTripFinished = functions.firestore
     }
 
     const totalKm = after.totalKm;
-    const vehiclePatente = after.patenteCamion;
-    if (!vehiclePatente) return null;
+    const vehicleRefId = after.patenteCamion || after.vehicleId;
+    if (!vehicleRefId) return null;
 
-    // Buscar el vehiculo
+    // Buscar el vehiculo por ID directo o por patente
     const vehiculosRef = admin.firestore().collection("vehiculos");
-    const snapshot = await vehiculosRef.where("patente", "==", vehiclePatente).limit(1).get();
-    
-    if (snapshot.empty) return null;
+    let vehicleDoc = await vehiculosRef.doc(vehicleRefId).get();
+    if (!vehicleDoc.exists) {
+      const snapshot = await vehiculosRef.where("patente", "==", vehicleRefId).limit(1).get();
+      if (snapshot.empty) return null;
+      vehicleDoc = snapshot.docs[0];
+    }
 
-    const vehicleDoc = snapshot.docs[0];
     const vehicleData = vehicleDoc.data();
     const currentOdometer = vehicleData.currentOdometer || 0;
     const newOdometer = currentOdometer + totalKm;
@@ -323,14 +326,16 @@ exports.onViaticoUpdated = functions.firestore
     const after = change.after.data();
 
     if (before.estado !== after.estado && after.idChofer) {
+      const monto = after.montoTotal ?? after.monto ?? 0;
+      const estadoLower = String(after.estado || "").toLowerCase();
       let title = "💵 Actualización de Viático";
-      let body = `Tu solicitud por $${after.monto || 0} ha cambiado a: ${after.estado}`;
-      if (after.estado === "aprobado" || after.estado === "Aprobado") {
-        title = "✅ Viático Aprobado";
-        body = `Tu rendición por $${after.monto || 0} ha sido aprobada.`;
-      } else if (after.estado === "rechazado" || after.estado === "Rechazado") {
+      let body = `Tu solicitud por $${monto} ha cambiado a: ${after.estado}`;
+      if (estadoLower === "pagado" || estadoLower === "aprobado") {
+        title = estadoLower === "pagado" ? "✅ Viático Pagado" : "✅ Viático Aprobado";
+        body = `Tu rendición por $${monto} ha sido ${estadoLower}.`;
+      } else if (estadoLower === "rechazado") {
         title = "❌ Viático Rechazado";
-        body = `Tu rendición por $${after.monto || 0} ha sido rechazada.`;
+        body = `Tu rendición por $${monto} ha sido rechazada.`;
       }
       await notifyDriver(after.idChofer, title, body, {
         viaticoId: context.params.viaticoId,

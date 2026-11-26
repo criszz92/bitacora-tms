@@ -396,6 +396,7 @@ final routeProfitabilityProvider = Provider<AsyncValue<List<RouteProfitability>>
     allExpenses: expenses,
     allDrivers: choferes,
     config: config,
+    vehicles: ref.watch(adminVehiclesProvider).value ?? [],
   );
   
   return AsyncValue.data(results);

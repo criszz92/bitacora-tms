@@ -84,6 +84,19 @@ class PushNotificationService {
         ),
       );
 
+      // Canal legacy v3 para compatibilidad con triggers en la nube ya desplegados
+      await androidImplementation.createNotificationChannel(
+        const AndroidNotificationChannel(
+          'bitacora_binaural_v3',
+          'Alertas Operacionales Bitácora TMS',
+          description: 'Canal compatible para notificaciones push en segundo plano',
+          importance: Importance.max,
+          playSound: true,
+          sound: RawResourceAndroidNotificationSound('bitacora_alert'),
+          enableVibration: true,
+        ),
+      );
+
       // Solicitar permisos de notificación explícitos para Android 13+ (API 33+)
       await androidImplementation.requestNotificationsPermission();
     }
@@ -236,12 +249,21 @@ class PushNotificationService {
     final targetUid = uid ?? FirebaseAuth.instance.currentUser?.uid;
     if (targetUid != null) {
       try {
-        await FirebaseFirestore.instance.collection('usuarios').doc(targetUid).set({
-          'fcmToken': token,
-          'fcmUpdatedAt': FieldValue.serverTimestamp(),
-          'platform': defaultTargetPlatform.name,
-        }, SetOptions(merge: true));
-        debugPrint('FCM Token guardado en Firestore para usuario $targetUid.');
+        final payload = kIsWeb
+            ? <String, dynamic>{
+                'fcmTokenWeb': token,
+                'fcmWebUpdatedAt': FieldValue.serverTimestamp(),
+              }
+            : <String, dynamic>{
+                'fcmToken': token,
+                'fcmUpdatedAt': FieldValue.serverTimestamp(),
+                'platform': defaultTargetPlatform.name,
+              };
+        await FirebaseFirestore.instance.collection('usuarios').doc(targetUid).set(
+              payload,
+              SetOptions(merge: true),
+            );
+        debugPrint('FCM Token (${kIsWeb ? "Web" : "Móvil"}) guardado en Firestore para usuario $targetUid.');
       } catch (e) {
         debugPrint('FCM Error al guardar token en Firestore: $e');
       }

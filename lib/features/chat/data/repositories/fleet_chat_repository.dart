@@ -1,13 +1,12 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/models/fleet_message_model.dart';
 
 final fleetChatRepositoryProvider = Provider<FleetChatRepository>((ref) {
   return FleetChatRepository(
     firestore: FirebaseFirestore.instance,
-    storage: FirebaseStorage.instance,
   );
 });
 
@@ -19,13 +18,10 @@ final fleetMessagesStreamProvider = StreamProvider.family<List<FleetMessageModel
 
 class FleetChatRepository {
   final FirebaseFirestore _firestore;
-  final FirebaseStorage _storage;
 
   FleetChatRepository({
     required FirebaseFirestore firestore,
-    required FirebaseStorage storage,
-  })  : _firestore = firestore,
-        _storage = storage;
+  }) : _firestore = firestore;
 
   CollectionReference _messagesRef(String companyId) {
     return _firestore.collection('empresas').doc(companyId).collection('mensajes');
@@ -78,7 +74,8 @@ class FleetChatRepository {
     await _messagesRef(companyId).add(message.toFirestore());
   }
 
-  /// Sube nota de voz Opus/M4A ultra-comprimida a Storage y crea el mensaje
+  /// Envía un audio PTT comprimido en Base64 directamente a Firestore (Independiente de Firebase Storage)
+  /// Un audio de 10s en AAC a 16kbps pesa ~18KB, que en Base64 son ~24KB (El límite de Firestore por doc es 1048KB = 1MB).
   Future<void> sendAudioMessage({
     required String companyId,
     required String senderId,
@@ -89,20 +86,8 @@ class FleetChatRepository {
     required File audioFile,
     required int durationSec,
   }) async {
-    final fileName = 'PTT_${DateTime.now().millisecondsSinceEpoch}_$senderId.m4a';
-    final ref = _storage.ref().child('empresas/$companyId/audios/$fileName');
-
-    // Metadatos para auto-identificación y expiración
-    final metadata = SettableMetadata(
-      contentType: 'audio/m4a',
-      customMetadata: {
-        'senderId': senderId,
-        'duration': durationSec.toString(),
-      },
-    );
-
-    final uploadTask = await ref.putFile(audioFile, metadata);
-    final downloadUrl = await uploadTask.ref.getDownloadURL();
+    final bytes = await audioFile.readAsBytes();
+    final base64Audio = base64Encode(bytes);
 
     final message = FleetMessageModel(
       id: '',
@@ -114,7 +99,7 @@ class FleetChatRepository {
       patente: patente,
       activeDestination: activeDestination,
       type: MessageType.audio,
-      content: downloadUrl,
+      content: base64Audio, // Audio autónomo sin Storage
       audioDurationSec: durationSec,
       readBy: [senderId],
       createdAt: DateTime.now(),
@@ -134,4 +119,3 @@ class FleetChatRepository {
     }
   }
 }
-

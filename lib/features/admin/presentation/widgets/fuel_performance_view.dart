@@ -5,6 +5,7 @@ import 'package:bitacora/features/trips/domain/models/vehicle_model.dart';
 import 'package:bitacora/features/trips/domain/models/expense_model.dart';
 import 'package:bitacora/features/admin/domain/services/fuel_performance_service.dart';
 import 'package:bitacora/core/utils/number_utils.dart';
+import 'package:bitacora/core/utils/tms_backbone.dart';
 
 class FuelPerformanceView extends ConsumerStatefulWidget {
   const FuelPerformanceView({super.key});
@@ -25,7 +26,13 @@ class _FuelPerformanceViewState extends ConsumerState<FuelPerformanceView> {
     final vehicles = vehiclesAsync.value ?? [];
     final allExpenses = expensesAsync.value ?? [];
     final config = configAsync.value;
-    final dieselPrice = config?.precioDieselNeto ?? 1050.0;
+    final dieselPrice = TmsBackbone.resolveDieselNetoPrice(
+      refDate: DateTime.now(),
+      vehicleIdOrPlate: _selectedVehicleId,
+      vehicles: vehicles,
+      fuelExpenses: allExpenses,
+      config: config,
+    );
 
     return Scaffold(
       backgroundColor: const Color(0xFF121212),

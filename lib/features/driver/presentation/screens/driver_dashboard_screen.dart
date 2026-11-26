@@ -3130,17 +3130,32 @@ class _EndTripDialogState extends ConsumerState<_EndTripDialog> {
 
           for (int ptIdx = 0; ptIdx < hTrip.points.length; ptIdx++) {
             final pt = hTrip.points[ptIdx];
-            final distM = distanceCalc.as(LengthUnit.Meter, peajeLatLng, pt.position);
+            final distM = ptIdx > 0
+                ? RoadInfrastructureDetector.calculateDistanceToSegmentMeters(
+                    peajeLatLng,
+                    hTrip.points[ptIdx - 1].position,
+                    pt.position,
+                  )
+                : distanceCalc.as(LengthUnit.Meter, peajeLatLng, pt.position);
 
             if (distM <= maxRadius) {
-              // Calcular rumbo del camión en ese momento
+              // Calcular rumbo del camión evitando jitter si el punto anterior está muy cerca (< 15m)
               double? ptBearing;
-              if (ptIdx > 0) {
-                final prevPt = hTrip.points[ptIdx - 1];
-                ptBearing = RoadInfrastructureDetector.calculateBearing(prevPt.position, pt.position);
-              } else if (ptIdx < hTrip.points.length - 1) {
-                final nextPt = hTrip.points[ptIdx + 1];
-                ptBearing = RoadInfrastructureDetector.calculateBearing(pt.position, nextPt.position);
+              for (int back = ptIdx - 1; back >= 0; back--) {
+                final prevPt = hTrip.points[back];
+                if (RoadInfrastructureDetector.calculateDistanceMeters(prevPt.position, pt.position) >= 15.0) {
+                  ptBearing = RoadInfrastructureDetector.calculateBearing(prevPt.position, pt.position);
+                  break;
+                }
+              }
+              if (ptBearing == null && ptIdx < hTrip.points.length - 1) {
+                for (int fwd = ptIdx + 1; fwd < hTrip.points.length; fwd++) {
+                  final nextPt = hTrip.points[fwd];
+                  if (RoadInfrastructureDetector.calculateDistanceMeters(pt.position, nextPt.position) >= 15.0) {
+                    ptBearing = RoadInfrastructureDetector.calculateBearing(pt.position, nextPt.position);
+                    break;
+                  }
+                }
               }
 
               // Validar concordancia de sentido (Norte a Sur vs Sur a Norte, etc.)
@@ -3148,7 +3163,7 @@ class _EndTripDialogState extends ConsumerState<_EndTripDialog> {
                 continue;
               }
 
-              if (lastDetectionTime == null || pt.timestamp.difference(lastDetectionTime).inMinutes.abs() > 8) {
+              if (lastDetectionTime == null || pt.timestamp.difference(lastDetectionTime).inMinutes.abs() > 20) {
                 if (lastDetectionTime != null && minDistanceInPass < double.infinity) {
                   final defaultAmount = peaje.tarifaCamionPesado ?? peaje.tarifaCamionSimple ?? 0.0;
                   final isSaved = existingPeajeNames.any((n) => n.contains(peaje.nombre.toLowerCase()));
@@ -3906,7 +3921,8 @@ class _EndTripDialogState extends ConsumerState<_EndTripDialog> {
                       final tollAmount = toll.amount;
                       if (tollAmount <= 0) continue;
 
-                      final expenseId = 'EXP-TOLL-${DateTime.now().millisecondsSinceEpoch}-$savedTollsCount';
+                      final bucket10m = toll.passTime.millisecondsSinceEpoch ~/ 600000;
+                      final expenseId = 'EXP-TOLL-${widget.trip.id}-${toll.peaje.id}-$bucket10m';
                       final expense = ExpenseModel(
                         id: expenseId,
                         idEmpresa: activeShift?.idEmpresa ?? widget.trip.idEmpresa,
@@ -3919,7 +3935,7 @@ class _EndTripDialogState extends ConsumerState<_EndTripDialog> {
                         date: toll.passTime,
                         description: 'Peaje: ${toll.peaje.nombre}${toll.peaje.ruta.isNotEmpty ? ' (${toll.peaje.ruta})' : ''}',
                         status: 'Pendiente',
-                        vehicleId: widget.targetPlate,
+                        vehicleId: widget.trip.vehicleId ?? widget.targetPlate,
                       );
 
                       await ref.read(tripRepositoryProvider).addExpense(expense);

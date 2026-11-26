@@ -9,6 +9,7 @@ import '../../../trips/domain/models/vehicle_model.dart';
 import '../../domain/models/recurring_expense_model.dart';
 import '../../domain/models/company_config_model.dart';
 import '../../../../core/utils/number_utils.dart';
+import '../../../../core/utils/tms_backbone.dart';
 import '../../domain/services/modogps_service.dart';
 import '../../../trips/domain/services/route_tariff_baseline_service.dart';
 
@@ -901,14 +902,24 @@ class KpiDashboardView extends ConsumerWidget {
     final containerCtrl = TextEditingController(text: (t.containerNumber ?? "").toString());
     final guideCtrl = TextEditingController(text: (t.guideNumber ?? "").toString());
     final kmCtrl = TextEditingController(text: (t.totalKm ?? 0).toStringAsFixed(1));
-    final matchedVehicle = vehicles.where((v) => v.id == t.vehicleId || v.patente == t.vehicleId).firstOrNull;
+    final matchedVehicle = TmsBackbone.findVehicle(t.vehicleId, vehicles);
     String? selectedVehicle = matchedVehicle?.id;
 
     final targetPlate = matchedVehicle?.patente ?? t.vehicleId ?? '';
     final modoGps = ref.read(modoGpsServiceProvider);
     final startTime = t.startDate;
     final endTime = t.endDate ?? DateTime.now();
-    final timeFmt = DateFormat('HH:mm');
+    final timeFmt = DateFormat('dd/MM HH:mm');
+    final expenses = ref.read(monthlyExpensesProvider).value ?? [];
+    final config = ref.read(companyConfigProvider).value;
+    final rendimientoVigente = TmsBackbone.resolveVehicleEfficiency(matchedVehicle);
+    final precioDieselNeto = TmsBackbone.resolveDieselNetoPrice(
+      refDate: startTime,
+      vehicleIdOrPlate: targetPlate,
+      vehicles: vehicles,
+      fuelExpenses: expenses,
+      config: config,
+    );
 
     showDialog(context: context, builder: (ctx) => Dialog(
       backgroundColor: const Color(0xFF161B22),
@@ -1040,6 +1051,7 @@ class KpiDashboardView extends ConsumerWidget {
                                 plate: targetPlate,
                                 startTime: startTime,
                                 endTime: endTime,
+                                idEmpresa: t.idEmpresa,
                               ),
                         builder: (context, snapshot) {
                           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -1057,9 +1069,12 @@ class KpiDashboardView extends ConsumerWidget {
 
                           final hTrip = snapshot.data;
                           final double kmCalculados = hTrip?.totalDistanceKm ?? t.totalKm ?? 0.0;
-                          // Estimación: Camión cargado rinde aprox 2.4 a 2.6 km/l
-                          final double litrosEstimados = kmCalculados > 0 ? (kmCalculados / 2.5) : 0.0;
-                          final double costoCombustibleEstimado = litrosEstimados * 850.0; // Precio aprox CLP neto
+                          final int idleMin = hTrip?.idleMinutes ?? 0;
+                          final double ralentiLh = matchedVehicle?.consumoRalentiLitrosHora ?? 2.0;
+                          final double idleLts = (idleMin / 60.0) * ralentiLh;
+                          final double litrosRuta = kmCalculados > 0 ? (kmCalculados / rendimientoVigente) : 0.0;
+                          final double litrosEstimados = litrosRuta + idleLts;
+                          final double costoCombustibleEstimado = litrosEstimados * precioDieselNeto;
 
                           return SingleChildScrollView(
                             child: Column(
@@ -1113,9 +1128,11 @@ class KpiDashboardView extends ConsumerWidget {
                                         child: Column(
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
-                                            const Text('Diesel Estimado', style: TextStyle(color: Colors.white54, fontSize: 10)),
+                                            const Text('Diesel + Ralentí', style: TextStyle(color: Colors.white54, fontSize: 10)),
                                             const SizedBox(height: 4),
                                             Text('${litrosEstimados.toStringAsFixed(1)} Lts', style: const TextStyle(color: Colors.amberAccent, fontSize: 14, fontWeight: FontWeight.bold)),
+                                            if (idleMin > 0)
+                                              Text('+${idleLts.toStringAsFixed(1)} L (${idleMin}m ralentí)', style: const TextStyle(color: Colors.white54, fontSize: 9)),
                                           ],
                                         ),
                                       ),
@@ -1139,7 +1156,7 @@ class KpiDashboardView extends ConsumerWidget {
                                 ),
                                 const SizedBox(height: 16),
 
-                                if (hTrip != null && (hTrip.totalDistanceKm > 0) && (t.totalKm == null || t.totalKm! <= 0)) ...[
+                                if (hTrip != null && (hTrip.totalDistanceKm > 0) && (t.totalKm == null || (hTrip.totalDistanceKm - t.totalKm!).abs() > 0.5)) ...[
                                   SizedBox(
                                     width: double.infinity,
                                     child: ElevatedButton.icon(

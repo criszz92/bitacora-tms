@@ -4,6 +4,7 @@ import '../../features/trips/domain/models/trip_model.dart';
 import '../../features/admin/domain/models/analytics_models.dart';
 import '../../features/trips/domain/models/expense_model.dart';
 import '../../features/trips/domain/models/vehicle_model.dart';
+import 'tms_backbone.dart';
 
 class ChileanFinancialCalculator {
   /// Calcula el costo total para el empleador de un conductor específico en un mes.
@@ -413,24 +414,33 @@ class ChileanFinancialCalculator {
     required List<ExpenseModel> allExpenses,
     required List<UserModel> allDrivers,
     required CompanyConfigModel config,
+    List<VehicleModel> vehicles = const [],
   }) {
     if (allTrips.isEmpty) return [];
 
     final Map<String, double> vehicleTotalKm = {};
-    final Map<String, double> vehicleDieselCost = {};
+    final Map<String, double> vehicleDieselNetCost = {};
     final Map<String, double> vehicleGenericTollsCost = {}; 
     final Map<String, double> directTripTolls = {};
 
     for (final trip in allTrips) {
-      final vid = trip.vehicleId ?? 'N/A';
+      final vid = TmsBackbone.canonicalVehicleKey(trip.vehicleId, vehicles);
       vehicleTotalKm[vid] = (vehicleTotalKm[vid] ?? 0) + (trip.totalKm ?? 0);
     }
 
     for (final exp in allExpenses) {
-      final vid = exp.vehicleId ?? 'N/A';
+      final vid = TmsBackbone.canonicalVehicleKey(exp.vehicleId, vehicles);
       final typeLower = exp.type.toLowerCase();
       if (typeLower == 'combustible') {
-        vehicleDieselCost[vid] = (vehicleDieselCost[vid] ?? 0) + exp.amount;
+        final double netAmount;
+        if (exp.isExento) {
+          netAmount = exp.amount;
+        } else if (exp.customIva != null && exp.customIva! > 0) {
+          netAmount = (exp.amount - exp.customIva!).clamp(0.0, exp.amount);
+        } else {
+          netAmount = exp.amount / 1.19;
+        }
+        vehicleDieselNetCost[vid] = (vehicleDieselNetCost[vid] ?? 0) + netAmount;
       } else if (typeLower == 'peaje') {
         if (exp.tripId != null && exp.tripId!.isNotEmpty) {
           directTripTolls[exp.tripId!] = (directTripTolls[exp.tripId!] ?? 0) + exp.amount;
@@ -520,14 +530,15 @@ class ChileanFinancialCalculator {
     final Map<String, List<Map<String, double>>> routeStats = {};
 
     for (final trip in allTrips) {
-      final routeKey = trip.displayRoute3Steps;
-      final vid = trip.vehicleId ?? 'N/A';
+      final routeKey = TmsBackbone.canonicalRoute(trip);
+      final vid = TmsBackbone.canonicalVehicleKey(trip.vehicleId, vehicles);
+      final matchedVehicle = TmsBackbone.findVehicle(trip.vehicleId, vehicles);
       final tripKm = trip.totalKm ?? 0;
       
       final truckTotalKm = vehicleTotalKm[vid] ?? 0;
-      double fuelCost = 0;
+      double fuelNetCost = 0;
       if (truckTotalKm > 0) {
-        fuelCost = ((vehicleDieselCost[vid] ?? 0) / truckTotalKm) * tripKm;
+        fuelNetCost = ((vehicleDieselNetCost[vid] ?? 0) / truckTotalKm) * tripKm;
       }
 
       double tollsCost = 0;
@@ -557,12 +568,13 @@ class ChileanFinancialCalculator {
       double viatico = tripViaticos[trip.id] ?? 0.0;
 
       double personalCost = baseSalaryCost + commissionCost;
-      double maintenanceCost = tripKm * costoMantenimientoPorKm;
+      final effectiveMaintPerKm = matchedVehicle?.costoMantenimientoPorKm ?? costoMantenimientoPorKm;
+      double maintenanceCost = tripKm * effectiveMaintPerKm;
 
       final facturableTotal = trip.isOperativo ? (trip.value + (trip.extraCostos ?? 0) + (trip.sobreEstadia ?? 0)) : 0.0;
       routeStats.putIfAbsent(routeKey, () => []).add({
         'income': facturableTotal,
-        'fuel': fuelCost / 1.19,
+        'fuel': fuelNetCost,
         'tolls': tollsCost,
         'viatico': viatico,
         'personal': personalCost,

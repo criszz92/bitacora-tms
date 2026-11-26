@@ -23,6 +23,44 @@ class RoadInfrastructureDetector {
     return earthRadius * c;
   }
 
+  /// Distancia ortogonal mínima en metros desde [point] al segmento de recta [segStart] -> [segEnd].
+  /// Evita que un camión a 85 km/h se salte un peaje entre dos reportes GPS separados por 15-60s.
+  static double calculateDistanceToSegmentMeters(
+    LatLng point,
+    LatLng segStart,
+    LatLng segEnd,
+  ) {
+    final segLen = calculateDistanceMeters(segStart, segEnd);
+    if (segLen < 1.0) {
+      return calculateDistanceMeters(point, segStart);
+    }
+
+    // Proyección equirectangular local centrada en segStart (precisa en tramos cortos)
+    final double latRad = _degToRad(segStart.latitude);
+    final double cosLat = math.cos(latRad);
+    const double metersPerDegLat = 111320.0;
+    final double metersPerDegLng = 111320.0 * cosLat;
+
+    final double ax = 0.0;
+    final double ay = 0.0;
+    final double bx = (segEnd.longitude - segStart.longitude) * metersPerDegLng;
+    final double by = (segEnd.latitude - segStart.latitude) * metersPerDegLat;
+    final double px = (point.longitude - segStart.longitude) * metersPerDegLng;
+    final double py = (point.latitude - segStart.latitude) * metersPerDegLat;
+
+    final double abx = bx - ax;
+    final double aby = by - ay;
+    final double abLenSq = abx * abx + aby * aby;
+    if (abLenSq <= 1e-6) {
+      return calculateDistanceMeters(point, segStart);
+    }
+
+    final double t = ((px * abx + py * aby) / abLenSq).clamp(0.0, 1.0);
+    final double closestLng = segStart.longitude + (t * abx) / metersPerDegLng;
+    final double closestLat = segStart.latitude + (t * aby) / metersPerDegLat;
+    return calculateDistanceMeters(point, LatLng(closestLat, closestLng));
+  }
+
   /// Calcula el rumbo en grados (0° a 360°) desde p1 hacia p2.
   /// 0° = Norte, 90° = Oriente/Este, 180° = Sur, 270° = Poniente/Oeste.
   static double calculateBearing(LatLng p1, LatLng p2) {
@@ -53,14 +91,14 @@ class RoadInfrastructureDetector {
     
     // Si es un Peaje Lateral (como el de Ranco / Los Ángeles)
     if (subLower.contains('lateral') || subLower.contains('ramal') || subLower.contains('salida')) {
-      return 18.0; // Quirúrgico: descarta completamente el tránsito por la carretera central
+      return 24.0; // Permite capturar desvío lateral con margen realista de GPS sin tocar la calzada central
     }
 
     // Si es Troncal / TAG / Free Flow
     if (subLower.contains('troncal') || subLower.contains('tag') || subLower.contains('portico')) {
-      return (radioConfigurado != null && radioConfigurado >= 35.0 && radioConfigurado <= 60.0)
+      return (radioConfigurado != null && radioConfigurado >= 35.0 && radioConfigurado <= 65.0)
           ? radioConfigurado
-          : 45.0;
+          : 50.0;
     }
 
     return (radioConfigurado != null && radioConfigurado > 0) ? radioConfigurado : 50.0;
