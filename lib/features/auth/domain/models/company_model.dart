@@ -1,3 +1,5 @@
+import '../../../../core/utils/tms_backbone.dart';
+
 class CompanyModel {
   final String id;       // mismo valor que idEmpresa (slug auto-generado)
   final String nombre;   // "Transportes Inostroza SpA"
@@ -24,7 +26,7 @@ class CompanyModel {
       id: documentId,
       nombre: map['nombre'] ?? '',
       idAdmin: map['idAdmin'] ?? '',
-      creadaEn: DateTime.parse(map['creadaEn']),
+      creadaEn: TmsBackbone.parseDate(map['creadaEn']),
     );
   }
 }

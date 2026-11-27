@@ -216,8 +216,9 @@ exports.onTripFinished = functions.firestore
     // Chequear mantenimiento preventivo (Aviso a los 500 km)
     const nextOilChangeKm = vehicleData.nextOilChangeKm;
     if (nextOilChangeKm && (nextOilChangeKm - newOdometer) <= 500) {
+      const plateLabel = vehicleData.patente || vehicleRefId;
       const msgTitle = "Alerta de Mantenimiento Preventivo 🛠️";
-      const msgBody = `El camión ${vehiclePatente} está a ${(nextOilChangeKm - newOdometer).toFixed(0)} km de su cambio de aceite.`;
+      const msgBody = `El camión ${plateLabel} está a ${(nextOilChangeKm - newOdometer).toFixed(0)} km de su cambio de aceite.`;
 
       await notifyAdmins(vehicleData.idEmpresa, msgTitle, msgBody);
       await notifyDriver(after.idChofer, msgTitle, msgBody);
@@ -286,7 +287,7 @@ exports.dailyDocumentCheck = functions.pubsub.schedule("every day 08:00").onRun(
   for (const [idEmpresa, messages] of Object.entries(notificationsByCompany)) {
     if (messages.length > 0) {
       const title = "Alertas de Documentación de Flota 🚨";
-      const body = messages.join("\\n");
+      const body = messages.join("\n");
       await notifyAdmins(idEmpresa, title, body);
     }
   }

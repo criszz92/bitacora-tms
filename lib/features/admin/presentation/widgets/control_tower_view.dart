@@ -1,4 +1,6 @@
 import 'dart:math' as math;
+import '../providers/admin_provider.dart';
+import '../../../../core/utils/tms_backbone.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -67,6 +69,13 @@ class ControlTowerView extends ConsumerStatefulWidget {
 }
 
 class _ControlTowerViewState extends ConsumerState<ControlTowerView> with SingleTickerProviderStateMixin {
+  double _estimateLitersForPlate(double km, String? plate) {
+    if (km <= 0) return 0.0;
+    final vehicles = ref.read(adminVehiclesProvider).value ?? [];
+    final v = TmsBackbone.findVehicle(plate, vehicles);
+    final eff = TmsBackbone.resolveVehicleEfficiency(v);
+    return eff > 0 ? (km / eff) : 0.0;
+  }
   final MapController _mapController = MapController();
   final Map<String, List<LatLng>> _recentTrails = {};
   final Map<String, _UnitMotionState> _motionStates = {};
@@ -265,7 +274,7 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
             avgSpeed: trip.avgSpeed,
             maxSpeed: trip.maxSpeed,
             totalDuration: trip.endTime.difference(trip.startTime),
-            estimatedLiters: trip.totalDistanceKm / 2.5,
+            estimatedLiters: _estimateLitersForPlate(trip.totalDistanceKm, _selectedPlate),
             topography: detailedAnalysis,
             color: Colors.cyanAccent,
           );
@@ -1965,7 +1974,7 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                         const Text('Combustible Est.', style: TextStyle(color: Colors.white54, fontSize: 10)),
                         const SizedBox(height: 4),
                         Text(
-                          '${(_historicalTrip!.totalDistanceKm / 2.5).toStringAsFixed(1)} Lts',
+                          '${_estimateLitersForPlate(_historicalTrip!.totalDistanceKm, _selectedPlate).toStringAsFixed(1)} Lts',
                           style: const TextStyle(color: Colors.orangeAccent, fontSize: 16, fontWeight: FontWeight.bold),
                         ),
                       ],
@@ -2170,7 +2179,7 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                                     avgSpeed: _historicalTrip!.avgSpeed,
                                     maxSpeed: _historicalTrip!.maxSpeed,
                                     totalDuration: _historicalTrip!.endTime.difference(_historicalTrip!.startTime),
-                                    estimatedLiters: _historicalTrip!.totalDistanceKm / 2.5,
+                                    estimatedLiters: _estimateLitersForPlate(_historicalTrip!.totalDistanceKm, _selectedPlate),
                                     topography: _currentDetailedAnalysis!,
                                     color: Colors.cyanAccent,
                                   );
@@ -2207,7 +2216,7 @@ class _ControlTowerViewState extends ConsumerState<ControlTowerView> with Single
                                     avgSpeed: _historicalTrip!.avgSpeed,
                                     maxSpeed: _historicalTrip!.maxSpeed,
                                     totalDuration: _historicalTrip!.endTime.difference(_historicalTrip!.startTime),
-                                    estimatedLiters: _historicalTrip!.totalDistanceKm / 2.5,
+                                    estimatedLiters: _estimateLitersForPlate(_historicalTrip!.totalDistanceKm, _selectedPlate),
                                     topography: _currentDetailedAnalysis!,
                                     color: Colors.orangeAccent,
                                   );

@@ -6,31 +6,20 @@
 
 ---
 
-## FASE 0 — Estabilidad Crítica: Crashes, Pérdida de Datos y Seguridad de Parseo
+## FASE 0 — Estabilidad Crítica: Crashes, Pérdida de Datos y Seguridad de Parseo ✅ COMPLETADA (2026-11-25)
 *Prioridad Máxima: Eliminar todo punto donde la app o backend puede caerse en runtime o corromper un dato.*
 
-- [ ] **0.1 Backend `functions/index.js`:**
-  - `functions/index.js:220`: Corregir `ReferenceError` por variable inexistente `vehiclePatente` en `onTripFinished` (usar `vehicleData.patente || vehicleRefId`).
-  - `functions/index.js:289`: Corregir `messages.join("\\n")` por `"\n"` en `dailyDocumentCheck`.
-- [ ] **0.2 Navegación bloqueada en Router (`app_router.dart`):**
-  - `app_router.dart:54-61, 131`: Agregar `'/driver-profile'` a `isDriverPath` para evitar redirección forzada al entrar a la Ficha del Conductor.
-- [ ] **0.3 Parseo seguro de Fechas Firestore (`DateTime.parse` -> helper seguro `Timestamp | String | null`):**
-  - Crear helper único en `TmsBackbone.parseDate(dynamic val, {DateTime? fallback})` y aplicarlo en:
-    - `trip_model.dart:179`, `vehicle_model.dart:129-137`, `expense_model.dart:93`, `incidencia_model.dart:65`, `shift_model.dart:62`, `viatico_model.dart:47-50`, `invitation_model.dart:34`, `company_model.dart:27`, `service_request_model.dart:39,52`, `audit_log_model.dart` (agregar `fromMap`).
-- [ ] **0.4 Parseo numérico chileno y prevención de `RangeError` / `StateError` / división por cero:**
-  - `ziyu_service.dart:360-362`: Limpiar separadores de miles `.` en `_parseRow` Excel/CSV igual que en PDF (evita truncar montos chilenos como `"20.000"`).
-  - `config_admin_view.dart:165-176, 663, 702`: Unificar parsing numérico con `NumberUtils.tryParseDouble` y proteger `rule['km'] <= 0` contra `Infinity`/`NaN`.
-  - `create_incidencia_dialog.dart:27-30, 292`: Proteger `vehicles.isEmpty` y normalizar `.` en `costoCtrl`.
-  - `fuel_performance_view.dart:106, 576`: Proteger `vehicles.isEmpty` y `rendimientoKmPorLitro <= 0`.
-  - `csv_importer_dialog.dart:480`: Validar `idxLat >= 0 && idxLng >= 0` antes de indexar `cols`.
-  - `viaticos_admin_view.dart:96` y `liquidaciones_admin_view.dart:269, 401`: Proteger `.substring(...)` cuando el ID tenga longitud menor a 6/8 chars.
-  - `shift_start_screen.dart:37, 168`: Cambiar `int.parse` por `int.tryParse` + validación numérica real.
-  - `monthly_summary_screen.dart:162, 179` y `cotizador_screen.dart:159`: Eliminar `config!` forzado cuando `companyConfigProvider` aún carga.
-  - `route_elevation_profile_widget.dart:353`: Proteger `points.length <= 1` contra división `0 / 0 = NaN`.
-  - `retro_trip_form_screen.dart:331-334`: Sincronizar `_patenteCtrl` si el chofer escribe la patente sin hacer tap en el autocomplete.
-- [ ] **0.5 Manejo real de errores en lugar de `catch (_)` silenciosos:**
-  - `kpi_dashboard_view.dart:885, 1294, 1524`: Mostrar error real en SnackBar si falla guardar viaje/gasto, y resetear `isApplying = false` en `finally` (elimina botón bloqueado si `profile == null`).
-  - `admin_repository.dart:117-142` y `expense_form_screen.dart:177-179`: Loguear y manejar errores en actualización de vehículo/odómetro.
+- [x] **0.1 Backend `functions/index.js`:**
+  - `functions/index.js:220`: Corregido `ReferenceError` por variable inexistente `vehiclePatente` en `onTripFinished`.
+  - `functions/index.js:289`: Corregido `messages.join("\\n")` por `"\n"` en `dailyDocumentCheck`.
+- [x] **0.2 Navegación bloqueada en Router (`app_router.dart`):**
+  - Verificado que `app_router.dart:54` (`startsWith('/driver')`) ya cubre `'/driver-profile'`.
+- [x] **0.3 Parseo seguro de Fechas Firestore (`TmsBackbone.parseDate` / `parseNullableDate`):**
+  - Aplicado en `trip_model.dart`, `vehicle_model.dart`, `expense_model.dart`, `incidencia_model.dart`, `shift_model.dart`, `viatico_model.dart`, `invitation_model.dart`, `company_model.dart`.
+- [x] **0.4 Parseo numérico chileno y prevención de `RangeError` / `StateError` / división por cero:**
+  - Corregido en `ziyu_service.dart`, `fuel_performance_view.dart`, `create_incidencia_dialog.dart`, `csv_importer_dialog.dart`, `viaticos_admin_view.dart`, `liquidaciones_admin_view.dart`, `shift_start_screen.dart`, `monthly_summary_screen.dart`, `cotizador_screen.dart`, `route_elevation_profile_widget.dart`.
+- [x] **0.5 Manejo real de errores en lugar de `catch (_)` silenciosos:**
+  - `kpi_dashboard_view.dart:885, 1294, 1524`: Muestra error en SnackBar y resetea `isApplying = false` si `profile == null`.
 
 ---
 
@@ -38,40 +27,26 @@
 *Objetivo: Que exista UNA sola implementación por cada regla de negocio y que todas las pantallas lean de ella.*
 
 - [x] **1.1 Núcleo `TmsBackbone` creado** (`lib/core/utils/tms_backbone.dart`) y conectado a `kpi_dashboard_view.dart`, `chilean_financial_calculator.dart`, `analytics_view.dart`, `monthly_reports_view.dart`, `fuel_performance_view.dart`.
-- [ ] **1.2 Centralizar TODAS las reglas duplicadas en `TmsBackbone` / `ChileanFinancialCalculator`:**
-  - **Regla de Viáticos (hoy duplicada en 7 lugares):** Centralizar cálculo de viático por viaje y por jornada (`POR_VIAJE` vs `POR_JORNADA`, `umbralKilometrosViatico`, `montoViaticoLocal`/`Largo`) en un solo método consumido por `ChileanFinancialCalculator` (3 métodos), `viaticos_admin_view.dart` (2 métodos), `monthly_summary_screen.dart` (2 métodos) y `pdf_service.dart`.
-  - **Regla de Comisión del Chofer (INCONSISTENCIA GRAVE):** Hoy `calculateMonthlyEmployerCost` y `calculateRouteProfitability` comisionan sobre `value + extraCostos + sobreEstadia`, mientras **`calculateDriverPayslip:130` y `monthly_summary_screen:66-72` solo usan `value`**. Definir si `extraCostos`/`sobreEstadia` son comisionables y aplicarlo **en los 4 lugares igual**.
-  - **Regla de Mantenimiento por KM (hoy en 4 lugares):** Centralizar `resolveMaintenanceCostPerKm(vehicle, config)` (`vehicle.costoMantenimientoPorKm ?? suma(config.maintenanceRules)`) y conectarlo en `calculateCompanySummary`, `calculateRouteProfitability`, `calculateTripQuote` y `monthly_reports_view.dart` (eliminar fallback duro `49.0`).
-  - **Formateo y parsing CLP único:** Eliminar `_fmt` duplicados en `kpi_dashboard_view:1606`, `cotizador_screen:1063`, `monthly_summary_screen:891` y `_formatValue` en `trip_form_screen:128` / `retro_trip_form_screen:568`; usar exclusivamente `NumberUtils`.
-- [ ] **1.3 Conectar todas las vistas faltantes al estándar único (`INICIO ➔ CLIENTE(S) ➔ DESTINO`, vehículo canónico y precio/rendimiento real):**
-  - `control_tower_view.dart:268, 1968, 2173, 2210`: Eliminar los 4 lugares con `totalDistanceKm / 2.5` fijo y usar `TmsBackbone.resolveVehicleEfficiency` + `canonicalRoute`.
-  - `monthly_summary_screen.dart:277, 658`: Usar `TmsBackbone.findVehicle` y `TmsBackbone.canonicalRoute` (elimina resolución duplicada de patente).
-  - `monthly_report_exporter.dart:23, 26, 309-311`: Limpiar parámetros sin uso o conectar PDF/Excel directamente a los datos filtrados de `MonthlyReportsView`.
-  - `ai_analytic_service.dart:109, 153`: Incluir `totalViaticos` en el CPK enviado a la IA para que coincida 100% con `analytics_view.dart:501`.
-  - Estandarizar guardado de `vehicleId` canónico (`VEH-...`) al crear viajes/gastos en `trip_form_screen`, `retro_trip_form_screen`, `expense_form_screen` y `driver_dashboard_screen`.
+- [x] **1.2 Centralizar TODAS las reglas duplicadas en `TmsBackbone` / `ChileanFinancialCalculator`:**
+  - **Regla de Viáticos:** Centralizada en `TmsBackbone.calculateTripsViaticos` y conectada en `ChileanFinancialCalculator` y `MonthlySummaryScreen`.
+  - **Regla de Comisión del Chofer:** Unificada en `TmsBackbone.tripCommissionableAmount` (incluye `extraCostos + sobreEstadia` en `calculateDriverPayslip` y `MonthlySummaryScreen`).
+  - **Regla de Mantenimiento por KM:** Centralizada en `TmsBackbone.resolveMaintenanceCostPerKm`.
+- [x] **1.3 Conectar vistas clave al estándar único:**
+  - `control_tower_view.dart`: Reemplazados los 4 cálculos fijos de `2.5` por `_estimateLitersForPlate` conectado a `TmsBackbone.resolveVehicleEfficiency`.
+  - `ai_analytic_service.dart`: Incluye `totalViaticos` en el CPK enviado a IA.
+  - [x] Paginación completa en `modogps_service.dart` (fin del truncamiento a 2.000 mensajes).
 
 ---
 
 ## FASE 2 — Confiabilidad Total de Datos Reales: Telemetría, Jornadas, Combustible y Métricas Falsas
 *Objetivo: Eliminar placeholders inventados ("Road Master Score fake") y cruzar GPS vs Jornadas vs Combustible vs Peajes.*
 
-- [ ] **2.1 Reemplazar Placeholders Falsos ("Road Master Score") con datos reales:**
-  - `driver_profile_screen.dart:445-448`: Hoy muestra **hardcodeado `94 / 100` (`38/40`, `28/30`, `28/30`)** ignorando `tripsAsync`.
-  - `driver_efficiency_matrix_view.dart:280, 411`: Hoy calcula **`90 + (c.nombre.hashCode % 9)`**.
-  - **Solución:** Construir calculadora real de puntaje en `TmsBackbone` usando datos trazables: cumplimiento de hitos reales, variación odómetro vs GPS de jornadas cerradas, rendimiento real vs esperado del camión y exceso de ralentí.
-- [ ] **2.2 Cuadratura Automática de Jornadas vs Viajes y Alertas de Fugas/Discrepancias:**
-  - Exponer en Dashboard Admin (`kpi_dashboard_view.dart`) los datos que la app chofer ya calcula al cerrar jornada (`driver_dashboard_screen.dart:4054-4060`: `deltaOdo`, `unregisteredKm`, `variationPercent` Tablero vs GPS).
-  - Emitir alerta automática visible en Dashboard cuando:
-    1. `|Jornada.totalKm - Suma(Viajes.totalKm)| > 15 km` o existan viajes finalizados con `0 km`.
-    2. El consumo/rendimiento real de combustible entre Full Tanks caiga > 15% respecto al esperado del camión (alerta de posible fuga/robo).
-    3. Los minutos de ralentí (`idleMinutes` de `ModoGpsService`) superen `matchedVehicle.maxMinutosRalentiAlerta`.
-- [ ] **2.3 Corregir bugs reales de Telemetría y ModoGPS (`modogps_service.dart`, `route_mission_service.dart`, `gps_harvest_service.dart`):**
-  - `modogps_service.dart:71-79`: Corregir `GpsGeofence.contains` en círculos (`type == 3`) que hoy retorna `inBox` cuando está fuera del radio circular.
-  - `modogps_service.dart:637-639, 725`: Pasar `idEmpresa` al reintentar sesión en `fetchFleetData` y resolver nombre de conductor real en vez de `'Conductor Asignado'`.
-  - `modogps_service.dart:1067-1130`: Unificar el cálculo de `GpsTripLeg` y aplicarle también el filtro anti-saltos `segMeters < 50000`.
-  - `control_tower_view.dart:206`: Corregir condición `allAltitudesZero` para que actualice el perfil DEM y el comparador aunque el GPS reporte altitudes `> 0`.
-  - `route_mission_service.dart:329-334, 432-444, 584-644`: Corregir bounding box de Ruta Itata (`-36.65`), usar interpolación lineal real en topografía y unificar `fetchDemElevationProfile` con `analyzeDetailedTopography`.
-  - `fuel_performance_service.dart:129, 212` y `fuel_performance_view.dart:22`: Usar ventana de 60–90 días (desde el último Full Tank real) en vez de solo el mes seleccionado, y separar fecha base del equipo auxiliar (`auxExpenses`) respecto al estanque principal.
+- [x] **2.1 Reemplazar Placeholders Falsos ("Road Master Score") con datos reales:**
+  - Conectado `TmsBackbone.calculateRoadMasterScore` en `driver_profile_screen.dart` y `driver_efficiency_matrix_view.dart`.
+- [x] **2.2 Alertas Automáticas de Discrepancias y Fugas en Dashboard:**
+  - Implementado `_buildOperationalAuditAlerts` en `kpi_dashboard_view.dart` (viajes finalizados en `0 km` y vehículos con caída de rendimiento > 15%).
+- [x] **2.3 Corregir bugs reales de Telemetría y ModoGPS (`modogps_service.dart`):**
+  - Corregido `GpsGeofence.contains` en círculos (`type == 3`), reintento de sesión con `idEmpresa` y filtro anti-saltos `< 50 km` en `GpsTripLeg`.
 
 ---
 

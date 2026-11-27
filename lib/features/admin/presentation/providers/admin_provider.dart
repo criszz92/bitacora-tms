@@ -357,12 +357,16 @@ final expenseBreakdownProvider = Provider<AsyncValue<Map<String, double>>>((ref)
   final summary = ref.watch(financialSummaryProvider).value ?? {};
   final expenses = ref.watch(monthlyExpensesProvider).value ?? [];
   final Map<String, double> breakdown = {};
-  for (final e in expenses) { 
-    double netAmount = e.amount;
-    if (e.type.toLowerCase() != 'peaje') {
+  for (final e in expenses) {
+    final double netAmount;
+    if (e.isExento || e.type.toLowerCase() == 'peaje') {
+      netAmount = e.amount;
+    } else if (e.customIva != null && e.customIva! > 0) {
+      netAmount = (e.amount - e.customIva!).clamp(0.0, e.amount);
+    } else {
       netAmount = e.amount / 1.19;
     }
-    breakdown[e.type] = (breakdown[e.type] ?? 0) + netAmount; 
+    breakdown[e.type] = (breakdown[e.type] ?? 0) + netAmount;
   }
   final personalCost = summary['costosPersonal'] ?? 0;
   if (personalCost > 0) breakdown['Personal/Sueldos'] = personalCost;
@@ -425,6 +429,7 @@ final trendProvider = FutureProvider<List<TrendData>>((ref) async {
       monthlyTrips: trips, 
       directExpenses: expenses, 
       config: config,
+      vehicles: ref.read(adminVehiclesProvider).value ?? [],
       customUtmValue: utmValue,
       customDieselValue: dieselValue,
     );

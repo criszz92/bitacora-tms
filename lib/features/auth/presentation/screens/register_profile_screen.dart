@@ -512,15 +512,18 @@ class _RegisterProfileScreenState
       child: ElevatedButton.icon(
         style: ElevatedButton.styleFrom(
           backgroundColor: color,
-          foregroundColor: color == const Color(0xFFFFFFFF) ? Colors.black : Colors.white,
+          foregroundColor: (color == const Color(0xFFFFFFFF) || color == const Color(0xFFE0E0E0)) ? Colors.black : Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         ),
         onPressed: _isLoading ? null : onPressed,
         icon: _isLoading
-            ? const SizedBox(
+            ? SizedBox(
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: (color == const Color(0xFFFFFFFF) || color == const Color(0xFFE0E0E0)) ? Colors.black : Colors.white,
+                ),
               )
             : Icon(icon),
         label: Text(label,

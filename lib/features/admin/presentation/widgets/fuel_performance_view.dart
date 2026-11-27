@@ -100,7 +100,7 @@ class _FuelPerformanceViewState extends ConsumerState<FuelPerformanceView> {
 
             // CONTENIDO PRINCIPAL
             Expanded(
-              child: _selectedVehicleId == null
+              child: (_selectedVehicleId == null || vehicles.isEmpty)
                   ? _buildFleetSummaryView(vehicles, allExpenses, dieselPrice)
                   : _buildSingleVehicleView(
                       vehicles.firstWhere((v) => v.id == _selectedVehicleId, orElse: () => vehicles.first),
@@ -573,7 +573,9 @@ class _FuelPerformanceViewState extends ConsumerState<FuelPerformanceView> {
                       child: _buildComparisonTile(
                         title: '1. Parámetro Base Unidad',
                         kmPerLiter: '${vehicle.rendimientoKmPorLitro.toStringAsFixed(2)} km/L',
-                        l100km: '(${(100.0 / vehicle.rendimientoKmPorLitro).toStringAsFixed(1)} L/100km)',
+                        l100km: vehicle.rendimientoKmPorLitro > 0
+                            ? '(${(100.0 / vehicle.rendimientoKmPorLitro).toStringAsFixed(1)} L/100km)'
+                            : '(0.0 L/100km)',
                         subtitle: 'Valor teórico configurado para costeo y autonomía estimada.',
                         icon: Icons.tune,
                         accentColor: Colors.white70,

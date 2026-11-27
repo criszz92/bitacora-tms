@@ -477,7 +477,7 @@ class _CsvImporterDialogState extends ConsumerState<CsvImporterDialog> with Sing
           final line = lines[i].trim();
           if (line.isEmpty) continue;
           final cols = _parseCsvLine(line);
-          if (cols.length <= idxLat || cols.length <= idxLng) continue;
+          if (idxLat < 0 || idxLng < 0 || cols.length <= idxLat || cols.length <= idxLng) continue;
 
           final nombre = idxNombre != -1 ? cols[idxNombre].trim() : 'Peaje';
           final ruta = idxRuta != -1 ? cols[idxRuta].trim() : '';

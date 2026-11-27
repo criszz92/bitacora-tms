@@ -1,3 +1,4 @@
+import '../../../../core/utils/tms_backbone.dart';
 class ShiftModel {
   final String id;
   final String idEmpresa;
@@ -59,8 +60,8 @@ class ShiftModel {
       idEmpresa: map['idEmpresa'] ?? '',
       idChofer: map['idChofer'] ?? '',
       patenteCamion: map['patenteCamion'] ?? '',
-      startTime: DateTime.parse(map['startTime']),
-      endTime: map['endTime'] != null ? DateTime.parse(map['endTime']) : null,
+      startTime: TmsBackbone.parseDate(map['startTime']),
+      endTime: TmsBackbone.parseNullableDate(map['endTime']),
       startOdometer: map['startOdometer']?.toInt() ?? 0,
       endOdometer: map['endOdometer']?.toInt(),
       status: map['status'] ?? 'Activa',

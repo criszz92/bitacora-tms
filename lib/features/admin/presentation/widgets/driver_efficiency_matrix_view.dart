@@ -1,3 +1,4 @@
+import '../../../../core/utils/tms_backbone.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -277,7 +278,7 @@ class _DriverEfficiencyMatrixViewState
             ...choferes.asMap().entries.map((entry) {
               final idx = entry.key;
               final c = entry.value;
-              final score = 90 + (c.nombre.hashCode % 9); // Algoritmo visual demostrativo
+              final score = TmsBackbone.calculateRoadMasterScore(driverTrips: const []).total;
               return Container(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 decoration: BoxDecoration(

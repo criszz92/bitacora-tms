@@ -28,13 +28,14 @@ class _ShiftStartScreenState extends ConsumerState<ShiftStartScreen> {
       final user = ref.read(currentUserProfileProvider).value;
       if (user == null) throw Exception('Sesión de usuario no encontrada.');
 
+      final odo = int.tryParse(_odometerCtrl.text.replaceAll('.', '').trim()) ?? 0;
       final newShift = ShiftModel(
         id: 'SHIFT-${DateTime.now().millisecondsSinceEpoch}',
         idEmpresa: user.idEmpresa,
         idChofer: user.uid,
         patenteCamion: _plateCtrl.text.toUpperCase().trim(),
         startTime: DateTime.now(),
-        startOdometer: int.parse(_odometerCtrl.text),
+        startOdometer: odo,
         status: 'Activa',
       );
 
@@ -165,7 +166,11 @@ class _ShiftStartScreenState extends ConsumerState<ShiftStartScreen> {
                               ),
                               prefixIcon: const Icon(Icons.speed_rounded, color: AppColors.primary),
                             ),
-                            validator: (v) => v == null || v.isEmpty ? 'El kilometraje es obligatorio' : null,
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) return 'El kilometraje es obligatorio';
+                              if (int.tryParse(v.replaceAll('.', '').trim()) == null) return 'Ingresa un número válido';
+                              return null;
+                            },
                           ),
                           const SizedBox(height: 12),
 

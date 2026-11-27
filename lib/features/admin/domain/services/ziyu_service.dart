@@ -357,9 +357,12 @@ class ZiyuService {
     double? value;
     final valueStr = getCell('value');
     if (valueStr != null) {
-      value = double.tryParse(
-        valueStr.replaceAll(RegExp(r'[^\d.,]'), '').replaceAll(',', '.'),
-      );
+      var clean = valueStr.replaceAll(RegExp(r'[^\d.,]'), '');
+      // Si tiene puntos de miles (ej. "20.000" o "1.320.000,00"), quitar puntos antes de convertir coma decimal
+      if (clean.contains('.') && (clean.contains(',') || RegExp(r'\.\d{3}($|\D)').hasMatch(clean))) {
+        clean = clean.replaceAll('.', '');
+      }
+      value = double.tryParse(clean.replaceAll(',', '.'));
     }
 
     DateTime? date;

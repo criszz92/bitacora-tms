@@ -1,3 +1,5 @@
+import '../../../../core/utils/tms_backbone.dart';
+
 class VehicleModel {
   final String id;
   final String idEmpresa; // Candado multi-empresa
@@ -126,15 +128,15 @@ class VehicleModel {
       currentOdometer: (map['currentOdometer'] as num?)?.toDouble() ?? 0.0,
       nextOilChangeKm: (map['nextOilChangeKm'] as num?)?.toDouble(),
       lastServiceOdometer: (map['lastServiceOdometer'] as num?)?.toDouble(),
-      rtExpirationDate: map['rtExpirationDate'] != null ? DateTime.parse(map['rtExpirationDate']) : null,
-      soapExpirationDate: map['soapExpirationDate'] != null ? DateTime.parse(map['soapExpirationDate']) : null,
-      permisoExpirationDate: map['permisoExpirationDate'] != null ? DateTime.parse(map['permisoExpirationDate']) : null,
+      rtExpirationDate: TmsBackbone.parseNullableDate(map['rtExpirationDate']),
+      soapExpirationDate: TmsBackbone.parseNullableDate(map['soapExpirationDate']),
+      permisoExpirationDate: TmsBackbone.parseNullableDate(map['permisoExpirationDate']),
       rendimientoKmPorLitro: (map['rendimientoKmPorLitro'] as num?)?.toDouble() ?? 2.5,
       categoriaPeaje: map['categoriaPeaje'] ?? 'camion_mas_2_ejes',
       capacidadEstanqueLitros: (map['capacidadEstanqueLitros'] as num?)?.toDouble() ?? 600.0,
       tanqueCalibrado: map['tanqueCalibrado'] as bool? ?? false,
       ultimoLlenadoKm: (map['ultimoLlenadoKm'] as num?)?.toDouble(),
-      ultimoLlenadoFecha: map['ultimoLlenadoFecha'] != null ? DateTime.parse(map['ultimoLlenadoFecha']) : null,
+      ultimoLlenadoFecha: TmsBackbone.parseNullableDate(map['ultimoLlenadoFecha']),
       litrosReservaAlerta: (map['litrosReservaAlerta'] as num?)?.toDouble() ?? 120.0,
       tieneEquipoAuxiliar: map['tieneEquipoAuxiliar'] as bool? ?? false,
       tipoEquipoAuxiliar: map['tipoEquipoAuxiliar'],

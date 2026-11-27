@@ -123,11 +123,11 @@ class ChileanFinancialCalculator {
     final sueldoBase = driver.sueldoBase ?? config.sueldoMinimo;
     final toggles = driver.configuracionPagos ?? {};
 
-    // 1. Comisión
+    // 1. Comisión (incluye extraCostos y sobreEstadia)
     double comision = 0;
     for (final trip in monthlyTrips) {
-      if (trip.idChofer == driver.uid && trip.isOperativo) {
-        comision += trip.value * (config.porcentajeComision / 100);
+      if (trip.idChofer == driver.uid) {
+        comision += TmsBackbone.tripCommissionableAmount(trip) * (config.porcentajeComision / 100);
       }
     }
 
@@ -150,31 +150,12 @@ class ChileanFinancialCalculator {
     if (viaticosYaPagados != null) {
       viaticosTotales = viaticosYaPagados;
     } else {
-      if (config.tipoViatico == 'POR_VIAJE') {
-        for (final trip in monthlyTrips) {
-          if (trip.idChofer == driver.uid && trip.isOperativo) {
-            final threshold = config.umbralKilometrosViatico;
-            final isLongTrip = (trip.totalKm ?? 0) >= threshold;
-            viaticosTotales += isLongTrip 
-                ? (driver.montoViaticoLargo ?? 10000) 
-                : (driver.montoViaticoLocal ?? 6500);
-          }
-        }
-      } else {
-        final Map<String, List<TripModel>> tripsByDay = {};
-        for (final trip in monthlyTrips) {
-          if (trip.idChofer == driver.uid && trip.isOperativo) {
-            final dayKey = '${trip.startDate.year}-${trip.startDate.month}-${trip.startDate.day}';
-            tripsByDay.putIfAbsent(dayKey, () => []).add(trip);
-          }
-        }
-        for (final dayTrips in tripsByDay.values) {
-          bool existsLongTrip = dayTrips.any((t) => (t.totalKm ?? 0.0) >= config.umbralKilometrosViatico);
-          viaticosTotales += existsLongTrip 
-              ? (driver.montoViaticoLargo ?? 10000) 
-              : (driver.montoViaticoLocal ?? 6500);
-        }
-      }
+      final driverTrips = monthlyTrips.where((t) => t.idChofer == driver.uid).toList();
+      viaticosTotales = TmsBackbone.calculateTripsViaticos(
+        trips: driverTrips,
+        driver: driver,
+        config: config,
+      ).total;
     }
 
     final totalHaberes = totalImponible + viaticosTotales;

@@ -1,3 +1,5 @@
+import '../../../../core/utils/tms_backbone.dart';
+
 class InvitationModel {
   final String id;
   final String codigo;      // Ej: "BIT-7492"
@@ -31,7 +33,7 @@ class InvitationModel {
       codigo: map['codigo'] ?? '',
       idEmpresa: map['idEmpresa'] ?? '',
       usada: map['usada'] ?? false,
-      creadaEn: DateTime.parse(map['creadaEn']),
+      creadaEn: TmsBackbone.parseDate(map['creadaEn']),
       usadaPor: map['usadaPor'],
     );
   }

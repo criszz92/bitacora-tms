@@ -79,13 +79,20 @@ class _MonthlyReportsViewState extends ConsumerState<MonthlyReportsView> with Si
       config,
     );
 
+    final filteredVehicles = _filterVehicleId == null
+        ? vehicles
+        : vehicles.where((v) => v.id == _filterVehicleId).toList();
+    final filteredIncidencias = _filterVehicleId == null
+        ? incidencias
+        : incidencias.where((i) => TmsBackbone.canonicalVehicleKey(i.vehicleId.isNotEmpty ? i.vehicleId : i.vehiclePatente, vehicles) == _filterVehicleId).toList();
+
     // ─── CÁLCULO DE ESTADÍSTICAS POR UNIDAD (FLOTA) ───
     final List<Map<String, dynamic>> vehicleStats = _calculateVehicleStats(
       selectedMonth,
-      vehicles,
-      trips,
-      expenses,
-      incidencias,
+      filteredVehicles,
+      filteredTrips,
+      filteredExpenses,
+      filteredIncidencias,
       config,
     );
 

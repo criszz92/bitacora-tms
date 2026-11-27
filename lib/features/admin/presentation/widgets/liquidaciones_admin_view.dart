@@ -14,6 +14,12 @@ class LiquidacionesAdminView extends ConsumerStatefulWidget {
 class _LiquidacionesAdminViewState extends ConsumerState<LiquidacionesAdminView> {
   final _facturaController = TextEditingController();
 
+  @override
+  void dispose() {
+    _facturaController.dispose();
+    super.dispose();
+  }
+
   Future<void> _vincularFactura(LiquidacionModel liq) async {
     _facturaController.clear();
     final nroFactura = await showDialog<String>(
@@ -46,7 +52,7 @@ class _LiquidacionesAdminViewState extends ConsumerState<LiquidacionesAdminView>
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE0E0E0)),
             onPressed: () => Navigator.pop(ctx, _facturaController.text.trim()),
-            child: const Text('Vincular', style: TextStyle(color: Colors.white)),
+            child: const Text('Vincular', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -56,7 +62,7 @@ class _LiquidacionesAdminViewState extends ConsumerState<LiquidacionesAdminView>
       await ref.read(adminRepositoryProvider).linkFactura(liq.id, nroFactura, liq.tripIds);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Factura vinculada correctamente'), backgroundColor: Color(0xFFFFFFFF)),
+          const SnackBar(content: Text('Factura vinculada correctamente'), backgroundColor: Colors.green),
         );
       }
     }
@@ -87,7 +93,7 @@ class _LiquidacionesAdminViewState extends ConsumerState<LiquidacionesAdminView>
       await ref.read(adminRepositoryProvider).markLiquidacionPaid(liq.id, liq.tripIds);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Liquidación pagada con éxito'), backgroundColor: Color(0xFFFFFFFF)),
+          const SnackBar(content: Text('Liquidación pagada con éxito'), backgroundColor: Colors.green),
         );
       }
     }
@@ -266,7 +272,7 @@ class _LiquidacionesAdminViewState extends ConsumerState<LiquidacionesAdminView>
         title: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Auditoría Liq. #${liq.id.substring(0,6)}', style: const TextStyle(color: Colors.white)),
+            Text('Auditoría Liq. #${liq.id.length >= 6 ? liq.id.substring(0, 6) : liq.id}', style: const TextStyle(color: Colors.white)),
             IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close, color: Colors.grey)),
           ],
         ),

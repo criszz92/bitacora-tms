@@ -1,3 +1,5 @@
+import '../../../../core/utils/tms_backbone.dart';
+
 class TripModel {
   final String id;
   final String idEmpresa;       // Multitenancy
@@ -176,8 +178,8 @@ class TripModel {
       origin: map['origin'] ?? '',
       destination: map['destination'] ?? '',
       status: map['status'] ?? '',
-      startDate: DateTime.parse(map['startDate']),
-      endDate: map['endDate'] != null ? DateTime.parse(map['endDate']) : null,
+      startDate: TmsBackbone.parseDate(map['startDate']),
+      endDate: TmsBackbone.parseNullableDate(map['endDate']),
       cargoType: map['cargoType'] ?? (map['containerNumber'] != null ? 'completo' : 'suelta'),
       containerNumber: map['containerNumber'],
       bookingNumber: map['bookingNumber'],

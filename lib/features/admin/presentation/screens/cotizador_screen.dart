@@ -153,10 +153,11 @@ class _CotizadorScreenState extends ConsumerState<CotizadorScreen> {
                 label: 'Generar PDF',
                 textColor: Colors.orange,
                 onPressed: () async {
+                  if (config == null) return;
                   try {
                     final bytes = await CotizacionPdfService.generarProformaPdf(
                       cotizacion: savedCotizacion,
-                      config: config!,
+                      config: config,
                     );
                     await Printing.sharePdf(bytes: bytes, filename: '${savedCotizacion.numeroCotizacion}.pdf');
                   } catch (e) {

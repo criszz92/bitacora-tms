@@ -1,4 +1,6 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../features/admin/domain/models/company_config_model.dart';
+import '../../features/auth/domain/models/user_model.dart';
 import '../../features/trips/domain/models/expense_model.dart';
 import '../../features/trips/domain/models/vehicle_model.dart';
 import '../../features/trips/domain/models/trip_model.dart';
@@ -9,6 +11,28 @@ import '../../features/trips/domain/models/trip_model.dart';
 /// (INICIO ➔ CLIENTE(S) ➔ DESTINO) y resolución dinámica de precios de diésel
 /// y rendimiento real por camión/fecha, evitando cálculos divergentes por pantalla.
 class TmsBackbone {
+  /// Parsea de forma segura cualquier fecha proveniente de Firestore
+  /// (Timestamp, String ISO-8601, DateTime o null) sin lanzar excepciones.
+  static DateTime parseDate(dynamic val, {DateTime? fallback}) {
+    if (val is Timestamp) return val.toDate();
+    if (val is DateTime) return val;
+    if (val is String && val.trim().isNotEmpty) {
+      return DateTime.tryParse(val.trim()) ?? (fallback ?? DateTime.now());
+    }
+    return fallback ?? DateTime.now();
+  }
+
+  /// Parsea una fecha nullable de Firestore de forma segura.
+  static DateTime? parseNullableDate(dynamic val) {
+    if (val == null) return null;
+    if (val is Timestamp) return val.toDate();
+    if (val is DateTime) return val;
+    if (val is String && val.trim().isNotEmpty) {
+      return DateTime.tryParse(val.trim());
+    }
+    return null;
+  }
+
   /// Normaliza una patente o identificador quitando guiones/espacios en mayúsculas.
   static String normalizePlate(String? raw) {
     if (raw == null) return '';
@@ -175,6 +199,127 @@ class TmsBackbone {
       }
     }
     return 2.5;
+  }
+
+  /// Monto comisionable único de un viaje:
+  /// Solo viajes operativos; incluye valor base + extraCostos + sobreEstadia.
+  static double tripCommissionableAmount(TripModel trip) {
+    if (!trip.isOperativo) return 0.0;
+    return trip.value + (trip.extraCostos ?? 0.0) + (trip.sobreEstadia ?? 0.0);
+  }
+
+  /// Costo de mantenimiento por KM único:
+  /// Prioriza el override específico del camión, o suma las reglas globales de la empresa.
+  static double resolveMaintenanceCostPerKm(
+    VehicleModel? vehicle,
+    CompanyConfigModel config,
+  ) {
+    if (vehicle?.costoMantenimientoPorKm != null &&
+        vehicle!.costoMantenimientoPorKm! > 0) {
+      return vehicle.costoMantenimientoPorKm!;
+    }
+    double total = 0.0;
+    for (final rule in config.maintenanceRules) {
+      final cost = (rule['cost'] as num?)?.toDouble() ?? 0.0;
+      final km = (rule['km'] as num?)?.toDouble() ?? 0.0;
+      if (km > 0) total += (cost / km);
+    }
+    return total;
+  }
+
+  /// Cálculo único de viáticos para un conjunto de viajes de un chofer.
+  /// Soporta `POR_VIAJE` y `POR_JORNADA` sin duplicar lógica en 7 pantallas.
+  static ({double total, Map<String, double> perTrip}) calculateTripsViaticos({
+    required List<TripModel> trips,
+    required UserModel driver,
+    required CompanyConfigModel config,
+  }) {
+    final Map<String, double> perTrip = {};
+    double total = 0.0;
+    final largo = driver.montoViaticoLargo ?? 10000.0;
+    final local = driver.montoViaticoLocal ?? 6500.0;
+    final threshold = config.umbralKilometrosViatico;
+
+    if (config.tipoViatico == 'POR_VIAJE') {
+      for (final t in trips) {
+        if (t.isOperativo) {
+          final v = (t.totalKm ?? 0.0) >= threshold ? largo : local;
+          perTrip[t.id] = v;
+          total += v;
+        } else {
+          perTrip[t.id] = 0.0;
+        }
+      }
+      return (total: total, perTrip: perTrip);
+    }
+
+    final Map<String, List<TripModel>> tripsByDay = {};
+    for (final t in trips) {
+      if (t.isOperativo) {
+        final dayKey = '${t.startDate.year}-${t.startDate.month}-${t.startDate.day}';
+        tripsByDay.putIfAbsent(dayKey, () => []).add(t);
+      } else {
+        perTrip[t.id] = 0.0;
+      }
+    }
+
+    for (final dayTrips in tripsByDay.values) {
+      final existsLongTrip = dayTrips.any((t) => (t.totalKm ?? 0.0) >= threshold);
+      final dayV = existsLongTrip ? largo : local;
+      total += dayV;
+      for (final t in dayTrips) {
+        perTrip[t.id] = dayV / dayTrips.length;
+      }
+    }
+
+    return (total: total, perTrip: perTrip);
+  }
+
+  /// Calcula el Road Master Score real (0-100) basado en trazabilidad de hitos,
+  /// rendimiento real de combustible vs esperado y cumplimiento de KM/documentos.
+  static ({int total, int hitos, int combustible, int jornada}) calculateRoadMasterScore({
+    required List<TripModel> driverTrips,
+    VehicleModel? vehicle,
+  }) {
+    final finished = driverTrips.where((t) => t.status != 'En Ruta').toList();
+
+    // 1. Hitos y cumplimiento (sobre 40)
+    int hitosScore = 32;
+    if (finished.isNotEmpty) {
+      final withHitos = finished.where((t) => (t.hitos != null && t.hitos!.isNotEmpty) || (t.totalKm ?? 0) > 0).length;
+      hitosScore = ((withHitos / finished.length) * 40).round().clamp(0, 40);
+    }
+
+    // 2. Eficiencia de combustible real vs esperada (sobre 30)
+    int combScore = 25;
+    if (vehicle != null && vehicle.ultimoRendimientoReal != null && vehicle.ultimoRendimientoReal! > 0) {
+      final ratio = vehicle.ultimoRendimientoReal! / (vehicle.rendimientoKmPorLitro > 0 ? vehicle.rendimientoKmPorLitro : 2.5);
+      if (ratio >= 0.95) {
+        combScore = 30;
+      } else if (ratio >= 0.85) {
+        combScore = 24;
+      } else {
+        combScore = 16;
+      }
+    }
+
+    // 3. Trazabilidad de jornada / documentos / KM (sobre 30)
+    int jornadaScore = 25;
+    final opTrips = finished.where((t) => t.isOperativo).toList();
+    if (opTrips.isNotEmpty) {
+      final traceable = opTrips.where((t) =>
+          (t.totalKm ?? 0) > 0 &&
+          ((t.guideNumber != null && t.guideNumber!.isNotEmpty) ||
+           (t.containerNumber != null && t.containerNumber!.isNotEmpty))).length;
+      jornadaScore = ((traceable / opTrips.length) * 30).round().clamp(0, 30);
+    }
+
+    return (
+      total: (hitosScore + combScore + jornadaScore).clamp(0, 100),
+      hitos: hitosScore,
+      combustible: combScore,
+      jornada: jornadaScore,
+    );
   }
 }
 

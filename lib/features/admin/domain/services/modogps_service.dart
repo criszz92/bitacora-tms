@@ -71,9 +71,7 @@ class GpsGeofence {
     if (type == 3 || radiusMeters > 0) {
       final distMeters = _haversineMeters(point.latitude, point.longitude, center.latitude, center.longitude);
       final maxAllowedDist = radiusMeters < 80 ? 80.0 : radiusMeters * 1.25;
-      if (distMeters <= maxAllowedDist) {
-        return true;
-      }
+      return distMeters <= maxAllowedDist;
     }
 
     return inBox;
@@ -636,7 +634,7 @@ class ModoGpsService {
       // Si la sesión expiró (error 1 en Wialon), re-autenticar una vez
       if (res['error'] == 1) {
         _cachedEid = null;
-        eid = await _ensureSession();
+        eid = await _ensureSession(idEmpresa: idEmpresa);
         searchUrl = '$host/wialon/ajax.html?svc=core/search_items&params=${Uri.encodeComponent(jsonEncode(searchParams))}&sid=$eid';
         res = await callWialon(searchUrl);
       }
@@ -1065,30 +1063,10 @@ class ModoGpsService {
           if (splitIdx > currentLegStart) {
             final legPoints = points.sublist(currentLegStart, splitIdx);
             if (legPoints.length > 5) {
-              double legDist = 0;
-              double legMaxSpd = 0;
-              double legSumSpd = 0;
-              for (int k = 1; k < legPoints.length; k++) {
-                legDist += GpsGeofence._haversineMeters(
-                  legPoints[k - 1].position.latitude,
-                  legPoints[k - 1].position.longitude,
-                  legPoints[k].position.latitude,
-                  legPoints[k].position.longitude,
-                );
-                if (legPoints[k].speed > legMaxSpd) legMaxSpd = legPoints[k].speed;
-                legSumSpd += legPoints[k].speed;
-              }
-
-              final name = legIdx == 0 ? 'Tramo 1 (Ida)' : (legIdx == 1 ? 'Tramo 2 (Retorno)' : 'Tramo ${legIdx + 1}');
-              legs.add(GpsTripLeg(
+              legs.add(_buildTripLeg(
                 index: legIdx + 1,
-                name: name,
-                startTime: legPoints.first.timestamp,
-                endTime: legPoints.last.timestamp,
-                distanceKm: legDist / 1000.0,
-                maxSpeed: legMaxSpd,
-                avgSpeed: legPoints.isNotEmpty ? (legSumSpd / legPoints.length) : 0.0,
-                points: legPoints,
+                name: legIdx == 0 ? 'Tramo 1 (Ida)' : (legIdx == 1 ? 'Tramo 2 (Retorno)' : 'Tramo ${legIdx + 1}'),
+                legPoints: legPoints,
                 color: legColors[legIdx % legColors.length],
               ));
               legIdx++;
@@ -1101,30 +1079,10 @@ class ModoGpsService {
         if (currentLegStart < points.length) {
           final legPoints = points.sublist(currentLegStart);
           if (legPoints.length > 2) {
-            double legDist = 0;
-            double legMaxSpd = 0;
-            double legSumSpd = 0;
-            for (int k = 1; k < legPoints.length; k++) {
-              legDist += GpsGeofence._haversineMeters(
-                legPoints[k - 1].position.latitude,
-                legPoints[k - 1].position.longitude,
-                legPoints[k].position.latitude,
-                legPoints[k].position.longitude,
-              );
-              if (legPoints[k].speed > legMaxSpd) legMaxSpd = legPoints[k].speed;
-              legSumSpd += legPoints[k].speed;
-            }
-
-            final name = legIdx == 0 ? 'Tramo 1 (Completo)' : (legIdx == 1 ? 'Tramo 2 (Retorno)' : 'Tramo ${legIdx + 1}');
-            legs.add(GpsTripLeg(
+            legs.add(_buildTripLeg(
               index: legIdx + 1,
-              name: name,
-              startTime: legPoints.first.timestamp,
-              endTime: legPoints.last.timestamp,
-              distanceKm: legDist / 1000.0,
-              maxSpeed: legMaxSpd,
-              avgSpeed: legPoints.isNotEmpty ? (legSumSpd / legPoints.length) : 0.0,
-              points: legPoints,
+              name: legIdx == 0 ? 'Tramo 1 (Completo)' : (legIdx == 1 ? 'Tramo 2 (Retorno)' : 'Tramo ${legIdx + 1}'),
+              legPoints: legPoints,
               color: legColors[legIdx % legColors.length],
             ));
           }
@@ -1208,6 +1166,40 @@ class ModoGpsService {
       _lastLoginTime = null;
       return null;
     }
+  }
+
+  GpsTripLeg _buildTripLeg({
+    required int index,
+    required String name,
+    required List<GpsHistoricalPoint> legPoints,
+    required Color color,
+  }) {
+    double legDist = 0;
+    double legMaxSpd = 0;
+    double legSumSpd = 0;
+    for (int k = 1; k < legPoints.length; k++) {
+      final seg = GpsGeofence._haversineMeters(
+        legPoints[k - 1].position.latitude,
+        legPoints[k - 1].position.longitude,
+        legPoints[k].position.latitude,
+        legPoints[k].position.longitude,
+      );
+      if (seg < 50000) legDist += seg;
+      if (legPoints[k].speed > legMaxSpd) legMaxSpd = legPoints[k].speed;
+      legSumSpd += legPoints[k].speed;
+    }
+
+    return GpsTripLeg(
+      index: index,
+      name: name,
+      startTime: legPoints.first.timestamp,
+      endTime: legPoints.last.timestamp,
+      distanceKm: legDist / 1000.0,
+      maxSpeed: legMaxSpd,
+      avgSpeed: legPoints.isNotEmpty ? (legSumSpd / legPoints.length) : 0.0,
+      points: legPoints,
+      color: color,
+    );
   }
 
   /// Retorna la distancia en km acumulada por GPS en un intervalo de tiempo para una patente

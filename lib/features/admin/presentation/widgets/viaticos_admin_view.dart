@@ -92,8 +92,9 @@ class ViaticosAdminView extends ConsumerWidget {
     final color = isPendiente ? const Color(0xFF9E9E9E) : const Color(0xFFFFFFFF);
     
     final choferes = ref.read(choferesProvider).value ?? [];
+    final shortId = v.idChofer.length >= 8 ? v.idChofer.substring(0, 8) : v.idChofer;
     final choferName = choferes.firstWhere((c) => c.uid == v.idChofer, 
-        orElse: () => UserModel(uid: '', email: '', nombre: 'ID: ${v.idChofer.substring(0,8)}', rol: '', idEmpresa: '')).nombre;
+        orElse: () => UserModel(uid: '', email: '', nombre: 'ID: $shortId', rol: '', idEmpresa: '')).nombre;
 
     return InkWell(
       onTap: () => _showViaticoDetails(context, ref, v, choferName),
@@ -407,7 +408,7 @@ class ViaticosAdminView extends ConsumerWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('✓ Viático marcado como pagado. El conductor lo verá en verde.'),
-            backgroundColor: Color(0xFFFFFFFF),
+            backgroundColor: Colors.green,
           ),
         );
       }

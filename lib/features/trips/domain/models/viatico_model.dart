@@ -1,3 +1,4 @@
+import '../../../../core/utils/tms_backbone.dart';
 /// Modelo para la colección `viaticos` en Firestore.
 /// Registra cada rendición enviada por un conductor, con su estado de pago.
 class ViaticoModel {
@@ -44,10 +45,10 @@ class ViaticoModel {
       id: documentId,
       idChofer: map['idChofer'] ?? '',
       idEmpresa: map['idEmpresa'] ?? '',
-      fechaInicio: DateTime.parse(map['fechaInicio']),
-      fechaFin: DateTime.parse(map['fechaFin']),
+      fechaInicio: TmsBackbone.parseDate(map['fechaInicio']),
+      fechaFin: TmsBackbone.parseDate(map['fechaFin']),
       estado: map['estado'] ?? 'pendiente',
-      creadoEn: DateTime.parse(map['creadoEn']),
+      creadoEn: TmsBackbone.parseDate(map['creadoEn']),
       montoTotal: (map['montoTotal'] as num?)?.toDouble(),
       fechaPago: map['fechaPago'] != null ? DateTime.parse(map['fechaPago']) : null,
     );

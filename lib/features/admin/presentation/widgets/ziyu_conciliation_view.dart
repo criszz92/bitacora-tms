@@ -169,7 +169,7 @@ class _ZiyuConciliationViewState extends ConsumerState<ZiyuConciliationView> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Liquidación generada con éxito.'), backgroundColor: Color(0xFFFFFFFF)),
+          const SnackBar(content: Text('Liquidación generada con éxito.'), backgroundColor: Colors.green),
         );
       }
     } catch (e) {

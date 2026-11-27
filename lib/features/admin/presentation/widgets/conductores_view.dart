@@ -473,7 +473,7 @@ class _DriverEditFormState extends State<_DriverEditForm> {
         padding: const EdgeInsets.all(24),
         children: [
           _section('DATOS PERSONALES'),
-          _input('RUT', _rutController, Icons.badge_outlined),
+          _input('RUT', _rutController, Icons.badge_outlined, keyboardType: TextInputType.text),
           const SizedBox(height: 16),
           const Text('Licencias de Conducir', style: TextStyle(color: Colors.grey, fontSize: 12)),
           const SizedBox(height: 8),
@@ -711,12 +711,12 @@ class _DriverEditFormState extends State<_DriverEditForm> {
     );
   }
 
-  Widget _input(String label, TextEditingController controller, IconData icon) {
+  Widget _input(String label, TextEditingController controller, IconData icon, {TextInputType keyboardType = TextInputType.number}) {
     return TextFormField(
       controller: controller,
       style: const TextStyle(color: Colors.white, fontSize: 14),
       decoration: _fieldDeco(label, icon),
-      keyboardType: TextInputType.number,
+      keyboardType: keyboardType,
     );
   }
 

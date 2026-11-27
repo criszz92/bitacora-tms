@@ -1,3 +1,4 @@
+import '../../../../core/utils/tms_backbone.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -62,30 +63,20 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
                 
                 final trips = snapshot.data!.where((t) => t.idChofer == driver.uid).toList();
                 
-                // Comisión: solo viajes operativos
+                // Comisión: solo viajes operativos (incluye extraCostos y sobreEstadia)
                 double totalFacturacion = 0;
-                for(var t in trips) {
-                  if (t.isOperativo) {
-                    totalFacturacion += t.value;
-                  }
+                for (var t in trips) {
+                  totalFacturacion += TmsBackbone.tripCommissionableAmount(t);
                 }
                 final comision = totalFacturacion * ((config?.porcentajeComision ?? 0) / 100);
                 
-                // Viáticos: Solo se generan por viajes operativos
-                double viaticos = 0;
-                
-                final Map<String, List<TripModel>> tripsByDay = {};
-                for (var t in trips) {
-                  if (t.isOperativo) {
-                    final dayKey = "${t.startDate.year}-${t.startDate.month}-${t.startDate.day}";
-                    tripsByDay.putIfAbsent(dayKey, () => []).add(t);
-                  }
-                }
-
-                tripsByDay.forEach((day, dayTrips) {
-                  bool hasLongTrip = dayTrips.any((t) => (t.totalKm ?? 0) >= (config?.umbralKilometrosViatico ?? 100));
-                  viaticos += hasLongTrip ? (driver.montoViaticoLargo ?? 10000) : (driver.montoViaticoLocal ?? 6500);
-                });
+                // Viáticos: calculados desde Columna Vertebral Única
+                final effectiveConfig = config ?? CompanyConfigModel(idEmpresa: driver.idEmpresa);
+                final viaticos = TmsBackbone.calculateTripsViaticos(
+                  trips: trips,
+                  driver: driver,
+                  config: effectiveConfig,
+                ).total;
 
                 // Helper para saber qué viaje "paga" el viático en modo jornada
                 final List<String> primaryTripIds = [];
@@ -159,7 +150,7 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
                       
                       ...trips.map((t) {
                         final isPrimary = primaryTripIds.contains(t.id);
-                        return _tripItem(t, config!, driver, isPrimary: isPrimary);
+                        return _tripItem(t, config ?? CompanyConfigModel(idEmpresa: driver.idEmpresa), driver, isPrimary: isPrimary);
                       }),
                       
                       const SizedBox(height: 40),
@@ -176,7 +167,14 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
                                   foregroundColor: Colors.white,
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                 ),
-                                onPressed: () => _shareViaWhatsApp(driver, trips, viaticos, comision, totalFacturacion, config!),
+                                onPressed: () => _shareViaWhatsApp(
+                                  driver,
+                                  trips,
+                                  viaticos,
+                                  comision,
+                                  totalFacturacion,
+                                  config ?? CompanyConfigModel(idEmpresa: driver.idEmpresa),
+                                ),
                                 icon: const Icon(Icons.share),
                                 label: const Text('WhatsApp', style: TextStyle(fontWeight: FontWeight.bold)),
                               ),

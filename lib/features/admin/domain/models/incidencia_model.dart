@@ -1,3 +1,5 @@
+import '../../../../core/utils/tms_backbone.dart';
+
 class IncidenciaModel {
   final String id;
   final String idEmpresa;
@@ -62,9 +64,9 @@ class IncidenciaModel {
       choferNombre: map['choferNombre'] ?? '',
       tipo: map['tipo'] ?? 'Otros',
       descripcion: map['descripcion'] ?? '',
-      fecha: DateTime.parse(map['fecha']),
-      fechaIngresoTaller: map['fechaIngresoTaller'] != null ? DateTime.tryParse(map['fechaIngresoTaller']) : null,
-      fechaResolucion: map['fechaResolucion'] != null ? DateTime.tryParse(map['fechaResolucion']) : null,
+      fecha: TmsBackbone.parseDate(map['fecha']),
+      fechaIngresoTaller: TmsBackbone.parseNullableDate(map['fechaIngresoTaller']),
+      fechaResolucion: TmsBackbone.parseNullableDate(map['fechaResolucion']),
       estado: map['estado'] ?? 'Pendiente',
       costoReparacion: (map['costoReparacion'] as num?)?.toDouble(),
       tallerProveedor: map['tallerProveedor'],

@@ -106,7 +106,7 @@ class AIAnalyticService {
         'ingresos': r.totalIncome,
         'margen': r.netMargin,
         'porcentaje': r.marginPercentage,
-        'cpk': r.totalKm > 0 ? (r.totalFuelCost + r.totalTolls + r.totalPersonal + r.totalMaintenance) / r.totalKm : 0,
+        'cpk': r.totalKm > 0 ? (r.totalFuelCost + r.totalTolls + r.totalViaticos + r.totalPersonal + r.totalMaintenance) / r.totalKm : 0,
       }).toList();
 
       final prompt = """
@@ -150,7 +150,7 @@ class AIAnalyticService {
         'viajes': r.tripCount,
         'ingresos': r.totalIncome,
         'margen': r.netMargin,
-        'cpk': r.totalKm > 0 ? (r.totalFuelCost + r.totalTolls + r.totalPersonal + r.totalMaintenance) / r.totalKm : 0,
+        'cpk': r.totalKm > 0 ? (r.totalFuelCost + r.totalTolls + r.totalViaticos + r.totalPersonal + r.totalMaintenance) / r.totalKm : 0,
       }).toList();
 
       final systemPrompt = """

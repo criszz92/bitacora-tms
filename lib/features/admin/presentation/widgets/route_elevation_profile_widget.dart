@@ -350,7 +350,8 @@ class _ElevationCurvePainter extends CustomPainter {
     final fillPath = Path();
 
     Offset getPointOffset(int i) {
-      final x = (i / (points.length - 1)) * size.width;
+      final denom = points.length > 1 ? (points.length - 1) : 1;
+      final x = (i / denom) * size.width;
       final normalizedAlt = (points[i].altitudeMeters - effectiveMin) / effectiveRange;
       final y = size.height - (normalizedAlt * size.height);
       return Offset(x, y.clamp(2.0, size.height - 2.0));

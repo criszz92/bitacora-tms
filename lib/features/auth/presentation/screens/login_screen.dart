@@ -16,6 +16,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   bool _isLogin = true;
 
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    _passCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _submit() async {
     setState(() => _isLoading = true);
     try {

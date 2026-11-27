@@ -69,6 +69,7 @@ class KpiDashboardView extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 40),
+          _buildOperationalAuditAlerts(trips, vehicles),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -882,8 +883,14 @@ class KpiDashboardView extends ConsumerWidget {
                     comments: 'Registrado manualmente por ADMIN',
                   );
                   await ref.read(adminRepositoryProvider).saveTrip(newTrip);
-                } catch (e) { /* Error silenciado */ }
-                if (ctx.mounted) Navigator.pop(ctx);
+                  if (ctx.mounted) Navigator.pop(ctx);
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error al guardar viaje: $e'), backgroundColor: Colors.redAccent),
+                    );
+                  }
+                }
               }, style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16)), child: const Text('Guardar', style: TextStyle(fontWeight: FontWeight.bold))),
             ]),
           ],
@@ -1291,8 +1298,14 @@ class KpiDashboardView extends ConsumerWidget {
                   map['vehicleId'] = selectedVehicle;
                   map['totalKm'] = NumberUtils.tryParseDouble(kmCtrl.text) ?? 0.0;
                   await ref.read(adminRepositoryProvider).updateTripMap(t.id, map);
-                } catch (e) { /* Error silenciado */ }
-                if (ctx.mounted) Navigator.pop(ctx);
+                  if (ctx.mounted) Navigator.pop(ctx);
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error al actualizar viaje: $e'), backgroundColor: Colors.redAccent),
+                    );
+                  }
+                }
               }, style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16)), child: const Text('Guardar', style: TextStyle(fontWeight: FontWeight.bold))),
             ]),
           ],
@@ -1521,7 +1534,10 @@ class KpiDashboardView extends ConsumerWidget {
                         setDialogState(() => isApplying = true);
                         try {
                           final profile = ref.read(currentUserProfileProvider).value;
-                          if (profile == null) return;
+                          if (profile == null) {
+                            setDialogState(() => isApplying = false);
+                            return;
+                          }
                           
                           final count = await ref.read(adminRepositoryProvider).applyRecurringExpenses(
                             idEmpresa: profile.idEmpresa,
@@ -1604,6 +1620,54 @@ class KpiDashboardView extends ConsumerWidget {
   }
 
   String _fmt(double amount) { final isNeg = amount < 0; final abs = amount.abs(); final parts = abs.toStringAsFixed(0).split(''); final buf = StringBuffer(isNeg ? '-\$' : '\$'); for (int i = 0; i < parts.length; i++) { if (i > 0 && (parts.length - i) % 3 == 0) buf.write('.'); buf.write(parts[i]); } return buf.toString(); }
+
+  Widget _buildOperationalAuditAlerts(List<TripModel> trips, List<VehicleModel> vehicles) {
+    final zeroKmTrips = trips.where((t) => t.status != 'En Ruta' && (t.totalKm ?? 0) <= 0).toList();
+    final lowEffVehicles = vehicles.where((v) {
+      if (v.ultimoRendimientoReal == null || v.rendimientoKmPorLitro <= 0) return false;
+      return (v.ultimoRendimientoReal! / v.rendimientoKmPorLitro) < 0.85;
+    }).toList();
+
+    if (zeroKmTrips.isEmpty && lowEffVehicles.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.amberAccent.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amberAccent.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.amberAccent, size: 18),
+              SizedBox(width: 8),
+              Text('AUDITORÍA OPERATIVA: DISCREPANCIAS DETECTADAS', style: TextStyle(color: Colors.amberAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          if (zeroKmTrips.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              '• ${zeroKmTrips.length} viaje(s) finalizado(s) con 0 KM registrados (afecta prorrateo de combustible y CPK).',
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ],
+          for (final v in lowEffVehicles) ...[
+            const SizedBox(height: 4),
+            Text(
+              '• ${v.patente}: rendimiento real (${v.ultimoRendimientoReal!.toStringAsFixed(2)} km/L) cayó >15% bajo el esperado (${v.rendimientoKmPorLitro.toStringAsFixed(2)} km/L) — revisar posible fuga o exceso de ralentí.',
+              style: const TextStyle(color: Colors.orangeAccent, fontSize: 12),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 
   Widget _emptyState(String message) => Center(child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.inbox_outlined, size: 40, color: Colors.white10), const SizedBox(height: 12), Text(message, style: const TextStyle(color: Colors.grey, fontSize: 12))]));
 

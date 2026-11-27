@@ -20,6 +20,13 @@ void showCreateIncidenciaDialog(BuildContext context, WidgetRef ref, List<Vehicl
   DateTime fechaIngreso = DateTime.now();
   DateTime? fechaSalida;
 
+  if (vehicles.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('No hay vehículos registrados para reportar incidencia.')),
+    );
+    return;
+  }
+
   showDialog(
     context: context,
     builder: (ctx) => StatefulBuilder(
@@ -289,7 +296,8 @@ void showCreateIncidenciaDialog(BuildContext context, WidgetRef ref, List<Vehicl
                         ),
                         onPressed: () async {
                           final user = ref.read(currentUserProfileProvider).value;
-                          final costo = double.tryParse(costoCtrl.text);
+                          final cleanCost = costoCtrl.text.replaceAll('.', '').replaceAll(',', '.').trim();
+                          final costo = cleanCost.isNotEmpty ? double.tryParse(cleanCost) : null;
 
                           final incidencia = IncidenciaModel(
                             id: '',

@@ -1,4 +1,6 @@
 import 'dart:io';
+import '../../../../core/utils/tms_backbone.dart';
+import '../../../trips/domain/models/trip_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
@@ -442,10 +444,12 @@ class _DriverProfileScreenState extends ConsumerState<DriverProfileScreen> {
   // ── 4. ROAD MASTER SCORE (AMPLIO Y LEGIBLE) ───────────────────────────────
 
   Widget _buildRoadMasterScoreCard(AsyncValue tripsAsync) {
-    const int totalScore = 94;
-    const int hitosScore = 38; // sobre 40
-    const int combustibleScore = 28; // sobre 30
-    const int jornadaScore = 28; // sobre 30
+    final trips = (tripsAsync.value as List?)?.cast<TripModel>() ?? <TripModel>[];
+    final score = TmsBackbone.calculateRoadMasterScore(driverTrips: trips);
+    final int totalScore = score.total;
+    final int hitosScore = score.hitos;
+    final int combustibleScore = score.combustible;
+    final int jornadaScore = score.jornada;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -505,9 +509,9 @@ class _DriverProfileScreenState extends ConsumerState<DriverProfileScreen> {
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: AppColors.primary),
                 ),
-                child: const Text(
+                child: Text(
                   '$totalScore / 100 PTS',
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: AppColors.primary,
                     fontWeight: FontWeight.w900,
                     fontSize: 13,

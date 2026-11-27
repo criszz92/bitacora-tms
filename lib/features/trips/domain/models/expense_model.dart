@@ -1,3 +1,5 @@
+import '../../../../core/utils/tms_backbone.dart';
+
 class ExpenseModel {
   final String id;
   final String idEmpresa;
@@ -90,7 +92,7 @@ class ExpenseModel {
       amount: map['amount']?.toDouble() ?? 0.0,
       type: map['type'] ?? '',
       litros: map['litros']?.toDouble(),
-      date: DateTime.parse(map['date']),
+      date: TmsBackbone.parseDate(map['date']),
       description: map['description'] ?? '',
       status: map['status'] ?? 'Pendiente',
       vehicleId: map['vehicleId'],
