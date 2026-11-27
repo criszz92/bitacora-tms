@@ -2028,6 +2028,9 @@ class DriverDashboardScreen extends ConsumerWidget {
                           destinationName: trip.destination,
                           waypoints: const [],
                           initialStatusLabel: trip.hitoActual ?? 'En Tránsito',
+                          onAdvanceMilestone: () async {
+                            await ref.read(tripRepositoryProvider).registrarHito(trip.id, nextHito);
+                          },
                         ),
                       ),
                     );
