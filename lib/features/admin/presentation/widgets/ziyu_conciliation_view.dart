@@ -19,6 +19,12 @@ class _ZiyuConciliationViewState extends ConsumerState<ZiyuConciliationView> {
   final _referenciaController = TextEditingController();
 
   @override
+  void dispose() {
+    _referenciaController.dispose();
+    super.dispose();
+  }
+
+  @override
   void initState() {
     super.initState();
     // Cargar viajes pendientes al iniciar para visibilidad inmediata

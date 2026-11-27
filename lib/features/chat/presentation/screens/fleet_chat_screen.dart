@@ -25,6 +25,8 @@ class _FleetChatScreenState extends ConsumerState<FleetChatScreen> with SingleTi
   int _recordSeconds = 0;
   Timer? _recordTimer;
   String? _currentlyPlayingUrl;
+  StreamSubscription? _playerSub;
+  final Set<String> _markedReadIds = {};
 
   @override
   void initState() {
@@ -46,6 +48,7 @@ class _FleetChatScreenState extends ConsumerState<FleetChatScreen> with SingleTi
     _textController.dispose();
     _scrollController.dispose();
     _recordTimer?.cancel();
+    _playerSub?.cancel();
     super.dispose();
   }
 
@@ -157,8 +160,8 @@ class _FleetChatScreenState extends ConsumerState<FleetChatScreen> with SingleTi
             final msg = messages[index];
             final isRead = msg.readBy.contains(currentUserId);
 
-            // Marcar como leído automáticamente si aún no lo está
-            if (!isRead && currentUserId.isNotEmpty) {
+            // Marcar como leído automáticamente una sola vez por ID
+            if (!isRead && currentUserId.isNotEmpty && _markedReadIds.add(msg.id)) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 ref.read(fleetChatRepositoryProvider).markAsRead(companyId, msg.id, currentUserId);
               });
@@ -458,8 +461,9 @@ class _FleetChatScreenState extends ConsumerState<FleetChatScreen> with SingleTi
                         setState(() => _currentlyPlayingUrl = null);
                       } else {
                         setState(() => _currentlyPlayingUrl = msg.content);
+                        await _playerSub?.cancel();
                         await voiceService.playAudio(msg.content);
-                        voiceService.player.playerStateStream.listen((state) {
+                        _playerSub = voiceService.player.playerStateStream.listen((state) {
                           if (state.processingState == ProcessingState.completed) {
                             if (mounted) setState(() => _currentlyPlayingUrl = null);
                           }

@@ -56,6 +56,7 @@ class CotizadorFormState {
 
   CotizadorFormState copyWith({
     String? editandoId,
+    bool clearEditandoId = false,
     String? origen,
     String? destino,
     String? clienteNombre,
@@ -67,14 +68,16 @@ class CotizadorFormState {
     double? kmRuta,
     double? tarifaPropuesta,
     double? precioDieselNetoManual,
+    bool clearPrecioDieselManual = false,
     double? peajes,
     double? viaticoManual,
     int? diasViaje,
     double? margenObjetivoManual,
+    bool clearMargenManual = false,
     bool? idaYVuelta,
   }) {
     return CotizadorFormState(
-      editandoId: editandoId ?? this.editandoId,
+      editandoId: clearEditandoId ? null : (editandoId ?? this.editandoId),
       origen: origen ?? this.origen,
       destino: destino ?? this.destino,
       clienteNombre: clienteNombre ?? this.clienteNombre,
@@ -85,11 +88,11 @@ class CotizadorFormState {
       kmPosicionamiento: kmPosicionamiento ?? this.kmPosicionamiento,
       kmRuta: kmRuta ?? this.kmRuta,
       tarifaPropuesta: tarifaPropuesta ?? this.tarifaPropuesta,
-      precioDieselNetoManual: precioDieselNetoManual ?? this.precioDieselNetoManual,
+      precioDieselNetoManual: clearPrecioDieselManual ? null : (precioDieselNetoManual ?? this.precioDieselNetoManual),
       peajes: peajes ?? this.peajes,
       viaticoManual: viaticoManual ?? this.viaticoManual,
       diasViaje: diasViaje ?? this.diasViaje,
-      margenObjetivoManual: margenObjetivoManual ?? this.margenObjetivoManual,
+      margenObjetivoManual: clearMargenManual ? null : (margenObjetivoManual ?? this.margenObjetivoManual),
       idaYVuelta: idaYVuelta ?? this.idaYVuelta,
     );
   }

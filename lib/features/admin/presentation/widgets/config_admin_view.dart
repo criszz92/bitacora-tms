@@ -46,6 +46,29 @@ class _ConfigAdminViewState extends ConsumerState<ConfigAdminView> {
   bool _isUploadingLogo = false;
   
   String _tipoViatico = 'POR_VIAJE';
+
+  @override
+  void dispose() {
+    _sueldoMinimoCtrl.dispose();
+    _umbralKmCtrl.dispose();
+    _tasaSISCtrl.dispose();
+    _tasaMutualCtrl.dispose();
+    _comisionCtrl.dispose();
+    _utmCtrl.dispose();
+    _dieselNetoCtrl.dispose();
+    _diasLaboralesCtrl.dispose();
+    _margenObjetivoCtrl.dispose();
+    _ppmCtrl.dispose();
+    _remanenteCtrl.dispose();
+    _recuperacionIepdCtrl.dispose();
+    _razonSocialCtrl.dispose();
+    _rutCtrl.dispose();
+    _giroCtrl.dispose();
+    _direccionCtrl.dispose();
+    _telefonoCtrl.dispose();
+    _emailCtrl.dispose();
+    super.dispose();
+  }
   bool _isSaving = false;
 
   List<Map<String, dynamic>> _maintenanceRules = [];

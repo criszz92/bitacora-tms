@@ -108,20 +108,31 @@ class _RemuneracionesViewState extends ConsumerState<RemuneracionesView> {
         border: Border.all(color: Colors.white10),
       ),
       child: DropdownButtonHideUnderline(
-        child: DropdownButton<DateTime>(
-          value: DateTime(currentMonth.year, currentMonth.month),
-          dropdownColor: const Color(0xFF1E1E1E),
-          icon: const Icon(Icons.calendar_month, color: Colors.grey, size: 18),
-          items: List.generate(6, (i) {
-            final date = DateTime(DateTime.now().year, DateTime.now().month - i, 1);
-            final dateStr = '${date.month}/${date.year}'; 
-            return DropdownMenuItem(
-              value: date,
-              child: Text(dateStr, style: const TextStyle(color: Colors.white, fontSize: 13)),
+        child: Builder(
+          builder: (context) {
+            final selectedVal = DateTime(currentMonth.year, currentMonth.month);
+            final monthsList = List.generate(
+              6,
+              (i) => DateTime(DateTime.now().year, DateTime.now().month - i, 1),
             );
-          }),
-          onChanged: (val) {
-            if (val != null) ref.read(selectedMonthProvider.notifier).setMonth(val);
+            if (!monthsList.any((d) => d.year == selectedVal.year && d.month == selectedVal.month)) {
+              monthsList.add(selectedVal);
+            }
+            return DropdownButton<DateTime>(
+              value: selectedVal,
+              dropdownColor: const Color(0xFF1E1E1E),
+              icon: const Icon(Icons.calendar_month, color: Colors.grey, size: 18),
+              items: monthsList.map((date) {
+                final dateStr = '${date.month}/${date.year}';
+                return DropdownMenuItem(
+                  value: date,
+                  child: Text(dateStr, style: const TextStyle(color: Colors.white, fontSize: 13)),
+                );
+              }).toList(),
+              onChanged: (val) {
+                if (val != null) ref.read(selectedMonthProvider.notifier).setMonth(val);
+              },
+            );
           },
         ),
       ),

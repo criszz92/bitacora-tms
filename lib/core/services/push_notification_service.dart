@@ -134,24 +134,17 @@ class PushNotificationService {
     // En cuanto el chofer se loguea o restaura su sesión, se persiste el token en su doc de Firestore
     FirebaseAuth.instance.authStateChanges().listen((user) async {
       if (user != null) {
-        debugPrint('FCM: Usuario autenticado (${user.uid}), sincronizando token...');
-        final token = await _messaging.getToken();
-        if (token != null) {
-          await _saveTokenToFirestore(token, uid: user.uid);
+        try {
+          debugPrint('FCM: Usuario autenticado (${user.uid}), sincronizando token...');
+          final token = await _messaging.getToken();
+          if (token != null) {
+            await _saveTokenToFirestore(token, uid: user.uid);
+          }
+        } catch (e) {
+          debugPrint('FCM: Error al obtener token: $e');
         }
       }
     });
-
-    // 8. Intentar obtener y guardar el token inmediatamente si ya hay sesión activa
-    try {
-      final token = await _messaging.getToken();
-      if (token != null) {
-        debugPrint('FCM Token inicial: $token');
-        await _saveTokenToFirestore(token);
-      }
-    } catch (e) {
-      debugPrint('FCM: Error al obtener token inicial: $e');
-    }
   }
 
   /// Fuerza la sincronización del token FCM para el usuario actual (usado tras login exitoso)

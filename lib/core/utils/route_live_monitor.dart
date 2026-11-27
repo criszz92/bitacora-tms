@@ -167,15 +167,20 @@ final routeMonitorStreamProvider = StreamProvider.autoDispose.family<RouteMonito
           }
         }
 
-        // ─── C) EVALUAR PEAJES (Cruce efectivo y suma en tiempo real) ───
+        // ─── C) EVALUAR PEAJES (Cruce efectivo por distancia ortogonal al segmento) ───
         if (punto.tipo == TipoPuntoInfraestructura.peaje) {
           final detectionRadius = RoadInfrastructureDetector.getOptimalDetectionRadius(
             tipoCode: punto.tipo.code,
             subtipo: punto.subtipo,
             radioConfigurado: punto.radioMetros,
           );
+          final tollDistM = RoadInfrastructureDetector.calculateDistanceToSegmentMeters(
+            LatLng(punto.lat, punto.lng),
+            unit.position,
+            unit.position,
+          );
           
-          if (distM <= detectionRadius) {
+          if (tollDistM <= detectionRadius || distM <= detectionRadius) {
             final passId = 'peaje-${punto.id}';
             final lastPass = recentlyNotified[passId];
 

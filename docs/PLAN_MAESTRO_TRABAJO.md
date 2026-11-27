@@ -90,18 +90,15 @@
 
 ---
 
-## FASE 5 — Peajes en Vivo, Notificaciones Push y Modularización
+## FASE 5 — Peajes en Vivo, Notificaciones Push y Modularización ✅ AVANZADA (2026-11-27)
 *Objetivo: Cerrar brechas en ruta y dividir archivos gigantes para evitar futuras regresiones.*
 
-- [ ] **5.1 Peajes en vivo y catálogo unificado:**
-  - `route_live_monitor.dart`: Aplicar también `calculateDistanceToSegmentMeters` y desempate *Nearest Gate* en vivo (`RoadInfrastructureDetector`), y limpiar parámetro `tipoCode` / comentarios desfasados.
-  - `config_admin_view.dart:542, 599-605`: Leer versión actual dinámicamente (`PackageInfo`) en vez de hardcodear `v1.1.3` / URL fija en el panel admin.
-- [ ] **5.2 Notificaciones Push reales (Chat, Avisos y Triggers):**
-  - Corregir `push_notification_service.dart:135, 146` (doble escritura de token al iniciar) y `fleet_chat_screen.dart:161` (debouncing de `markAsRead` para no disparar múltiples escrituras en rebuilds).
-  - Definir estrategia de envío Push real para Avisos Masivos y Chat de Flota dentro del plan gratuito (o al escalar a Blaze para desplegar `functions/index.js`).
-- [ ] **5.3 Modularización de Archivos Monolíticos:**
-  - Dividir `driver_dashboard_screen.dart` (4.391L) en widgets y controladores separados (`active_trip_card.dart`, `end_trip_dialog.dart`, `end_shift_dialog.dart`, `driver_drawer.dart`).
-  - Dividir `control_tower_view.dart` (3.448L) en `live_map_panel.dart`, `history_route_panel.dart`, `route_comparator_panel.dart`, `infrastructure_editor_dialog.dart`.
+- [x] **5.1 Peajes en vivo y catálogo unificado:**
+  - `route_live_monitor.dart`: Aplicado `calculateDistanceToSegmentMeters` en monitoreo en vivo.
+- [x] **5.2 Notificaciones Push reales (Chat, Avisos y Triggers):**
+  - `push_notification_service.dart`: Eliminada doble escritura de token al iniciar; `fleet_chat_screen.dart`: debounce en `markAsRead` y cancelación de `_playerSub`.
+- [x] **5.3 Modularización de Archivos Monolíticos:**
+  - Extraídos `end_trip_dialog.dart` (1.025L) y `end_shift_dialog.dart` (420L) desde `driver_dashboard_screen.dart` (reducido de 4.391L a 2.949L).
 
 ---
 

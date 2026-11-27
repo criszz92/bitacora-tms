@@ -220,20 +220,24 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
 
   Widget _buildMonthHeader() {
     final months = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF161A22),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text('${months[_selectedMonth.month]} ${_selectedMonth.year}', 
-               style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-          const Icon(Icons.arrow_forward_ios, color: Colors.white24, size: 16),
-        ],
+    return InkWell(
+      onTap: () => _selectMonth(context),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF161A22),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('${months[_selectedMonth.month]} ${_selectedMonth.year}',
+                 style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+            const Icon(Icons.calendar_month, color: AppColors.primary, size: 18),
+          ],
+        ),
       ),
     );
   }
