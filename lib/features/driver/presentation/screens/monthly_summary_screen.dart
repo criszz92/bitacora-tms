@@ -114,7 +114,15 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
                         children: [
                           Expanded(child: _summaryCard('Viajes', '${trips.length}', Icons.local_shipping, Colors.blueAccent)),
                           const SizedBox(width: 12),
-                          Expanded(child: _summaryCard('Total KM', '$totalKm', Icons.route, Colors.purpleAccent)),
+                          Expanded(
+                            child: _summaryCard(
+                              'Total KM',
+                              NumberFormat('#,##0', 'es_CL').format(totalKm),
+                              Icons.route,
+                              Colors.purpleAccent,
+                              unit: 'km',
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 12),
@@ -126,22 +134,38 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      _summaryCard('Facturación Camión', _fmt(totalFacturacion), Icons.monetization_on, Colors.yellow),
+                      _summaryCard(
+                        'Facturación Camión',
+                        _fmt(totalFacturacion),
+                        Icons.monetization_on,
+                        Colors.amber,
+                        valueColor: const Color(0xFFFBBF24),
+                        valueFontSize: 26,
+                      ),
                       
                       if (facturacionPorCliente.isNotEmpty) ...[
                         const SizedBox(height: 24),
                         const Text('Desglose por Cliente', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
                         const SizedBox(height: 12),
-                        ...facturacionPorCliente.entries.map((e) => Padding(
-                          padding: const EdgeInsets.only(bottom: 8.0),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF161A22),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.white10),
+                          ),
+                          child: Column(
                             children: [
-                              Text(e.key, style: const TextStyle(color: Colors.white70)),
-                              Text(_fmt(e.value), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                              for (int i = 0; i < facturacionPorCliente.entries.length; i++) ...[
+                                if (i > 0) const Divider(height: 1, color: Colors.white10, indent: 16, endIndent: 16),
+                                _clientBreakdownRow(
+                                  facturacionPorCliente.entries.elementAt(i).key,
+                                  facturacionPorCliente.entries.elementAt(i).value,
+                                  i,
+                                ),
+                              ],
                             ],
                           ),
-                        )),
+                        ),
                       ],
                       
                       const SizedBox(height: 32),
@@ -242,7 +266,15 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
     );
   }
 
-  Widget _summaryCard(String title, String value, IconData icon, Color color) {
+  Widget _summaryCard(
+    String title,
+    String value,
+    IconData icon,
+    Color color, {
+    String? unit,
+    Color? valueColor,
+    double valueFontSize = 22,
+  }) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -255,13 +287,104 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
         children: [
           Row(
             children: [
-              Icon(icon, color: color, size: 20),
+              Icon(icon, color: color, size: 18),
               const SizedBox(width: 8),
-              Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
-          Text(value, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                value,
+                style: TextStyle(
+                  color: valueColor ?? Colors.white,
+                  fontSize: valueFontSize,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              if (unit != null) ...[
+                const SizedBox(width: 5),
+                Text(
+                  unit,
+                  style: const TextStyle(
+                    color: Colors.white54,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _clientBreakdownRow(String clientName, double amount, int index) {
+    const palette = [
+      Colors.blueAccent,
+      Colors.purpleAccent,
+      Colors.tealAccent,
+      Colors.orangeAccent,
+      Colors.pinkAccent,
+      Colors.cyanAccent,
+    ];
+    final dotColor = palette[index % palette.length];
+    final initial = clientName.trim().isNotEmpty ? clientName.trim()[0].toUpperCase() : '?';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(
+              color: dotColor.withValues(alpha: 0.16),
+              shape: BoxShape.circle,
+              border: Border.all(color: dotColor.withValues(alpha: 0.45)),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              initial,
+              style: TextStyle(
+                color: dotColor,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              clientName,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+                height: 1.25,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            _fmt(amount),
+            style: const TextStyle(
+              color: Color(0xFF4ADE80),
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ],
       ),
     );
@@ -890,7 +1013,7 @@ class _MonthlySummaryScreenState extends ConsumerState<MonthlySummaryScreen> {
     );
   }
 
-  String _fmt(double n) => NumberFormat.currency(locale: 'es_CL', symbol: '\$', decimalDigits: 0).format(n);
+  String _fmt(double n) => '\$${NumberFormat('#,##0', 'es_CL').format(n.round())}';
 
   Future<void> _selectMonth(BuildContext context) async {
     // Selector simple de mes/año (puedes mejorar esto con un picker especializado)

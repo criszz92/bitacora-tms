@@ -342,11 +342,16 @@ class ModoGpsService {
       }, SetOptions(merge: true));
     }
 
-    // Actualizar también en secrets/modogps como respaldo
-    await _firestore.collection('secrets').doc('modogps').set({
-      'token': cleanToken,
-      'updated_at': DateTime.now().toIso8601String(),
-    }, SetOptions(merge: true));
+    // Actualizar también en secrets/modogps como respaldo (best-effort si ya se guardó en config_empresas)
+    try {
+      await _firestore.collection('secrets').doc('modogps').set({
+        'token': cleanToken,
+        'updated_at': DateTime.now().toIso8601String(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      if (idEmpresa == null || idEmpresa.isEmpty) rethrow;
+      debugPrint('[ModoGPS] No se pudo actualizar secrets/modogps (respaldo): $e');
+    }
 
     // Resetear sesión en caché para forzar re-autenticación inmediata
     _cachedEid = null;
@@ -442,7 +447,7 @@ class ModoGpsService {
 
     try {
       final host = await _getHost();
-      final eid = await _ensureSession(idEmpresa: idEmpresa);
+      var eid = await _ensureSession(idEmpresa: idEmpresa);
 
       final spec = {
         'spec': {
@@ -757,7 +762,7 @@ class ModoGpsService {
   }) async {
     try {
       final host = await _getHost();
-      final eid = await _ensureSession(idEmpresa: idEmpresa);
+      var eid = await _ensureSession(idEmpresa: idEmpresa);
       final cleanTarget = plate.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase();
 
       // 1. Buscar la unidad para obtener su ID numérico en Wialon
@@ -774,8 +779,17 @@ class ModoGpsService {
         'to': 0,
       };
 
-      final uUrl = '$host/wialon/ajax.html?svc=core/search_items&params=${Uri.encodeComponent(jsonEncode(specUnit))}&sid=$eid';
-      final uRes = await callWialon(uUrl);
+      var uUrl = '$host/wialon/ajax.html?svc=core/search_items&params=${Uri.encodeComponent(jsonEncode(specUnit))}&sid=$eid';
+      var uRes = await callWialon(uUrl);
+      if (uRes['error'] == 1) {
+        _cachedEid = null;
+        eid = await _ensureSession(idEmpresa: idEmpresa);
+        uUrl = '$host/wialon/ajax.html?svc=core/search_items&params=${Uri.encodeComponent(jsonEncode(specUnit))}&sid=$eid';
+        uRes = await callWialon(uUrl);
+      }
+      if (uRes['error'] != null && uRes['error'] != 0) {
+        throw Exception('Wialon search_items error ${uRes['error']}');
+      }
       final items = uRes['items'] as List?;
       if (items == null || items.isEmpty) return null;
 
@@ -811,13 +825,22 @@ class ModoGpsService {
           'itemId': unitId,
           'timeFrom': currentFrom,
           'timeTo': timeTo,
-          'flags': 257,      // 1 (posición) + 256 (parámetros acc/din1)
-          'flagsMask': 257,
+          'flags': 1,        // 1 (posición; 257 en flagsMask filtraba mensajes sin bit 256)
+          'flagsMask': 1,
           'loadCount': batchSize,
         };
 
-        final mUrl = '$host/wialon/ajax.html?svc=messages/load_interval&params=${Uri.encodeComponent(jsonEncode(loadParams))}&sid=$eid';
-        final mRes = await callWialon(mUrl);
+        var mUrl = '$host/wialon/ajax.html?svc=messages/load_interval&params=${Uri.encodeComponent(jsonEncode(loadParams))}&sid=$eid';
+        var mRes = await callWialon(mUrl);
+        if (mRes['error'] == 1) {
+          _cachedEid = null;
+          eid = await _ensureSession(idEmpresa: idEmpresa);
+          mUrl = '$host/wialon/ajax.html?svc=messages/load_interval&params=${Uri.encodeComponent(jsonEncode(loadParams))}&sid=$eid';
+          mRes = await callWialon(mUrl);
+        }
+        if (mRes['error'] != null && mRes['error'] != 0) {
+          throw Exception('Wialon load_interval error ${mRes['error']}');
+        }
         final batchMsgs = mRes['messages'] as List?;
         if (batchMsgs == null || batchMsgs.isEmpty) break;
 

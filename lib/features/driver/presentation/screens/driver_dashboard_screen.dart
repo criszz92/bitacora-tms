@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../widgets/end_trip_dialog.dart';
 import '../widgets/end_shift_dialog.dart';
+import 'cabin_navigator_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../trips/presentation/providers/trip_provider.dart';
@@ -2006,6 +2007,37 @@ class DriverDashboardScreen extends ConsumerWidget {
                       'FINALIZAR VIAJE',
                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5),
                     ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.amberAccent,
+                    side: BorderSide(color: Colors.amberAccent.withValues(alpha: 0.45)),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => CabinNavigatorScreen(
+                          tripId: trip.id,
+                          originName: trip.origin,
+                          destinationName: trip.destination,
+                          waypoints: const [],
+                          initialStatusLabel: trip.hitoActual ?? 'En Tránsito',
+                        ),
+                      ),
+                    );
+                  },
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.navigation_outlined, size: 16),
+                      SizedBox(width: 4),
+                      Text('Navegar', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 8),
