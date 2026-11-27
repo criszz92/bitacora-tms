@@ -2024,6 +2024,7 @@ class DriverDashboardScreen extends ConsumerWidget {
                         builder: (_) => CabinNavigatorScreen(
                           tripId: trip.id,
                           originName: trip.origin,
+                          clientName: trip.client,
                           destinationName: trip.destination,
                           waypoints: const [],
                           initialStatusLabel: trip.hitoActual ?? 'En Tránsito',

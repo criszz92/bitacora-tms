@@ -140,6 +140,41 @@ class CabinRoutingService {
     return 'Continúa recto$via';
   }
 
+  Future<List<Map<String, dynamic>>> listOfficialRoutes() async {
+    try {
+      final snap = await _firestore
+          .collection('rutas_oficiales')
+          .orderBy('updatedAt', descending: true)
+          .limit(30)
+          .get();
+      return snap.docs.map((d) => {'id': d.id, ...d.data()}).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Geocodifica un nombre de lugar/cliente/puerto en Chile usando Nominatim (OSM).
+  Future<LatLng?> geocodePlace(String query) async {
+    final q = query.trim();
+    if (q.isEmpty) return null;
+    final url = Uri.parse(
+      'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent('$q, Chile')}&format=json&limit=1',
+    );
+    try {
+      final res = await http.get(url, headers: {'User-Agent': 'cl.heirlog.bitacora'}).timeout(const Duration(seconds: 6));
+      if (res.statusCode != 200) return null;
+      final list = jsonDecode(res.body) as List?;
+      if (list == null || list.isEmpty) return null;
+      final item = list.first as Map<String, dynamic>;
+      final lat = double.tryParse(item['lat']?.toString() ?? '');
+      final lon = double.tryParse(item['lon']?.toString() ?? '');
+      if (lat == null || lon == null) return null;
+      return LatLng(lat, lon);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> saveOfficialRoute({
     required String originName,
     required String destinationName,
