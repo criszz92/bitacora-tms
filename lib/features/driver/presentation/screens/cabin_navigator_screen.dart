@@ -229,9 +229,19 @@ class _CabinNavigatorScreenState extends State<CabinNavigatorScreen> {
             ),
             children: [
               TileLayer(
-                urlTemplate: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-                subdomains: const ['a', 'b', 'c', 'd'],
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'cl.heirlog.bitacora',
+                tileBuilder: (context, tileWidget, tile) {
+                  return ColorFiltered(
+                    colorFilter: const ColorFilter.matrix(<double>[
+                      -0.85, 0, 0, 0, 235,
+                      0, -0.85, 0, 0, 235,
+                      0, 0, -0.85, 0, 240,
+                      0, 0, 0, 1, 0,
+                    ]),
+                    child: tileWidget,
+                  );
+                },
               ),
               PolylineLayer(
                 polylines: [
