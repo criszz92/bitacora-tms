@@ -221,5 +221,16 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAuthenticated() && (isCompanyAdmin() || isSuperAdmin());
     }
+
+    // 12. Incidencias en Ruta (Navegador Cabina - Globales anónimas)
+    match /incidencias_ruta/{docId} {
+      allow read, create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && isSuperAdmin();
+    }
+
+    // 13. Rutas Oficiales Homologadas (Navegador Cabina)
+    match /rutas_oficiales/{docId} {
+      allow read, write: if isAuthenticated();
+    }
   }
 }

@@ -690,7 +690,12 @@ class _CabinNavigatorScreenState extends State<CabinNavigatorScreen> {
                             decoration: InputDecoration(
                               hintText: 'Buscar...',
                               hintStyle: const TextStyle(color: Colors.white38, fontSize: 11),
-                              prefixIcon: const Icon(Icons.search, color: Colors.white54, size: 16),
+                              prefixIcon: IconButton(
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                icon: const Icon(Icons.search, color: Colors.white70, size: 16),
+                                onPressed: () => _searchAlternativeRoute(_altSearchController.text),
+                              ),
                               filled: true,
                               fillColor: const Color(0xFF1E2634),
                               contentPadding: EdgeInsets.zero,
